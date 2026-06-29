@@ -61,7 +61,6 @@ def extract_code(md):
 
 
 def _return_has_component_tuple(tree):
-    """Check whether compute_reward returns (total_reward, components)-like tuple/list."""
     for node in ast.walk(tree):
         if isinstance(node, ast.Return):
             value = node.value
@@ -147,7 +146,6 @@ def run(config_path, run_name, mock=False):
     user_prompt = "\n\n".join(user_parts)
 
     write_text(run_dir / "llm_inputs/02_reward_generator.input.md", user_prompt)
-    write_text(run_dir / "human_review/03_reward_generator.input.md", user_prompt)
     record_prompt(run_dir, "02_reward_generator", system_prompt, user_prompt)
 
     if mock:
@@ -169,9 +167,6 @@ def run(config_path, run_name, mock=False):
 
     write_text(run_dir / "reward_v1.md", out_md)
     write_text(run_dir / "reward_v1.py", code)
-    write_text(run_dir / "final_outputs/reward_v1.md", out_md)
-    write_text(run_dir / "final_outputs/reward_v1.py", code)
-    write_text(run_dir / "human_review/04_reward_v1.md", out_md)
     write_json(run_dir / "validations/reward_v1.validation.json", validation)
     record_response(run_dir, "02_reward_generator", out_md)
 
