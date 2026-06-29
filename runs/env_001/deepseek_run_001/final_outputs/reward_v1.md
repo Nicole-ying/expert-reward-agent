@@ -1,0 +1,118 @@
+# reward_v1.py
+
+```python
+import numpy as np
+
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    """
+    奖励函数 v1：基于距离的密集奖励 + 速度惩罚 + 姿态稳定性约束
+    """
+    # 提取当前状态
+    x_pos = obs[0]
+    y_pos = obs[1]
+    x_vel = obs[2]
+    y_vel = obs[3]
+    body_angle = obs[4]
+    angular_vel = obs[5]
+    left_contact = obs[6]
+    right_contact = obs[7]
+    
+    # 提取下一状态
+    next_x_pos = next_obs[0]
+    next_y_pos = next_obs[1]
+    next_x_vel = next_obs[2]
+    next_y_vel = next_obs[3]
+    next_body_angle = next_obs[4]
+    next_angular_vel = next_obs[5]
+    next_left_contact = next_obs[6]
+    next_right_contact = next_obs[7]
+    
+    # 1. 距离奖励：鼓励接近目标（目标在原点）
+    current_distance = np.sqrt(x_pos**2 + y_pos**2)
+    next_distance = np.sqrt(next_x_pos**2 + next_y_pos**2)
+    distance_reward = -current_distance  # 距离越近奖励越高
+    
+    # 2. 增量进步奖励：鼓励每一步都更接近目标
+    progress_reward = current_distance - next_distance  # 距离减小为正奖励
+    
+    # 3. 速度惩罚：鼓励减速，尤其是接近目标时
+    current_speed = np.sqrt(x_vel**2 + y_vel**2)
+    next_speed = np.sqrt(next_x_vel**2 + next_y_vel**2)
+    speed_penalty = -0.1 * next_speed  # 速度越快惩罚越大
+    
+    # 4. 姿态稳定性惩罚：鼓励保持水平姿态
+    angle_penalty = -0.05 * (next_body_angle**2 + 0.1 * next_angular_vel**2)
+    
+    # 5. 接触奖励：鼓励着陆在平台上
+    contact_reward = 0.0
+    if next_left_contact > 0.5 and next_right_contact > 0.5:
+        # 两个支撑点都接触，说明已着陆
+        contact_reward = 1.0
+    
+    # 6. 动作惩罚：鼓励少用引擎
+    action_penalty = 0.0
+    if action == 1 or action == 2 or action == 3:
+        action_penalty = -0.02  # 使用任何引擎都轻微惩罚
+    
+    # 组合奖励
+    total_reward = (
+        distance_reward * 0.3 +
+        progress_reward * 0.5 +
+        speed_penalty +
+        angle_penalty +
+        contact_reward * 2.0 +
+        action_penalty
+    )
+    
+    # 记录奖励项用于诊断
+    info["reward_terms"] = {
+        "distance_reward": distance_reward * 0.3,
+        "progress_reward": progress_reward * 0.5,
+        "speed_penalty": speed_penalty,
+        "angle_penalty": angle_penalty,
+        "contact_reward": contact_reward * 2.0,
+        "action_penalty": action_penalty,
+        "total_reward": total_reward
+    }
+    
+    return total_reward
+```
+
+# reward_v1 设计说明
+
+## 使用的奖励组件
+
+1. **距离奖励** (`distance_reward`): 基于当前位置到目标（原点）的欧氏距离的负值，提供持续的接近目标激励。
+2. **增量进步奖励** (`progress_reward`): 当前距离与下一状态距离的差值，鼓励每一步都更接近目标，是主要学习信号。
+3. **速度惩罚** (`speed_penalty`): 对当前速度的线性惩罚，鼓励减速，尤其是接近目标时。
+4. **姿态稳定性惩罚** (`angle_penalty`): 对姿态角度和角速度的二次惩罚，鼓励保持水平稳定姿态。
+5. **接触奖励** (`contact_reward`): 当两个支撑点都接触时给予正奖励，鼓励成功着陆。
+6. **动作惩罚** (`action_penalty`): 对使用任何引擎的轻微惩罚，鼓励节能。
+
+## 每个组件的作用
+
+- **距离奖励 + 增量进步奖励**：构成主学习信号，引导智能体向目标移动。增量奖励提供密集的梯度信息，避免稀疏奖励导致的学习困难。
+- **速度惩罚**：防止智能体高速冲向目标后无法稳定，这是导航任务常见的失败模式。
+- **姿态稳定性惩罚**：确保飞行器在接近目标时保持水平姿态，为成功着陆做准备。
+- **接触奖励**：提供明确的着陆成功信号，引导智能体完成最终着陆动作。
+- **动作惩罚**：鼓励智能体优化燃料使用，符合任务目标中的"尽可能少地使用引擎推力"。
+
+## 为什么没有使用 terminal_success_reward / terminal_failure_penalty
+
+根据环境卡片，`explicit_success_flag_available=false` 且 `explicit_failure_flag_available=false`，info 为空字典，无法获取明确的成功/失败标志。因此无法实现基于标志的终端奖励。我们通过接触奖励和距离奖励间接引导成功行为，通过速度惩罚和姿态惩罚预防失败。
+
+## 后续迭代可以添加
+
+1. **时间惩罚**：当训练进度较高时加入，鼓励更快完成任务。
+2. **更精细的着陆奖励**：当飞行器稳定在平台上时给予更大奖励。
+3. **门控奖励**：当飞行器超出安全边界时给予大惩罚。
+4. **势能塑形**：基于距离的势能函数，提供更平滑的引导。
+5. **自适应权重**：根据训练进度动态调整各组件权重。
+
+## 训练后应该观察的 failure mode
+
+1. **goal_near_oscillation**：智能体在目标附近来回震荡，无法稳定着陆。应观察距离奖励和速度惩罚的平衡。
+2. **high_reward_without_success**：智能体获得高奖励但从未成功着陆。应检查接触奖励是否足够大。
+3. **agent_afraid_to_move**：动作惩罚过大导致智能体不敢移动。应观察动作惩罚的权重。
+4. **姿态不稳定**：智能体在接近目标时姿态失控。应检查姿态惩罚是否足够。
+5. **燃料浪费**：智能体过度使用引擎。应观察动作惩罚的效果。
