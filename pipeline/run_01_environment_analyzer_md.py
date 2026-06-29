@@ -87,7 +87,7 @@ def run(config_path, run_name, mock=False):
     system_prompt = read_text(cfg["prompts"]["environment_analyzer"])
     task_spec = read_text(cfg["inputs"]["task_spec_path"])
     masked_step = read_text(cfg["inputs"]["masked_step_path"])
-    user_prompt = f"ANONYMIZED_TASK_SPEC:\\n{task_spec}\\n\\nMASKED_STEP_SOURCE:\\n{masked_step}"
+    user_prompt = f"ANONYMIZED_TASK_SPEC:\n{task_spec}\n\nMASKED_STEP_SOURCE:\n{masked_step}"
     record_prompt(run_dir, "01_environment_analyzer", system_prompt, user_prompt)
 
     if mock:
@@ -105,8 +105,6 @@ def run(config_path, run_name, mock=False):
         )
 
     write_text(run_dir / "environment_card.md", env_md)
-    write_text(run_dir / "final_outputs/environment_card.md", env_md)
-    write_text(run_dir / "human_review/01_environment_card.md", env_md)
     record_response(run_dir, "01_environment_analyzer", env_md)
     print(run_dir / "environment_card.md")
 
