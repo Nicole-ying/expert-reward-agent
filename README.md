@@ -37,7 +37,7 @@ training_feedback.md + reward_memory.md
   → reward_memory.md 自动更新
 ```
 
-第二次训练后重复同样流程，生成 `reward_v3.py / reward_v3.md` 并训练。
+后续轮次重复同样流程，直到达到 `iteration.total_rounds`。
 
 ## 当前流程
 
@@ -53,74 +53,95 @@ training_feedback.md + reward_memory.md
 - 训练完成后会用原始环境 reward 做 external evaluation。
 - 每轮训练结束后会自动更新 `runs/env_001/memory/reward_memory.md`。
 
-## 一键 3 轮训练 / 2 轮迭代
+## 配置驱动的任意轮迭代
 
-脚本内部使用 `for ITER in 1..3` 循环，不再手写 9 个步骤。
+迭代轮数写在 config 中：
+
+```yaml
+iteration:
+  total_rounds: 3        # 想跑 10 轮就改成 10
+  experiment_prefix: exp_iter
+  experiment_root: runs/env_001/experiments
+  memory_path: runs/env_001/memory/reward_memory.md
+  reset_memory_at_start: true
+  cards_top_k: 4
+  stop_on_invalid_reward: true
+  use_mock_llm: false
+```
+
+训练规模也写在 config 中：
+
+```yaml
+training:
+  total_timesteps: 1000000
+  eval_episodes: 10
+```
+
+启动任意轮迭代实验：
+
+```bash
+export DEEPSEEK_API_KEY="你的key"
+bash scripts/run_iterative_experiment.sh configs/env001_deepseek_rag.yaml exp_iter
+```
+
+也可以直接运行 Python orchestrator：
+
+```bash
+python -m pipeline.run_iterative_experiment \
+  --config configs/env001_deepseek_rag.yaml \
+  --prefix exp_iter
+```
+
+如果临时覆盖轮数，而不改 config：
+
+```bash
+python -m pipeline.run_iterative_experiment \
+  --config configs/env001_deepseek_rag.yaml \
+  --prefix exp10 \
+  --rounds 10
+```
+
+mock 流程测试：
+
+```bash
+bash scripts/run_iterative_experiment.sh configs/env001_deepseek_rag.yaml mock_iter --mock
+```
+
+旧入口 `scripts/run_three_round_experiment.sh` 已废弃，只作为兼容包装器。
+
+## 方法借鉴
+
+本项目借鉴 `frde-hdrc` 的方法，而不是照搬其内容：
+
+- 用历史 reward 和分数指导下一轮，不每轮从零生成；
+- 根据 score trend、episode length、组件结构判断 tune / add / delete / rebuild；
+- 强制检查组件方向、尺度和冗余；
+- 只记录 compact memory，而不是全量日志；
+- 当前项目额外加入 RAG：每轮只给命中的 failure / reward-misalignment 专家卡片。
+
+## 输出目录组织
+
 每轮输出按统一目录组织：
 
 ```text
 runs/env_001/experiments/<PREFIX>/iter_01/
 runs/env_001/experiments/<PREFIX>/iter_02/
 runs/env_001/experiments/<PREFIX>/iter_03/
+...
+runs/env_001/experiments/<PREFIX>/iter_10/
 ```
 
-训练输出仍在：
+每轮训练输出在：
 
 ```text
 runs/env_001/training_runs/experiments/<PREFIX>/iter_XX/training/
 ```
 
-### 10k smoke test
-
-```bash
-export DEEPSEEK_API_KEY="你的key"
-bash scripts/run_three_round_experiment.sh \
-  configs/env001_deepseek_rag.yaml \
-  smoke3 \
-  10000 \
-  5
-```
-
-### 1e6 正式实验
-
-```bash
-export DEEPSEEK_API_KEY="你的key"
-bash scripts/run_three_round_experiment.sh \
-  configs/env001_deepseek_rag.yaml \
-  exp3 \
-  1000000 \
-  10
-```
-
-这个脚本会循环执行：
+每轮执行逻辑：
 
 ```text
 iter_01: Environment Analyzer LLM → RAG → Reward Generator LLM → train → update memory
-iter_02: Build iteration_context → Reward Revision LLM → train → update memory
-iter_03: Build iteration_context → Reward Revision LLM → train → update memory
-```
-
-### mock 三轮流程测试
-
-```bash
-bash scripts/run_three_round_experiment.sh \
-  configs/env001_deepseek_rag.yaml \
-  mock3 \
-  10000 \
-  5 \
-  --mock
-```
-
-## 单轮完整实验
-
-```bash
-export DEEPSEEK_API_KEY="你的key"
-bash scripts/run_full_experiment.sh \
-  configs/env001_deepseek_rag.yaml \
-  deepseek_full_run_001 \
-  ppo_full_run_001 \
-  1000000 \
-  10
+iter_02+: Build iteration_context → Reward Revision LLM → train → update memory
 ```
 
 ## 人类主要看哪些文件
@@ -144,8 +165,7 @@ runs/env_001/training_runs/experiments/<PREFIX>/iter_XX/training/training_feedba
 
 ```text
 runs/env_001/memory/reward_memory.md
-runs/env_001/experiments/<PREFIX>/iter_02/iteration_context.md
-runs/env_001/experiments/<PREFIX>/iter_03/iteration_context.md
+runs/env_001/experiments/<PREFIX>/iter_XX/iteration_context.md
 knowledge_base/iteration/reward_misalignment_cards.md
 ```
 
@@ -164,16 +184,18 @@ model.zip
 - `reward_memory.md` 只记录：组件结构、外部得分、episode length、关键组件信号、诊断、下一步动作。
 - 不复制完整 reward 代码、完整日志、完整 summary 到 memory。
 - failure / reward-misalignment 知识必须压缩成短卡片。
-- 每轮只把命中的 2~4 张专家卡片放入迭代上下文，不传整份知识库。
+- 每轮只把命中的 `cards_top_k` 张专家卡片放入迭代上下文，不传整份知识库。
 - 迭代不是机械填充骨架，而是根据训练反馈决定 keep / weaken / revise / consider_add / still_defer。
 
 ## 单独生成迭代上下文
 
 ```bash
 python -m pipeline.run_04_build_iteration_context \
-  --train-run-dir runs/env_001/training_runs/experiments/exp3/iter_01/training \
+  --train-run-dir runs/env_001/training_runs/experiments/exp_iter/iter_01/training \
   --memory runs/env_001/memory/reward_memory.md \
-  --out runs/env_001/experiments/exp3/iter_02/iteration_context.md
+  --cards knowledge_base/iteration/reward_misalignment_cards.md \
+  --top-k 4 \
+  --out runs/env_001/experiments/exp_iter/iter_02/iteration_context.md
 ```
 
 ## 单独更新 memory
@@ -181,7 +203,7 @@ python -m pipeline.run_04_build_iteration_context \
 ```bash
 python -m pipeline.run_06_update_reward_memory \
   --iter 1 \
-  --train-run-dir runs/env_001/training_runs/experiments/exp3/iter_01/training \
+  --train-run-dir runs/env_001/training_runs/experiments/exp_iter/iter_01/training \
   --memory runs/env_001/memory/reward_memory.md
 ```
 
