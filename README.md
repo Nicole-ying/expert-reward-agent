@@ -24,6 +24,19 @@ reward_v1.py
   → training_feedback.md / training_summary.json
 ```
 
+第一次训练后新增的迭代流程：
+
+```text
+training_feedback.md
+  → Iteration Context Builder（确定性脚本，不调用 LLM）
+  → iteration_context.md
+  → Reward Revision LLM
+  → reward_v2.py / reward_v2.md
+  → PPO 训练
+```
+
+第二次训练后重复同样流程，生成 `reward_v3.py / reward_v3.md` 并训练。
+
 ## 当前流程
 
 - `prompt_records/` 保存 `.md`，不再保存 JSON prompt。
@@ -31,38 +44,56 @@ reward_v1.py
 - 新 run 不再自动生成 `human_review/`、`raw_outputs/`、`final_outputs/`。
 - `expert_reward_context.md` 不再把知识库原始 YAML 整段塞进 prompt。
 - Reward Generator 使用 role-based component budget，不再用“最多两个组件”这种硬限制。
-- 推荐 reward_v1 使用 2~4 个组件：1 个主学习信号 + 0~2 个稳定/安全约束 + 0~1 个任务完成 proxy。
+- Reward Revision LLM 使用 `iteration_context.md`，只根据训练证据做继承式修订。
 - 新的推荐返回格式是：`return float(total_reward), components`。
 - wrapper 已兼容旧格式 `return total_reward` 和新格式 `return float(total_reward), components`。
 - wrapper 已加入 reward 异常兜底、NaN/inf 检查、reward clipping 和错误计数。
 - 训练完成后会用原始环境 reward 做 external evaluation。
 
-## 一键完整实验
+## 一键 3 轮训练 / 2 轮迭代
 
 ### 10k smoke test
 
 ```bash
 export DEEPSEEK_API_KEY="你的key"
-bash scripts/run_full_experiment.sh \
+bash scripts/run_three_round_experiment.sh \
   configs/env001_deepseek_rag.yaml \
-  deepseek_full_smoke_001 \
-  ppo_full_smoke_001 \
+  smoke3 \
   10000 \
   5
 ```
 
-这个命令会完整执行：
+### 1e6 正式实验
 
-```text
-环境理解 LLM
-→ RAG 压缩
-→ Reward Generator LLM
-→ reward_v1 validator
-→ PPO 训练
-→ 原环境 external evaluation
+```bash
+export DEEPSEEK_API_KEY="你的key"
+bash scripts/run_three_round_experiment.sh \
+  configs/env001_deepseek_rag.yaml \
+  exp3 \
+  1000000 \
+  10
 ```
 
-### 1e6 正式实验
+这个脚本会执行：
+
+```text
+v1: Environment Analyzer LLM → RAG → Reward Generator LLM → train
+v2: Iteration Context Builder → Reward Revision LLM → train
+v3: Iteration Context Builder → Reward Revision LLM → train
+```
+
+### mock 三轮流程测试
+
+```bash
+bash scripts/run_three_round_experiment.sh \
+  configs/env001_deepseek_rag.yaml \
+  mock3 \
+  10000 \
+  5 \
+  --mock
+```
+
+## 单轮完整实验
 
 ```bash
 export DEEPSEEK_API_KEY="你的key"
@@ -74,29 +105,15 @@ bash scripts/run_full_experiment.sh \
   10
 ```
 
-### mock 全流程测试
-
-不调用 DeepSeek，只测试流程是否能跑通：
-
-```bash
-bash scripts/run_full_experiment.sh \
-  configs/env001_deepseek_rag.yaml \
-  mock_full_run_001 \
-  ppo_mock_full_001 \
-  10000 \
-  5 \
-  --mock
-```
-
 ## 人类主要看哪些文件
 
 生成阶段重点看：
 
 ```text
-runs/env_001/<GEN_RUN>/reward_v1.py
-runs/env_001/<GEN_RUN>/reward_v1.md
-runs/env_001/<GEN_RUN>/prompt_records/02_reward_generator.prompt_stats.md
-runs/env_001/<GEN_RUN>/validations/reward_v1.validation.json
+runs/env_001/<GEN_RUN>/reward_v1.py 或 reward_v2.py / reward_v3.py
+runs/env_001/<GEN_RUN>/reward_v1.md 或 reward_v2.md / reward_v3.md
+runs/env_001/<GEN_RUN>/prompt_records/*.prompt_stats.md
+runs/env_001/<GEN_RUN>/validations/*.validation.json
 ```
 
 训练阶段重点看：
