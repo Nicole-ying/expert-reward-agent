@@ -5,10 +5,79 @@ from statistics import mean
 import yaml
 import gymnasium as gym
 from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from training.reward_wrapper import RewardOverrideWrapper, load_reward_function
+
+
+class RewardComponentStatsCallback(BaseCallback):
+    def __init__(self):
+        super().__init__()
+        self.stats = {}
+        self.reward_error_count_max = 0
+        self.steps_seen = 0
+
+    def _update_value(self, name, value):
+        try:
+            v = float(value)
+        except Exception:
+            return
+        item = self.stats.setdefault(name, {
+            "count": 0,
+            "sum": 0.0,
+            "abs_sum": 0.0,
+            "nonzero_count": 0,
+            "min": v,
+            "max": v,
+        })
+        item["count"] += 1
+        item["sum"] += v
+        item["abs_sum"] += abs(v)
+        if abs(v) > 1e-12:
+            item["nonzero_count"] += 1
+        item["min"] = min(item["min"], v)
+        item["max"] = max(item["max"], v)
+
+    def _on_step(self):
+        infos = self.locals.get("infos", [])
+        self.steps_seen += len(infos)
+        for info in infos:
+            if not isinstance(info, dict):
+                continue
+            if "generated_reward" in info:
+                self._update_value("generated_reward", info["generated_reward"])
+            if "original_env_reward" in info:
+                self._update_value("original_env_reward", info["original_env_reward"])
+            if "reward_error_count" in info:
+                try:
+                    self.reward_error_count_max = max(self.reward_error_count_max, int(info["reward_error_count"]))
+                except Exception:
+                    pass
+            terms = info.get("reward_terms", {})
+            if isinstance(terms, dict):
+                for key, value in terms.items():
+                    self._update_value(f"component.{key}", value)
+        return True
+
+    def summary(self):
+        out = {}
+        for name, item in sorted(self.stats.items()):
+            count = max(1, item["count"])
+            out[name] = {
+                "count": item["count"],
+                "mean": item["sum"] / count,
+                "abs_mean": item["abs_sum"] / count,
+                "nonzero_rate": item["nonzero_count"] / count,
+                "min": item["min"],
+                "max": item["max"],
+            }
+        return {
+            "steps_seen": self.steps_seen,
+            "reward_error_count_max": self.reward_error_count_max,
+            "component_stats": out,
+        }
 
 
 def build_env(env_id, reward_fn, max_progress_steps, seed, rank, monitor_dir, reward_clip, error_fallback):
@@ -59,6 +128,103 @@ def evaluate_model_on_original_env(model, env_id, eval_episodes, seed):
         "min_eval_reward": min(episode_rewards) if episode_rewards else 0.0,
         "max_eval_reward": max(episode_rewards) if episode_rewards else 0.0,
     }
+
+
+def _fmt_float(value):
+    try:
+        return f"{float(value):.6f}"
+    except Exception:
+        return str(value)
+
+
+def write_eval_result_md(path, eval_result):
+    lines = []
+    lines.append("# External Evaluation Result")
+    lines.append("")
+    lines.append("Evaluation uses the original environment reward, not the generated training reward.")
+    lines.append("")
+    lines.append(f"- eval_episodes: {eval_result['eval_episodes']}")
+    lines.append(f"- mean_eval_reward: {_fmt_float(eval_result['mean_eval_reward'])}")
+    lines.append(f"- mean_episode_length: {_fmt_float(eval_result['mean_episode_length'])}")
+    lines.append(f"- min_eval_reward: {_fmt_float(eval_result['min_eval_reward'])}")
+    lines.append(f"- max_eval_reward: {_fmt_float(eval_result['max_eval_reward'])}")
+    lines.append("")
+    lines.append("## Episodes")
+    lines.append("")
+    lines.append("| episode | reward | length |")
+    lines.append("|---:|---:|---:|")
+    for i, (reward, length) in enumerate(zip(eval_result["episode_rewards"], eval_result["episode_lengths"])):
+        lines.append(f"| {i} | {_fmt_float(reward)} | {length} |")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_component_stats_md(path, component_summary):
+    lines = []
+    lines.append("# Reward Component Training Statistics")
+    lines.append("")
+    lines.append(f"- steps_seen: {component_summary['steps_seen']}")
+    lines.append(f"- reward_error_count_max: {component_summary['reward_error_count_max']}")
+    lines.append("")
+    lines.append("| name | mean | abs_mean | nonzero_rate | min | max | count |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|")
+    for name, item in component_summary["component_stats"].items():
+        lines.append(
+            f"| {name} | {_fmt_float(item['mean'])} | {_fmt_float(item['abs_mean'])} | "
+            f"{_fmt_float(item['nonzero_rate'])} | {_fmt_float(item['min'])} | {_fmt_float(item['max'])} | {item['count']} |"
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_training_feedback_md(path, summary, eval_result, component_summary):
+    stats = component_summary.get("component_stats", {})
+    soft = stats.get("component.soft_landing_bonus", {})
+    progress = stats.get("component.progress_reward", {})
+    stability = stats.get("component.stability_penalty", {})
+    lines = []
+    lines.append("# Training Feedback for Reward Revision")
+    lines.append("")
+    lines.append("This file is the preferred LLM input for the next diagnosis/reflection step.")
+    lines.append("It is intentionally short and evidence-focused.")
+    lines.append("")
+    lines.append("## 1. Run")
+    lines.append(f"- reward_path: {summary['reward_path']}")
+    lines.append(f"- train_run: {summary['run_name']}")
+    lines.append(f"- total_timesteps: {summary['total_timesteps']}")
+    lines.append(f"- n_envs: {summary['n_envs']}")
+    lines.append(f"- reward_clip: {summary['reward_clip']}")
+    lines.append(f"- error_fallback: {summary['error_fallback']}")
+    lines.append("")
+    lines.append("## 2. External evaluation")
+    lines.append(f"- mean_eval_reward: {_fmt_float(eval_result['mean_eval_reward'])}")
+    lines.append(f"- mean_episode_length: {_fmt_float(eval_result['mean_episode_length'])}")
+    lines.append(f"- min_eval_reward: {_fmt_float(eval_result['min_eval_reward'])}")
+    lines.append(f"- max_eval_reward: {_fmt_float(eval_result['max_eval_reward'])}")
+    lines.append("")
+    lines.append("## 3. Reward execution health")
+    lines.append(f"- reward_error_count_max: {component_summary['reward_error_count_max']}")
+    lines.append("")
+    lines.append("## 4. Key component evidence")
+    if progress:
+        lines.append(f"- progress_reward mean: {_fmt_float(progress.get('mean'))}, nonzero_rate: {_fmt_float(progress.get('nonzero_rate'))}")
+    if stability:
+        lines.append(f"- stability_penalty mean: {_fmt_float(stability.get('mean'))}, abs_mean: {_fmt_float(stability.get('abs_mean'))}")
+    if soft:
+        lines.append(f"- soft_landing_bonus mean: {_fmt_float(soft.get('mean'))}, trigger_rate: {_fmt_float(soft.get('nonzero_rate'))}")
+    lines.append("")
+    lines.append("## 5. Preliminary failure hints")
+    mean_reward = float(eval_result.get("mean_eval_reward", 0.0))
+    mean_len = float(eval_result.get("mean_episode_length", 0.0))
+    if mean_reward < 0 and mean_len < 150:
+        lines.append("- likely_failure_mode: early_failure_or_crash")
+        lines.append("- evidence: negative external reward and short episode length")
+    if soft and float(soft.get("nonzero_rate", 0.0)) < 0.01:
+        lines.append("- likely_issue: soft_landing_bonus is too sparse or never reached")
+    if stability and progress and abs(float(stability.get("mean", 0.0))) > abs(float(progress.get("mean", 0.0))):
+        lines.append("- likely_issue: stability penalty may dominate progress signal")
+    lines.append("")
+    lines.append("## 6. Do not directly change from this file alone")
+    lines.append("Use this feedback together with reward_v1.py, reward_v1.md, and expert failure-mode knowledge before generating reward_v2.")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main():
@@ -115,8 +281,9 @@ def main():
     if train_cfg.get("tensorboard_log"):
         ppo_args["tensorboard_log"] = train_cfg["tensorboard_log"]
 
+    component_callback = RewardComponentStatsCallback()
     model = PPO(**ppo_args)
-    model.learn(total_timesteps=total_timesteps, tb_log_name=run_name)
+    model.learn(total_timesteps=total_timesteps, tb_log_name=run_name, callback=component_callback)
     model.save(str(save_dir / "model.zip"))
     env.close()
 
@@ -127,6 +294,7 @@ def main():
         eval_episodes=eval_episodes,
         seed=seed + 10000,
     )
+    component_summary = component_callback.summary()
 
     summary = {
         "runner_env_id": train_cfg["runner_env_id"],
@@ -141,14 +309,19 @@ def main():
         "monitor_dir": str(monitor_dir),
         "tensorboard_log": train_cfg.get("tensorboard_log"),
         "external_eval": eval_result,
+        "component_summary": component_summary,
     }
     (save_dir / "train_config_used.yaml").write_text(yaml.safe_dump(summary, allow_unicode=True, sort_keys=False), encoding="utf-8")
     (save_dir / "eval_result.json").write_text(json.dumps(eval_result, ensure_ascii=False, indent=2), encoding="utf-8")
     (save_dir / "training_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_eval_result_md(save_dir / "eval_result.md", eval_result)
+    write_component_stats_md(save_dir / "component_stats.md", component_summary)
+    write_training_feedback_md(save_dir / "training_feedback.md", summary, eval_result, component_summary)
 
     print(f"Training finished. Model saved to: {save_dir / 'model.zip'}")
     print(f"Monitor logs: {monitor_dir}")
     print(f"External eval mean reward: {eval_result['mean_eval_reward']:.3f}")
+    print(f"LLM feedback file: {save_dir / 'training_feedback.md'}")
 
 
 if __name__ == "__main__":
