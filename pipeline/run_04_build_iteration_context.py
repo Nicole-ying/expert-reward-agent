@@ -35,7 +35,7 @@ def extract_card(cards_md, card_id):
     return cards_md[start:next_start].strip()
 
 
-def matched_card_ids(feedback_md):
+def matched_card_ids(feedback_md, top_k=4):
     text = feedback_md.lower()
     out = []
     rules = [
@@ -51,7 +51,7 @@ def matched_card_ids(feedback_md):
     for card_id, keys in rules:
         if any(k in text for k in keys):
             out.append(card_id)
-    return out[:4]
+    return out[:max(1, int(top_k))]
 
 
 def extract_section(md, heading):
@@ -119,14 +119,14 @@ def build_skeleton_plan(feedback_md):
     return "\n".join(lines)
 
 
-def build_context(train_run_dir, memory_path, cards_path):
+def build_context(train_run_dir, memory_path, cards_path, top_k=4):
     train_dir = Path(train_run_dir)
     feedback_md = read_text(train_dir / "training_feedback.md")
     memory_md = read_text(memory_path)
     cards_md = read_text(cards_path)
 
     card_blocks = []
-    ids = matched_card_ids(feedback_md)
+    ids = matched_card_ids(feedback_md, top_k=top_k)
     for card_id in ids:
         block = extract_card(cards_md, card_id)
         if block:
@@ -170,10 +170,11 @@ def main():
     ap.add_argument("--train-run-dir", required=True)
     ap.add_argument("--memory", default="runs/env_001/memory/reward_memory.md")
     ap.add_argument("--cards", default="knowledge_base/iteration/reward_misalignment_cards.md")
+    ap.add_argument("--top-k", type=int, default=4)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    context = build_context(args.train_run_dir, args.memory, args.cards)
+    context = build_context(args.train_run_dir, args.memory, args.cards, top_k=args.top_k)
     write_text(args.out, context)
     print(args.out)
 
