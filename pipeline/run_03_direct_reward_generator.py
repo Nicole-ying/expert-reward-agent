@@ -60,6 +60,28 @@ def extract_code(md):
     return ""
 
 
+def estimate_tokens(text):
+    """Rough tokenizer-independent estimate for mixed Chinese/English prompts."""
+    non_ascii = sum(1 for ch in text if ord(ch) > 127)
+    ascii_chars = len(text) - non_ascii
+    return int(non_ascii * 1.1 + ascii_chars / 4.0)
+
+
+def write_prompt_stats(run_dir, system_prompt, user_prompt):
+    total_text = system_prompt + "\n" + user_prompt
+    lines = []
+    lines.append("# Reward Generator Prompt Stats")
+    lines.append("")
+    lines.append("Token count is an estimate because the exact tokenizer depends on the LLM provider.")
+    lines.append("")
+    lines.append("| part | chars | lines | estimated_tokens |")
+    lines.append("|---|---:|---:|---:|")
+    lines.append(f"| system_prompt | {len(system_prompt)} | {system_prompt.count(chr(10)) + 1} | {estimate_tokens(system_prompt)} |")
+    lines.append(f"| user_prompt | {len(user_prompt)} | {user_prompt.count(chr(10)) + 1} | {estimate_tokens(user_prompt)} |")
+    lines.append(f"| total | {len(total_text)} | {total_text.count(chr(10)) + 1} | {estimate_tokens(total_text)} |")
+    write_text(Path(run_dir) / "prompt_records/02_reward_generator.prompt_stats.md", "\n".join(lines) + "\n")
+
+
 def _return_has_component_tuple(tree):
     for node in ast.walk(tree):
         if isinstance(node, ast.Return):
@@ -147,6 +169,7 @@ def run(config_path, run_name, mock=False):
 
     write_text(run_dir / "llm_inputs/02_reward_generator.input.md", user_prompt)
     record_prompt(run_dir, "02_reward_generator", system_prompt, user_prompt)
+    write_prompt_stats(run_dir, system_prompt, user_prompt)
 
     if mock:
         out_md = MOCK_REWARD_MD
