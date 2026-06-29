@@ -109,6 +109,7 @@ runs/env_001/training_runs/<TRAIN_RUN>/training_feedback.md
 
 ```text
 runs/env_001/memory/reward_memory.md
+runs/env_001/iterations/<ITER_NAME>/iteration_context.md
 knowledge_base/iteration/reward_misalignment_cards.md
 ```
 
@@ -130,17 +131,26 @@ model.zip
 - 每轮只把命中的 2~4 张专家卡片放入迭代上下文，不传整份知识库。
 - 迭代不是机械填充骨架，而是根据训练反馈决定 keep / weaken / revise / consider_add / still_defer。
 
-## 迭代阶段建议结构
+## 生成迭代上下文
+
+当前实验进入下一轮时，先生成一个唯一的迭代上下文文件：
+
+```bash
+python -m pipeline.run_04_build_iteration_context \
+  --train-run-dir runs/env_001/training_runs/ppo_full_run_002 \
+  --out runs/env_001/iterations/iter_003/iteration_context.md
+```
+
+这个文件合并：
 
 ```text
 training_feedback.md
 + reward_memory.md
 + matched compressed expert cards
 → iteration_context.md
-→ reward_v2.py / reward_v2.md
 ```
 
-`iteration_context.md` 后续应成为奖励迭代 LLM 的主输入，包含：
+`iteration_context.md` 是后续奖励迭代 LLM 的主输入，包含：
 
 ```text
 previous_reward_summary
