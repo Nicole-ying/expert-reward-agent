@@ -19,6 +19,14 @@ Reward Generator LLM
 v8 的问题是中间产物太多，Reward Architect 过度保守，而且 JSON 输入太长。  
 v9 改成 Markdown 环境卡片 + Markdown 专家上下文，直接给 Reward Generator 生成奖励函数。
 
+## 这次最新调整
+
+- `prompt_records/` 不再保存 JSON，改为保存同名 `.md` 文件。
+- `response_records/` 也改为 `.md`，方便人工阅读。
+- `expert_reward_context.md` 不再把知识库原始 YAML 整段塞进 prompt。
+- RAG 检索结果现在会被整理成“奖励骨架摘要”：角色、数学形态、需要信号、本轮建议、风险、后续迭代。
+- 例如 `potential_based_shaping` 不再传完整文献和长 YAML，只保留：数学形态、需要 Phi、本轮不首选、风险和后续用途。
+
 ## 运行 mock
 
 ```bash
@@ -44,6 +52,17 @@ runs/env_001/deepseek_run_001/reward_v1.py
 runs/env_001/deepseek_run_001/reward_v1.md
 runs/env_001/deepseek_run_001/validations/reward_v1.validation.json
 ```
+
+## Prompt 记录
+
+现在看这里：
+
+```text
+runs/env_001/deepseek_run_001/prompt_records/01_environment_analyzer.md
+runs/env_001/deepseek_run_001/prompt_records/02_reward_generator.md
+```
+
+不再需要看 `.json` prompt 记录。
 
 ## 是否让 Reward Generator 看 step 函数
 
