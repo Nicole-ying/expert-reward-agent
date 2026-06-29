@@ -1,0 +1,50 @@
+runner_env_id: LunarLander-v3
+reward_path: runs/env_001/deepseek_full_run_001/reward_v1.py
+run_name: ppo_full_run_001
+n_envs: 4
+total_timesteps: 1000000
+reward_clip: 20.0
+error_fallback: zero
+ppo_args:
+  policy: MlpPolicy
+  verbose: '1'
+  device: auto
+  seed: '0'
+  n_steps: '1024'
+  batch_size: '64'
+  gae_lambda: '0.98'
+  gamma: '0.999'
+  n_epochs: '4'
+  ent_coef: '0.01'
+  tensorboard_log: runs/env_001/tensorboard
+model_path: runs\env_001\training_runs\ppo_full_run_001\model.zip
+monitor_dir: runs\env_001\training_runs\ppo_full_run_001\monitor
+tensorboard_log: runs/env_001/tensorboard
+external_eval:
+  eval_episodes: 10
+  episode_rewards:
+  - -109.4635048033108
+  - -116.20009888150037
+  - -105.15002333930958
+  - -107.11093605835313
+  - -105.24069918859752
+  - -113.32525435642754
+  - -122.042301947265
+  - -109.83985461024675
+  - -111.25228181607767
+  - -108.72671144150172
+  episode_lengths:
+  - 57
+  - 76
+  - 81
+  - 61
+  - 83
+  - 74
+  - 78
+  - 81
+  - 76
+  - 74
+  mean_eval_reward: -110.835166644259
+  mean_episode_length: 74.1
+  min_eval_reward: -122.042301947265
+  max_eval_reward: -105.15002333930958
