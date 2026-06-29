@@ -14,8 +14,6 @@ def run(config_path, run_name):
         max_chars=int(cfg.get("context", {}).get("max_expert_context_chars", 6500)),
     )
     write_text(run_dir / "expert_reward_context.md", expert_md)
-    write_text(run_dir / "final_outputs/expert_reward_context.md", expert_md)
-    write_text(run_dir / "human_review/02_expert_reward_context.md", expert_md)
     print(run_dir / "expert_reward_context.md")
 
 
