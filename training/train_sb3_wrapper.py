@@ -1,5 +1,7 @@
 import argparse
+import json
 from pathlib import Path
+from statistics import mean
 import yaml
 import gymnasium as gym
 from stable_baselines3 import PPO
@@ -9,15 +11,54 @@ from stable_baselines3.common.utils import set_random_seed
 from training.reward_wrapper import RewardOverrideWrapper, load_reward_function
 
 
-def build_env(env_id, reward_fn, max_progress_steps, seed, rank, monitor_dir):
+def build_env(env_id, reward_fn, max_progress_steps, seed, rank, monitor_dir, reward_clip, error_fallback):
     def _init():
         env = gym.make(env_id)
         env.reset(seed=seed + rank)
         env.action_space.seed(seed + rank)
-        env = RewardOverrideWrapper(env, reward_fn, max_training_steps_for_progress=max_progress_steps)
-        env = Monitor(env, filename=str(Path(monitor_dir) / f"monitor_{rank}.csv"))
+        env = RewardOverrideWrapper(
+            env,
+            reward_fn,
+            max_training_steps_for_progress=max_progress_steps,
+            reward_clip=reward_clip,
+            error_fallback=error_fallback,
+        )
+        env = Monitor(
+            env,
+            filename=str(Path(monitor_dir) / f"monitor_{rank}.csv"),
+            info_keywords=("original_env_reward", "generated_reward", "reward_error_count"),
+        )
         return env
     return _init
+
+
+def evaluate_model_on_original_env(model, env_id, eval_episodes, seed):
+    env = gym.make(env_id)
+    episode_rewards = []
+    episode_lengths = []
+    for episode_id in range(eval_episodes):
+        obs, _ = env.reset(seed=seed + episode_id)
+        done = False
+        total_reward = 0.0
+        length = 0
+        while not done:
+            action, _state = model.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, _info = env.step(action)
+            total_reward += float(reward)
+            length += 1
+            done = bool(terminated or truncated)
+        episode_rewards.append(total_reward)
+        episode_lengths.append(length)
+    env.close()
+    return {
+        "eval_episodes": eval_episodes,
+        "episode_rewards": episode_rewards,
+        "episode_lengths": episode_lengths,
+        "mean_eval_reward": mean(episode_rewards) if episode_rewards else 0.0,
+        "mean_episode_length": mean(episode_lengths) if episode_lengths else 0.0,
+        "min_eval_reward": min(episode_rewards) if episode_rewards else 0.0,
+        "max_eval_reward": max(episode_rewards) if episode_rewards else 0.0,
+    }
 
 
 def main():
@@ -41,6 +82,9 @@ def main():
     monitor_dir = save_dir / "monitor"
     monitor_dir.mkdir(parents=True, exist_ok=True)
 
+    reward_clip = train_cfg.get("reward_clip", 20.0)
+    error_fallback = train_cfg.get("error_fallback", "zero")
+
     env = DummyVecEnv([
         build_env(
             train_cfg["runner_env_id"],
@@ -49,6 +93,8 @@ def main():
             seed,
             i,
             monitor_dir,
+            reward_clip,
+            error_fallback,
         )
         for i in range(n_envs)
     ])
@@ -71,20 +117,35 @@ def main():
     model.save(str(save_dir / "model.zip"))
     env.close()
 
+    eval_episodes = int(train_cfg.get("eval_episodes", 10))
+    eval_result = evaluate_model_on_original_env(
+        model,
+        train_cfg["runner_env_id"],
+        eval_episodes=eval_episodes,
+        seed=seed + 10000,
+    )
+
     summary = {
         "runner_env_id": train_cfg["runner_env_id"],
         "reward_path": args.reward,
         "run_name": run_name,
         "n_envs": n_envs,
         "total_timesteps": total_timesteps,
+        "reward_clip": reward_clip,
+        "error_fallback": error_fallback,
         "ppo_args": {k: str(v) for k, v in ppo_args.items() if k != "env"},
         "model_path": str(save_dir / "model.zip"),
         "monitor_dir": str(monitor_dir),
         "tensorboard_log": train_cfg.get("tensorboard_log"),
+        "external_eval": eval_result,
     }
     (save_dir / "train_config_used.yaml").write_text(yaml.safe_dump(summary, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    (save_dir / "eval_result.json").write_text(json.dumps(eval_result, ensure_ascii=False, indent=2), encoding="utf-8")
+    (save_dir / "training_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+
     print(f"Training finished. Model saved to: {save_dir / 'model.zip'}")
     print(f"Monitor logs: {monitor_dir}")
+    print(f"External eval mean reward: {eval_result['mean_eval_reward']:.3f}")
 
 
 if __name__ == "__main__":
