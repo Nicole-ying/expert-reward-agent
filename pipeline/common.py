@@ -33,9 +33,15 @@ def write_json(path, obj):
 
 
 def make_run_dir(cfg, run_name):
+    """Create only the directories used by the current direct-generation pipeline.
+
+    Old v7/v8 folders such as human_review/, raw_outputs/, and final_outputs/
+    are intentionally not created here because the current run already keeps the
+    readable root files plus prompt/response records.
+    """
     run_dir = Path(cfg["experiment"]["run_root"]) / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
-    for sub in ["llm_inputs", "human_review", "final_outputs", "raw_outputs", "validations", "prompt_records", "response_records"]:
+    for sub in ["llm_inputs", "prompt_records", "response_records", "validations"]:
         (run_dir / sub).mkdir(parents=True, exist_ok=True)
     return run_dir
 
