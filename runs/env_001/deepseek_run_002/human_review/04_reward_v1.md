@@ -1,26 +1,8 @@
 # reward_v1.py
 
 ```python
-import numpy as np
-
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    """
-    Reward function for Env_001: 2D lunar lander trajectory optimization.
-    
-    Args:
-        obs: current observation [x_pos, y_pos, x_vel, y_vel, body_angle, angular_vel, left_contact, right_contact]
-        action: discrete action (0: no_engine, 1: left_orientation, 2: main_engine, 3: right_orientation)
-        next_obs: next observation after taking action
-        original_reward: original environment reward (not used)
-        info: info dict (empty for this environment)
-        training_progress: training progress from 0.0 to 1.0 (not used in v1)
-    
-    Returns:
-        total_reward: scalar reward value
-        info: updated info dict with reward_terms
-    """
-    # Extract relevant signals from observations
-    # Position relative to target (target is at origin)
+    # Extract observations
     x_pos = obs[0]
     y_pos = obs[1]
     x_vel = obs[2]
@@ -30,7 +12,6 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
     left_contact = obs[6]
     right_contact = obs[7]
     
-    # Next state signals
     next_x_pos = next_obs[0]
     next_y_pos = next_obs[1]
     next_x_vel = next_obs[2]
@@ -40,94 +21,77 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
     next_left_contact = next_obs[6]
     next_right_contact = next_obs[7]
     
-    # ========== 1. Progress-based distance reward (main learning signal) ==========
-    # Calculate Euclidean distance to target (origin)
-    current_dist = np.sqrt(x_pos**2 + y_pos**2)
-    next_dist = np.sqrt(next_x_pos**2 + next_y_pos**2)
+    # Goal is at (0, 0) in relative coordinates
+    # Compute distances
+    current_dist = (x_pos ** 2 + y_pos ** 2) ** 0.5
+    next_dist = (next_x_pos ** 2 + next_y_pos ** 2) ** 0.5
     
-    # Progress reward: positive when moving closer to target
-    progress_reward = current_dist - next_dist
+    # 1. Progress delta reward (main learning signal)
+    progress_delta = current_dist - next_dist
+    progress_reward = 10.0 * progress_delta
     
-    # ========== 2. Lightweight stability penalty ==========
-    # Penalize high velocity and large angular deviation
-    # These are important for stable landing approach
-    speed = np.sqrt(next_x_vel**2 + next_y_vel**2)
-    angle_penalty = abs(next_body_angle)  # Penalize deviation from upright (angle=0)
-    angular_vel_penalty = abs(next_angular_vel)  # Penalize rotation
+    # 2. Stability penalty (light constraint)
+    speed = (next_x_vel ** 2 + next_y_vel ** 2) ** 0.5
+    angle_penalty = 0.5 * (next_body_angle ** 2)
+    angular_vel_penalty = 0.1 * (next_angular_vel ** 2)
+    speed_penalty = 0.2 * speed
+    stability_penalty = -(angle_penalty + angular_vel_penalty + speed_penalty)
     
-    # Combine stability penalties with small weights
-    # Weight for velocity: 0.01 (gentle penalty for high speed)
-    # Weight for angle: 0.02 (moderate penalty for tilting)
-    # Weight for angular velocity: 0.005 (light penalty for spinning)
-    stability_penalty = -0.01 * speed - 0.02 * angle_penalty - 0.005 * angular_vel_penalty
+    # 3. Soft landing proxy (small bonus for being near target with low speed and stable)
+    near_target = next_dist < 0.5
+    low_speed = speed < 0.3
+    stable_angle = abs(next_body_angle) < 0.2
+    both_contact = (next_left_contact > 0.5) and (next_right_contact > 0.5)
     
-    # ========== 3. Contact bonus (encouraging landing) ==========
-    # Reward when both supports are in contact (landed)
-    contact_bonus = 0.0
-    if next_left_contact > 0.5 and next_right_contact > 0.5:
-        contact_bonus = 1.0  # Small bonus for being on the ground
+    soft_landing_bonus = 0.0
+    if near_target and low_speed and stable_angle and both_contact:
+        soft_landing_bonus = 2.0
     
-    # ========== Combine rewards ==========
-    total_reward = progress_reward + stability_penalty + contact_bonus
+    # 4. Small distance anchor to prevent getting stuck far away
+    distance_anchor = -0.1 * current_dist
     
-    # ========== Store reward terms for diagnostics ==========
-    info["reward_terms"] = {
+    # Combine components
+    total_reward = progress_reward + stability_penalty + soft_landing_bonus + distance_anchor
+    
+    components = {
         "progress_reward": progress_reward,
         "stability_penalty": stability_penalty,
-        "contact_bonus": contact_bonus,
+        "soft_landing_bonus": soft_landing_bonus,
+        "distance_anchor": distance_anchor,
         "total_reward": total_reward
     }
     
-    return total_reward, info
+    return float(total_reward), components
 ```
 
 # reward_v1 设计说明
 
 ## 使用的奖励组件
 
-1. **progress_reward** (主学习信号)
-   - 计算当前距离与下一状态距离的差值（`current_dist - next_dist`）
-   - 作用：每一步都奖励智能体向目标（原点）靠近，提供密集的梯度引导
-   - 这是导航目标到达任务的核心信号，直接对应任务目标
+1. **progress_delta_reward**（主学习信号，权重10.0）：每一步更接近目标时给予正奖励，远离时给予负奖励。这是核心引导信号，直接驱动智能体向目标移动。
 
-2. **stability_penalty** (轻量约束项)
-   - 包含三个子项：速度惩罚、姿态角惩罚、角速度惩罚
-   - 作用：鼓励智能体以低速、直立姿态接近目标，避免高速撞击或姿态失稳
-   - 权重较小（0.01~0.02），不会过度抑制探索，但能提供基本的安全信号
+2. **stability_penalty**（稳定约束，权重组合）：惩罚大的姿态角、角速度和速度，鼓励飞行器以稳定姿态接近目标，避免高速撞击或姿态失控。
 
-3. **contact_bonus** (着陆奖励)
-   - 当左右支撑同时接触时给予小奖励
-   - 作用：明确鼓励完成着陆动作，提供任务完成的信号
-   - 权重较小（1.0），避免过度主导学习
+3. **soft_landing_bonus**（任务完成proxy，权重2.0）：当飞行器同时满足接近目标、低速、姿态稳定、双支撑接触时给予小奖励。这是对成功着陆的软近似，但不伪造success flag。
+
+4. **distance_anchor**（辅助锚点，权重-0.1）：小权重惩罚当前距离，防止智能体在远处停滞不前，同时避免与主信号重复。
 
 ## 为什么没有使用 terminal_success_reward / terminal_failure_penalty
 
-- 根据环境卡片，`explicit_success_flag_available=false` 且 `explicit_failure_flag_available=false`
-- info 字典为空，无法获取显式的成功/失败标志
-- 使用这些终端奖励会需要猜测终止条件，可能导致错误的奖励信号
-- 后续迭代中，如果 wrapper 暴露了成功/失败标志，可以加入
+- environment_card明确说明 `explicit_success_flag_available=false` 和 `explicit_failure_flag_available=false`，info为空字典。
+- 使用这些信号需要伪造success/failure flag，违反设计原则。
+- 当前通过progress_delta和soft_landing_proxy提供密集引导，不需要终点信号。
 
-## 后续迭代可以添加
+## 留到后续迭代的组件
 
-1. **energy_penalty**：当智能体能稳定接近目标后，加入引擎使用惩罚以优化燃料消耗
-2. **time_penalty**：如果智能体在目标附近徘徊不完成，加入时间惩罚提高效率
-3. **terminal_success_reward**：当能明确检测到成功着陆时，加入大额成功奖励
-4. **gated_reward**：在危险状态（如高速、大角度）时，用安全门控保护智能体
-5. **stability_penalty 权重调整**：根据训练表现动态调整稳定惩罚的权重
+- **energy_penalty**：当前未加入，避免智能体不敢使用引擎。后续当智能体能稳定到达目标后，再加入小权重惩罚引擎使用。
+- **time_penalty**：当前未加入，避免鼓励冒险行为。后续如果智能体在目标附近徘徊太久，再加入小权重时间惩罚。
+- **terminal_success_reward**：当wrapper明确暴露success flag后再加入。
+- **gated_reward**：当前不需要复杂门控，后续如果安全与进度冲突再加入。
 
-## 训练后应该观察的 failure mode
+## 训练后应观察的failure mode
 
-1. **goal_near_oscillation**：智能体在目标附近来回移动但不完成着陆
-   - 观察指标：progress_reward 接近 0 但 contact_bonus 始终为 0
-   
-2. **high_reward_without_success**：总奖励很高但从未成功着陆
-   - 观察指标：progress_reward 持续为正但 contact_bonus 从未触发
-   
-3. **fast_crash_near_goal**：智能体高速冲向目标但无法减速
-   - 观察指标：progress_reward 很高但 stability_penalty 也很高（负值大）
-   
-4. **agent_afraid_to_move**：稳定惩罚过强导致智能体不敢移动
-   - 观察指标：progress_reward 长期接近 0，总奖励主要由 contact_bonus 贡献
-   
-5. **angle_instability**：智能体在接近目标时姿态失控
-   - 观察指标：angle_penalty 和 angular_vel_penalty 持续较大
+1. **goal_near_oscillation**：智能体在目标附近来回震荡，无法稳定着陆。表现为progress_reward在0附近波动，soft_landing_bonus很少触发。
+2. **high_reward_without_success**：智能体获得高progress_reward但从未触发soft_landing_bonus，说明它接近目标但不停留。
+3. **fast_crash_near_goal**：智能体高速冲向目标，获得高progress_reward但姿态失控。表现为stability_penalty很大负值。
+4. **agent_afraid_to_move**：智能体几乎不移动，stability_penalty主导行为。表现为progress_reward很小，总奖励为负。

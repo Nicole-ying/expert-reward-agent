@@ -11,28 +11,87 @@
 你的任务：
 直接生成第一版奖励函数 `reward_v1.py`，并附带一份简短设计说明。
 
-设计原则：
-- 从简单到复杂，但“简单”不等于只有一个组件；
-- reward_v1 应覆盖主要学习信号；
-- 如果环境包含明确的速度/姿态/稳定性风险，且 obs 中这些信号明确可用，可以加入一个轻量约束项；
-- 不要因为 minimal-first 把所有安全/稳定信号都推迟；
-- 不要机械照抄 route 推荐公式；
-- 不要使用 original_reward；
-- 不要使用未声明的 info 字段，例如 info["success"]、info.get("success")；
-- 不要使用未声明的 obs 切片，例如 obs[0:3]；
-- 对 Env_001 这类二维任务，禁止把位置写成三维；
-- 如果 explicit_success_flag_available=false，不要把 terminal_success_reward 写成 v1 核心项；
-- 如果 explicit_failure_flag_available=false，不要把 terminal_failure_penalty 写成 v1 核心项；
-- 允许使用 obs 和 next_obs 的逐 index 变量；
-- 优先考虑“主学习信号 + 0~1 个轻量约束项”的简洁组合；
-- 每个 reward term 都要写入 info["reward_terms"]，便于后续诊断。
+# 总体设计原则
+
+- 从简单到复杂，但“简单”不等于只有一个组件。
+- 不要用“最多几个组件”来机械限制 reward，而要用 role-based component budget 控制复杂度。
+- reward_v1 应覆盖主要学习信号，同时避免过早堆叠太多目标。
+- 不要机械照抄 route 推荐公式。
+- 不要使用 original_reward。
+- 不要计算 fitness_score 或 fitness_score components。
+- 不要使用未声明的 info 字段，例如 info["success"]、info.get("success")。
+- 不要使用未声明的 obs 切片，例如 obs[0:3]。
+- 对 Env_001 这类二维任务，禁止把位置写成三维。
+- 如果 explicit_success_flag_available=false，不要把 terminal_success_reward 写成 v1 核心项。
+- 如果 explicit_failure_flag_available=false，不要把 terminal_failure_penalty 写成 v1 核心项。
+- 允许使用 obs 和 next_obs 的逐 index 变量。
+- 尽量让奖励平滑；需要距离、速度等连续项时，优先使用连续函数。
+- 如果需要 sqrt，禁止 import numpy，使用 `** 0.5`。
+- 如果想使用 exp 形式的平滑变换，禁止 import numpy；可以使用 `2.718281828 ** (...)`，并显式写 temperature 参数。
+
+# role-based component budget
+
+reward_v1 推荐使用 2~4 个组件，但每个组件必须有明确角色，不能为了显得完整而堆叠。
+
+必须包含：
+- 1 个主学习信号 learning guidance：通常选择 progress_delta_reward；如果无法计算 delta，才用 distance_reward。
+
+允许包含：
+- 0~2 个稳定/安全约束：例如速度、姿态角、角速度惩罚。
+- 0~1 个任务完成 proxy：必须是 soft proxy，不能伪造 success flag；如果使用 contact，必须与 near_target、low_speed、stable_angle 等条件组合，并且权重较小。
+- 0~1 个效率/动作代价：默认后续版本再加；如果 v1 使用，权重要很小，并说明风险。
+
+默认不要在 v1 使用：
+- terminal_success_reward
+- terminal_failure_penalty
+- gated_reward
+- potential_based_shaping
+- dynamic curriculum
+- 大权重 action_penalty
+- 大权重 contact_reward
+
+避免重复：
+- 不要同时大权重使用 distance_reward 和 progress_delta_reward。
+- 如果同时使用，progress_delta_reward 是主信号，distance_reward 只能是小权重辅助 anchor。
+
+# 输出格式要求
 
 函数签名必须完全一致：
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
 ```
 
-输出必须是 Markdown，但必须包含以下两个一级标题：
+最终 reward 函数输出必须包含：
+1. total_reward: float
+2. components: dict，记录 individual reward components
+
+首选返回格式：
+```python
+return float(total_reward), components
+```
+
+为了兼容旧 wrapper，也可以把 components 写入 `info["reward_terms"]`，但仍然建议返回 `(float(total_reward), components)`。
+
+# 代码硬约束
+
+- Python code block 里只能包含完整的 `compute_reward` 函数。
+- 不要写 import。
+- 不要写 class。
+- 不要写 try/except。
+- 不要写 eval/exec/open。
+- 不要创建额外函数。
+- 不要引入新的输入变量。
+- 不要传 self；当前项目接口不是 Eureka 原版 self 接口。
+- 不要使用 self attributes。
+- 不要使用原始环境 reward。
+- components 必须是 dict。
+- components 至少包含所有被加到 total_reward 的组件，以及 total_reward。
+
+# Markdown 输出要求
+
+输出必须是 Markdown，但第一个 Python code block 必须只包含完整且可执行的 `compute_reward` 函数，因为 parser 会抽取第一个 Python code block。
+
+格式：
 
 # reward_v1.py
 
@@ -45,11 +104,10 @@ def compute_reward(...):
 
 必须简要说明：
 - 使用了哪些奖励组件；
-- 每个组件的作用；
+- 每个组件的角色；
 - 为什么没有使用 terminal_success_reward / terminal_failure_penalty；
-- 后续迭代可以添加什么；
+- 哪些组件留到后续迭代；
 - 训练后应该观察哪些 failure mode。
-
 ```
 
 ## User Prompt
@@ -60,47 +118,45 @@ def compute_reward(...):
 # Env_001 环境理解卡片
 
 ## 1. 任务目标
-这是一个2D飞行器/着陆器轨迹优化任务。一个飞行器从视口顶部附近开始，带有初始随机力。目标是尽可能快地到达并稳定在中央目标着陆台上，同时使用尽可能少的引擎推力。智能体需要学会接近目标、减速、保持稳定姿态并安全接触。
+这是一个2D飞行器/着陆器轨迹优化任务。一个飞行器从视口顶部附近开始，带有初始随机力。目标是尽可能快地到达并稳定在中央目标着陆平台上，同时尽可能少地使用引擎推力。智能体需要学会接近目标、降低速度、保持稳定姿态，并实现安全接触。
 
 ## 2. 任务类型选择
 selected_route_id: navigation_goal_reaching
 confidence: high
-reason: 任务明确要求"到达并稳定在中央目标着陆台"，核心是导航到目标位置并稳定停靠，同时优化燃料消耗。这符合导航目标到达任务的核心特征——到达特定目标位置并保持稳定状态。
+reason: 任务明确要求"到达并稳定在中央目标着陆平台"，核心目标是导航到目标位置并稳定着陆，属于典型的导航目标到达任务。同时包含速度控制、姿态稳定等子目标，但主要目标是到达目标位置。
 
 ## 3. 观察空间 observation_space
 - type: Box
 - shape: [8]
 - dtype: float32 (推测)
-- obs[0]: x_position — 相对于目标着陆台的水平坐标
-- obs[1]: y_position — 相对于着陆台高度的垂直坐标
-- obs[2]: x_velocity — 水平线速度
-- obs[3]: y_velocity — 垂直线速度
-- obs[4]: body_angle — 飞行器姿态角
-- obs[5]: angular_velocity — 角速度
-- obs[6]: left_support_contact — 左侧支撑接触标志 (0.0 或 1.0)
-- obs[7]: right_support_contact — 右侧支撑接触标志 (0.0 或 1.0)
+- obs[0]: x_position - 相对于目标着陆平台的水平坐标
+- obs[1]: y_position - 相对于着陆平台高度的垂直坐标
+- obs[2]: x_velocity - 水平线速度
+- obs[3]: y_velocity - 垂直线速度
+- obs[4]: body_angle - 机体姿态角
+- obs[5]: angular_velocity - 角速度
+- obs[6]: left_support_contact - 左侧支撑接触标志 (0.0 或 1.0)
+- obs[7]: right_support_contact - 右侧支撑接触标志 (0.0 或 1.0)
 
 ## 4. 动作空间 action_space
 - type: Discrete
-- n: 4
-- action 0: no_engine — 不执行任何操作
-- action 1: left_orientation_engine — 启动左侧姿态引擎
-- action 2: main_engine — 启动主引擎
-- action 3: right_orientation_engine — 启动右侧姿态引擎
+- action 0: no_engine - 不执行任何操作
+- action 1: left_orientation_engine - 启动左侧姿态引擎
+- action 2: main_engine - 启动主引擎
+- action 3: right_orientation_engine - 启动右侧姿态引擎
 
 ## 5. step 与终止条件分析
 ### 5.1 终止模式
-- success-like termination: body_not_awake_or_settled — 当飞行器在着陆台上稳定停靠时触发，可能是成功终止
-- failure-like termination: crash_or_body_contact — 坠毁或非预期身体接触，明显是失败终止
-- failure-like termination: horizontal_position_outside_viewport — 水平位置超出视口边界，明显是失败终止
-- ambiguous termination: 无
-- truncation: 无显式截断，但可能由环境内部处理
+- success-like termination: body_not_awake_or_settled - 当飞行器停止运动并稳定在着陆平台上时触发，可能是成功着陆的标志
+- failure-like termination: crash_or_body_contact - 发生碰撞或非正常机体接触，可能是坠毁或硬着陆
+- failure-like termination: horizontal_position_outside_viewport - 水平位置超出视口范围，可能是飞离目标区域
+- ambiguous termination: 无明确区分成功/失败的终止标志
 
 ### 5.2 success/failure 信号可用性
-- explicit_success_flag_available: false — step 返回的 info 为空字典，无显式成功标志
-- explicit_failure_flag_available: false — step 返回的 info 为空字典，无显式失败标志
-- allowed_info_fields: 无（info 为空字典）
-- forbidden_or_uncertain_info_fields: 所有 info 字段（因为 info 为空字典）
+- explicit_success_flag_available: false - step返回的info为空字典，没有显式成功标志
+- explicit_failure_flag_available: false - step返回的info为空字典，没有显式失败标志
+- allowed_info_fields: 无（info为空字典）
+- forbidden_or_uncertain_info_fields: 所有info字段（因为info为空字典）
 
 ## 6. reward 函数接口契约
 函数签名：
@@ -109,34 +165,30 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 ```
 
 允许使用：
-- obs — 当前状态观测
-- action — 当前执行的动作
-- next_obs — 执行动作后的下一状态观测
-- info — 当前为空字典，无可用字段
-- training_progress — 只有 prompt 明确允许时才用
+- obs - 当前状态观测
+- action - 当前执行的动作
+- next_obs - 执行动作后的下一状态观测
+- info - 当前为空字典，但可保留接口
 
 禁止使用：
-- original_reward — 官方奖励已被屏蔽，禁止使用
-- official_reward — 禁止使用
-- 未声明的 info 字段 — info 为空字典
-- 未声明的 obs 切片 — 仅允许使用 obs[0]~obs[7]
+- original_reward - 官方奖励已被屏蔽，禁止使用
+- training_progress - 除非prompt明确允许，否则禁止使用
+- 未声明的info字段 - info为空字典，无可用字段
 
 ## 7. 可用于奖励函数的信号
-- position: obs[0] (x_position), obs[1] (y_position) — 相对于目标的位置
-- velocity: obs[2] (x_velocity), obs[3] (y_velocity) — 线速度
-- orientation: obs[4] (body_angle), obs[5] (angular_velocity) — 姿态角和角速度
-- contact: obs[6] (left_support_contact), obs[7] (right_support_contact) — 接触标志
-- action/engine: action (0~3) — 动作选择，可用于惩罚引擎使用
+- position: obs[0] (x_position), obs[1] (y_position) - 可用于计算到目标的距离
+- velocity: obs[2] (x_velocity), obs[3] (y_velocity) - 可用于鼓励减速或稳定
+- orientation: obs[4] (body_angle), obs[5] (angular_velocity) - 可用于鼓励稳定姿态
+- contact: obs[6] (left_support_contact), obs[7] (right_support_contact) - 可用于检测是否成功着陆
+- action: action (0-3) - 可用于惩罚引擎使用，鼓励节能
 
 ## 8. 不确定或不可用的信号
-- 目标着陆台的具体位置和尺寸 — 未在观测中提供
-- 飞行器的质量、惯性等物理参数 — 未在观测中提供
-- 引擎推力大小和方向 — 未在观测中提供
-- 时间步长或剩余时间 — 未在观测中提供
-- 燃料剩余量 — 未在观测中提供
-- 风速或环境扰动 — 未在观测中提供
-- 着陆台高度或地面高度 — 未在观测中提供
-- 任何 info 字段 — info 为空字典
+- 原始奖励值 (original_reward) - 已被屏蔽，禁止使用
+- 任何info字段 - info为空字典，无可用信息
+- 训练进度 (training_progress) - 除非明确允许，否则不可用
+- 环境内部状态 - 如引擎推力、风力等内部物理参数不可用
+- 时间步计数 - 未在观测空间中提供
+- 目标位置绝对坐标 - 观测是相对坐标，绝对位置不可用
 
 
 
@@ -164,17 +216,25 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 - 角色: 密集过程引导
 - 数学形态: -d(obs, goal)
 - 需要信号: obs[0], obs[1]
-- 本轮建议: 可用，但单独使用可能只鼓励靠近，不鼓励稳定完成。
+- 本轮建议: 可作为小权重 anchor；不要和 progress_delta_reward 同时大权重堆叠。
 - 风险: 接近目标但不完成；不关心速度和姿态。
 - 后续迭代: 训练后检查 high_reward_without_success。
 
 ### stability_penalty
 - 角色: 轻量稳定约束
-- 数学形态: -lambda_v*|velocity| - lambda_a*|angle|
-- 需要信号: next_obs[2], next_obs[3], next_obs[4], 可选 next_obs[5]
+- 数学形态: -lambda_v*|velocity| - lambda_a*|angle| - lambda_w*|angular_velocity|
+- 需要信号: next_obs[2], next_obs[3], next_obs[4], next_obs[5]
 - 本轮建议: 如果任务要求稳定接近/着陆，v1 可以小权重加入。
 - 风险: 过强会保守或不敢动。
 - 后续迭代: 若高速撞击或姿态失稳，增大权重。
+
+### soft_landing_proxy
+- 角色: 任务完成近似信号
+- 数学形态: small_bonus if near_target and low_speed and stable_angle and both_contact else 0
+- 需要信号: position, velocity, angle, contact flags
+- 本轮建议: 可选小权重；不能直接把 contact 当 success。
+- 风险: 如果条件太宽，会变成 contact reward hacking。
+- 后续迭代: 如果 high_reward_without_success，收紧条件或移除。
 
 ### terminal_success_reward
 - 角色: 任务目标奖励
@@ -226,9 +286,11 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 
 ## 3. reward_v1 生成要求
 - 直接生成 reward_v1.py，不再生成 reward_design_plan.json。
-- 推荐结构: 主学习信号 + 0~1 个轻量约束项。
+- 使用 role-based component budget，而不是固定组件数量。
+- 推荐 2~4 个组件：1 个主学习信号 + 0~2 个稳定/安全约束 + 0~1 个任务完成 proxy。
 - 如果 success/failure 显式信号不存在，不要使用 terminal_success_reward / terminal_failure_penalty 作为 v1 核心项。
 - 如果速度/姿态信号明确可用，且任务需要稳定接近或着陆，可以加入轻量 stability_penalty。
+- 如果使用 contact，只能作为 soft_landing_proxy 的一部分，必须和 near_target、low_speed、stable_angle 组合，不要直接把 contact 当 success。
 - energy_penalty、time_penalty、gated_reward 默认后续迭代再加入。
-- 每个 reward term 必须写入 info['reward_terms']，便于训练后诊断。
+- 返回格式建议为 return float(total_reward), components；components 必须是 dict。
 ```

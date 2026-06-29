@@ -20,17 +20,25 @@
 - 角色: 密集过程引导
 - 数学形态: -d(obs, goal)
 - 需要信号: obs[0], obs[1]
-- 本轮建议: 可用，但单独使用可能只鼓励靠近，不鼓励稳定完成。
+- 本轮建议: 可作为小权重 anchor；不要和 progress_delta_reward 同时大权重堆叠。
 - 风险: 接近目标但不完成；不关心速度和姿态。
 - 后续迭代: 训练后检查 high_reward_without_success。
 
 ### stability_penalty
 - 角色: 轻量稳定约束
-- 数学形态: -lambda_v*|velocity| - lambda_a*|angle|
-- 需要信号: next_obs[2], next_obs[3], next_obs[4], 可选 next_obs[5]
+- 数学形态: -lambda_v*|velocity| - lambda_a*|angle| - lambda_w*|angular_velocity|
+- 需要信号: next_obs[2], next_obs[3], next_obs[4], next_obs[5]
 - 本轮建议: 如果任务要求稳定接近/着陆，v1 可以小权重加入。
 - 风险: 过强会保守或不敢动。
 - 后续迭代: 若高速撞击或姿态失稳，增大权重。
+
+### soft_landing_proxy
+- 角色: 任务完成近似信号
+- 数学形态: small_bonus if near_target and low_speed and stable_angle and both_contact else 0
+- 需要信号: position, velocity, angle, contact flags
+- 本轮建议: 可选小权重；不能直接把 contact 当 success。
+- 风险: 如果条件太宽，会变成 contact reward hacking。
+- 后续迭代: 如果 high_reward_without_success，收紧条件或移除。
 
 ### terminal_success_reward
 - 角色: 任务目标奖励
@@ -82,8 +90,10 @@
 
 ## 3. reward_v1 生成要求
 - 直接生成 reward_v1.py，不再生成 reward_design_plan.json。
-- 推荐结构: 主学习信号 + 0~1 个轻量约束项。
+- 使用 role-based component budget，而不是固定组件数量。
+- 推荐 2~4 个组件：1 个主学习信号 + 0~2 个稳定/安全约束 + 0~1 个任务完成 proxy。
 - 如果 success/failure 显式信号不存在，不要使用 terminal_success_reward / terminal_failure_penalty 作为 v1 核心项。
 - 如果速度/姿态信号明确可用，且任务需要稳定接近或着陆，可以加入轻量 stability_penalty。
+- 如果使用 contact，只能作为 soft_landing_proxy 的一部分，必须和 near_target、low_speed、stable_angle 组合，不要直接把 contact 当 success。
 - energy_penalty、time_penalty、gated_reward 默认后续迭代再加入。
-- 每个 reward term 必须写入 info['reward_terms']，便于训练后诊断。
+- 返回格式建议为 return float(total_reward), components；components 必须是 dict。
