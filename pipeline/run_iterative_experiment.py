@@ -1,5 +1,4 @@
 import argparse
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -78,6 +77,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     eval_episodes = int(eval_episodes if eval_episodes is not None else train_cfg.get("eval_episodes", 10))
     use_mock = bool(iter_cfg.get("use_mock_llm", False) if mock is None else mock)
     stop_on_invalid = bool(iter_cfg.get("stop_on_invalid_reward", True))
+    cards_top_k = int(iter_cfg.get("cards_top_k", 4))
 
     memory_path = iter_cfg.get("memory_path", "runs/env_001/memory/reward_memory.md")
     cards_path = rag_cfg.get("reward_misalignment_cards_path", "knowledge_base/iteration/reward_misalignment_cards.md")
@@ -93,6 +93,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     print(f"eval_episodes   : {eval_episodes}")
     print(f"memory_path     : {memory_path}")
     print(f"cards_path      : {cards_path}")
+    print(f"cards_top_k     : {cards_top_k}")
     print(f"mock_llm        : {use_mock}")
 
     previous_reward = None
@@ -121,6 +122,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 "--train-run-dir", str(prev_paths["train_dir"]),
                 "--memory", memory_path,
                 "--cards", cards_path,
+                "--top-k", str(cards_top_k),
                 "--out", str(paths["context_path"]),
             ])
             run_cmd([
