@@ -66,16 +66,18 @@ def main():
     ap.add_argument("--config", default="configs/env001_deepseek_rag.yaml")
     ap.add_argument("--reward", required=True)
     ap.add_argument("--run-name", default=None)
+    ap.add_argument("--total-timesteps", type=float, default=None)
+    ap.add_argument("--eval-episodes", type=int, default=None)
     args = ap.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
-    train_cfg = cfg["training"]
+    train_cfg = dict(cfg["training"])
     reward_fn = load_reward_function(args.reward)
 
     seed = int(train_cfg.get("seed", cfg.get("experiment", {}).get("seed", 0)))
     set_random_seed(seed)
 
-    total_timesteps = int(float(train_cfg.get("total_timesteps", 100000)))
+    total_timesteps = int(float(args.total_timesteps if args.total_timesteps is not None else train_cfg.get("total_timesteps", 100000)))
     n_envs = int(train_cfg.get("n_envs", 1))
     run_name = args.run_name or train_cfg.get("run_name", "ppo_reward_run")
     save_dir = Path(train_cfg.get("save_dir", "runs/env_001/training_runs")) / run_name
@@ -84,12 +86,13 @@ def main():
 
     reward_clip = train_cfg.get("reward_clip", 20.0)
     error_fallback = train_cfg.get("error_fallback", "zero")
+    max_progress_steps = int(train_cfg.get("max_training_steps_for_progress", total_timesteps))
 
     env = DummyVecEnv([
         build_env(
             train_cfg["runner_env_id"],
             reward_fn,
-            int(train_cfg.get("max_training_steps_for_progress", total_timesteps)),
+            max_progress_steps,
             seed,
             i,
             monitor_dir,
@@ -117,7 +120,7 @@ def main():
     model.save(str(save_dir / "model.zip"))
     env.close()
 
-    eval_episodes = int(train_cfg.get("eval_episodes", 10))
+    eval_episodes = int(args.eval_episodes if args.eval_episodes is not None else train_cfg.get("eval_episodes", 10))
     eval_result = evaluate_model_on_original_env(
         model,
         train_cfg["runner_env_id"],
