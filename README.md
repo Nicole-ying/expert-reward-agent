@@ -14,44 +14,86 @@ Reward Generator LLM
   输出：reward_v1.py + reward_v1.md
 ```
 
-## 为什么这么改
+随后进入训练：
 
-v8 的问题是中间产物太多，Reward Architect 过度保守，而且 JSON 输入太长。  
-v9 改成 Markdown 环境卡片 + Markdown 专家上下文，直接给 Reward Generator 生成奖励函数。
+```text
+reward_v1.py
+  → RewardOverrideWrapper
+  → PPO 训练
+  → 原始 LunarLander-v3 external evaluation
+  → eval_result.json / training_summary.json
+```
 
-## 当前最新调整
+## 当前流程
 
 - `prompt_records/` 保存 `.md`，不再保存 JSON prompt。
 - `response_records/` 保存 `.md`，方便直接阅读 LLM 原始输出。
-- 已删除新 run 中的 `human_review/`、`raw_outputs/`、`final_outputs/` 自动生成逻辑。
-- 核心输出文件直接放在 run 根目录，避免同一内容多处重复。
+- 新 run 不再自动生成 `human_review/`、`raw_outputs/`、`final_outputs/`。
 - `expert_reward_context.md` 不再把知识库原始 YAML 整段塞进 prompt。
-- RAG 检索结果会被整理成“奖励骨架摘要”：角色、数学形态、需要信号、本轮建议、风险、后续迭代。
 - Reward Generator 使用 role-based component budget，不再用“最多两个组件”这种硬限制。
 - 推荐 reward_v1 使用 2~4 个组件：1 个主学习信号 + 0~2 个稳定/安全约束 + 0~1 个任务完成 proxy。
 - 新的推荐返回格式是：`return float(total_reward), components`。
 - wrapper 已兼容旧格式 `return total_reward` 和新格式 `return total_reward, components`。
-- validator 会检查 import、未声明 info 字段、obs 切片、components dict 和 tuple 返回格式。
+- wrapper 已加入 reward 异常兜底、NaN/inf 检查、reward clipping 和错误计数。
+- 训练完成后会用原始环境 reward 做 external evaluation。
 
-## 运行 mock
+## 一键完整实验
 
-```bash
-bash run_mock_pipeline.sh
-```
-
-## 真实 DeepSeek 运行
+### 10k smoke test
 
 ```bash
 export DEEPSEEK_API_KEY="你的key"
-python -m pipeline.run_direct_generation_pipeline \
-  --config configs/env001_deepseek_rag.yaml \
-  --run-name deepseek_run_002
+bash scripts/run_full_experiment.sh \
+  configs/env001_deepseek_rag.yaml \
+  deepseek_full_smoke_001 \
+  ppo_full_smoke_001 \
+  10000 \
+  5
 ```
 
-## 新 run 的核心结构
+这个命令会完整执行：
 
 ```text
-runs/env_001/deepseek_run_002/
+环境理解 LLM
+→ RAG 压缩
+→ Reward Generator LLM
+→ reward_v1 validator
+→ PPO 训练
+→ 原环境 external evaluation
+```
+
+### 1e6 正式实验
+
+```bash
+export DEEPSEEK_API_KEY="你的key"
+bash scripts/run_full_experiment.sh \
+  configs/env001_deepseek_rag.yaml \
+  deepseek_full_run_001 \
+  ppo_full_run_001 \
+  1000000 \
+  10
+```
+
+### mock 全流程测试
+
+不调用 DeepSeek，只测试流程是否能跑通：
+
+```bash
+bash scripts/run_full_experiment.sh \
+  configs/env001_deepseek_rag.yaml \
+  mock_full_run_001 \
+  ppo_mock_full_001 \
+  10000 \
+  5 \
+  --mock
+```
+
+## 完整实验输出
+
+生成阶段输出：
+
+```text
+runs/env_001/<GEN_RUN>/
 ├── environment_card.md
 ├── expert_reward_context.md
 ├── reward_v1.py
@@ -68,14 +110,54 @@ runs/env_001/deepseek_run_002/
     └── reward_v1.validation.json
 ```
 
-建议主要看：
+训练阶段输出：
 
 ```text
-reward_v1.py
-reward_v1.md
-validations/reward_v1.validation.json
-expert_reward_context.md
-prompt_records/02_reward_generator.md
+runs/env_001/training_runs/<TRAIN_RUN>/
+├── model.zip
+├── train_config_used.yaml
+├── eval_result.json
+├── training_summary.json
+└── monitor/
+    ├── monitor_0.csv
+    ├── monitor_1.csv
+    ├── monitor_2.csv
+    └── monitor_3.csv
+```
+
+TensorBoard：
+
+```text
+runs/env_001/tensorboard/
+```
+
+建议重点看：
+
+```text
+runs/env_001/<GEN_RUN>/reward_v1.py
+runs/env_001/<GEN_RUN>/validations/reward_v1.validation.json
+runs/env_001/training_runs/<TRAIN_RUN>/eval_result.json
+runs/env_001/training_runs/<TRAIN_RUN>/training_summary.json
+runs/env_001/training_runs/<TRAIN_RUN>/monitor/
+```
+
+## 单独生成 reward
+
+```bash
+python -m pipeline.run_direct_generation_pipeline \
+  --config configs/env001_deepseek_rag.yaml \
+  --run-name deepseek_run_002
+```
+
+## 单独训练已有 reward
+
+```bash
+python -m training.train_sb3_wrapper \
+  --config configs/env001_deepseek_rag.yaml \
+  --reward runs/env_001/deepseek_run_002/reward_v1.py \
+  --run-name ppo_reward_v1_001 \
+  --total-timesteps 1000000 \
+  --eval-episodes 10
 ```
 
 ## 是否让 Reward Generator 看 step 函数
