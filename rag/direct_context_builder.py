@@ -21,17 +21,25 @@ SKELETON_SUMMARY = {
         "role": "密集过程引导",
         "math": "-d(obs, goal)",
         "need": "obs[0], obs[1]",
-        "use": "可用，但单独使用可能只鼓励靠近，不鼓励稳定完成。",
+        "use": "可作为小权重 anchor；不要和 progress_delta_reward 同时大权重堆叠。",
         "risk": "接近目标但不完成；不关心速度和姿态。",
         "later": "训练后检查 high_reward_without_success。",
     },
     "stability_penalty": {
         "role": "轻量稳定约束",
-        "math": "-lambda_v*|velocity| - lambda_a*|angle|",
-        "need": "next_obs[2], next_obs[3], next_obs[4], 可选 next_obs[5]",
+        "math": "-lambda_v*|velocity| - lambda_a*|angle| - lambda_w*|angular_velocity|",
+        "need": "next_obs[2], next_obs[3], next_obs[4], next_obs[5]",
         "use": "如果任务要求稳定接近/着陆，v1 可以小权重加入。",
         "risk": "过强会保守或不敢动。",
         "later": "若高速撞击或姿态失稳，增大权重。",
+    },
+    "soft_landing_proxy": {
+        "role": "任务完成近似信号",
+        "math": "small_bonus if near_target and low_speed and stable_angle and both_contact else 0",
+        "need": "position, velocity, angle, contact flags",
+        "use": "可选小权重；不能直接把 contact 当 success。",
+        "risk": "如果条件太宽，会变成 contact reward hacking。",
+        "later": "如果 high_reward_without_success，收紧条件或移除。",
     },
     "terminal_success_reward": {
         "role": "任务目标奖励",
@@ -90,6 +98,8 @@ def build_expert_reward_context(environment_card_md, chunks_path=None, max_chars
     related = ["progress_delta_reward", "distance_reward"]
     if any(k in text for k in ["速度", "姿态", "稳定", "velocity", "angle", "settle", "landing", "着陆"]):
         related.append("stability_penalty")
+    if any(k in text for k in ["contact", "接触", "support"]):
+        related.append("soft_landing_proxy")
     related += [
         "terminal_success_reward",
         "terminal_failure_penalty",
@@ -123,11 +133,13 @@ def build_expert_reward_context(environment_card_md, chunks_path=None, max_chars
         lines.append("")
     lines.append("## 3. reward_v1 生成要求")
     lines.append("- 直接生成 reward_v1.py，不再生成 reward_design_plan.json。")
-    lines.append("- 推荐结构: 主学习信号 + 0~1 个轻量约束项。")
+    lines.append("- 使用 role-based component budget，而不是固定组件数量。")
+    lines.append("- 推荐 2~4 个组件：1 个主学习信号 + 0~2 个稳定/安全约束 + 0~1 个任务完成 proxy。")
     lines.append("- 如果 success/failure 显式信号不存在，不要使用 terminal_success_reward / terminal_failure_penalty 作为 v1 核心项。")
     lines.append("- 如果速度/姿态信号明确可用，且任务需要稳定接近或着陆，可以加入轻量 stability_penalty。")
+    lines.append("- 如果使用 contact，只能作为 soft_landing_proxy 的一部分，必须和 near_target、low_speed、stable_angle 组合，不要直接把 contact 当 success。")
     lines.append("- energy_penalty、time_penalty、gated_reward 默认后续迭代再加入。")
-    lines.append("- 每个 reward term 必须写入 info['reward_terms']，便于训练后诊断。")
+    lines.append("- 返回格式建议为 return float(total_reward), components；components 必须是 dict。")
     md = "\n".join(lines)
     if len(md) > max_chars:
         md = md[:max_chars] + "\n\n<!-- truncated to max_expert_context_chars -->\n"
