@@ -29,6 +29,7 @@ rag:
   skeleton_catalog_path: knowledge_base/stage_generation/skeleton_catalog_02.json
   generation_chunks_path: knowledge_base/stage_generation/generation_chunks_02_03_exact.jsonl
   generation_table_chunks_path: knowledge_base/stage_generation/table_chunks_02_03.jsonl
+  reward_misalignment_cards_path: knowledge_base/iteration/reward_misalignment_cards.md
 
 context:
   include_masked_step_in_reward_generator: false
@@ -45,11 +46,22 @@ reward_generation:
     - failure
     - termination_reason
 
+iteration:
+  total_rounds: 3
+  experiment_prefix: exp_iter
+  experiment_root: runs/env_001/experiments
+  memory_path: runs/env_001/memory/reward_memory.md
+  reset_memory_at_start: true
+  cards_top_k: 4
+  stop_on_invalid_reward: true
+  use_mock_llm: false
+
 training:
   runner_env_id: LunarLander-v3
   policy: MlpPolicy
   n_envs: 4
   total_timesteps: 1000000
+  eval_episodes: 10
   n_steps: 1024
   batch_size: 64
   gae_lambda: 0.98
