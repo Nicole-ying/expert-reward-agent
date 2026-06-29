@@ -26,17 +26,19 @@ def maybe_reset_memory(memory_path, reset):
     p.parent.mkdir(parents=True, exist_ok=True)
 
 
-def build_paths(cfg, prefix, iteration_index):
+def build_paths(cfg, prefix, iteration_index, seed):
     iter_pad = pad_iter(iteration_index)
+    seed_dir = f"seed_{seed}"
     run_root = Path(cfg["experiment"]["run_root"])
-    experiment_root = Path(cfg.get("iteration", {}).get("experiment_root", str(run_root / "experiments")))
+    experiment_root = Path(cfg.get("iteration", {}).get("experiment_root", str(run_root / "experiments"))) / seed_dir
     iter_root = experiment_root / prefix / f"iter_{iter_pad}"
-    gen_run_name = f"experiments/{prefix}/iter_{iter_pad}/generation"
-    train_run_name = f"experiments/{prefix}/iter_{iter_pad}/training"
+    gen_run_name = f"experiments/{seed_dir}/{prefix}/iter_{iter_pad}/generation"
+    train_run_name = f"experiments/{seed_dir}/{prefix}/iter_{iter_pad}/training"
     train_dir = run_root / "training_runs" / train_run_name
     context_path = iter_root / "iteration_context.md"
     return {
         "iter_pad": iter_pad,
+        "seed_dir": seed_dir,
         "iter_root": iter_root,
         "gen_run_name": gen_run_name,
         "train_run_name": train_run_name,
@@ -63,7 +65,7 @@ def check_reward_valid(cfg, gen_run_name, version, stop_on_invalid):
         raise RuntimeError(f"Reward v{version} failed validation: {path}")
 
 
-def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timesteps=None, eval_episodes=None, mock=None):
+def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timesteps=None, eval_episodes=None, mock=None, seed=0):
     cfg = load_config(config_path)
     iter_cfg = cfg.get("iteration", {})
     train_cfg = cfg.get("training", {})
@@ -80,6 +82,8 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     cards_top_k = int(iter_cfg.get("cards_top_k", 4))
 
     memory_path = iter_cfg.get("memory_path", "runs/env_001/memory/reward_memory.md")
+    base_memory = Path(memory_path)
+    memory_path = str(base_memory.parent / f"seed_{seed}" / base_memory.name)
     cards_path = rag_cfg.get("reward_misalignment_cards_path", "knowledge_base/iteration/reward_misalignment_cards.md")
     maybe_reset_memory(memory_path, bool(iter_cfg.get("reset_memory_at_start", True)))
 
@@ -88,6 +92,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     print("=" * 60)
     print(f"config          : {config_path}")
     print(f"prefix          : {prefix}")
+    print(f"seed            : {seed}")
     print(f"rounds          : {rounds}")
     print(f"total_timesteps : {total_timesteps}")
     print(f"eval_episodes   : {eval_episodes}")
@@ -100,7 +105,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
 
     for iteration_index in range(1, rounds + 1):
         version = iteration_index
-        paths = build_paths(cfg, prefix, iteration_index)
+        paths = build_paths(cfg, prefix, iteration_index, seed)
         mock_args = ["--mock"] if use_mock else []
 
         print("\n" + "-" * 60)
@@ -116,7 +121,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             ])
             current_reward = reward_path_for(cfg, paths["gen_run_name"], 1)
         else:
-            prev_paths = build_paths(cfg, prefix, iteration_index - 1)
+            prev_paths = build_paths(cfg, prefix, iteration_index - 1, seed)
             run_cmd([
                 "python", "-m", "pipeline.run_04_build_iteration_context",
                 "--train-run-dir", str(prev_paths["train_dir"]),
@@ -145,6 +150,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             "--run-name", paths["train_run_name"],
             "--total-timesteps", str(total_timesteps),
             "--eval-episodes", str(eval_episodes),
+            "--seed", str(seed),
         ])
 
         run_cmd([
@@ -160,7 +166,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     print("Done. Key files")
     print("=" * 60)
     for iteration_index in range(1, rounds + 1):
-        paths = build_paths(cfg, prefix, iteration_index)
+        paths = build_paths(cfg, prefix, iteration_index, seed)
         version = iteration_index
         print(f"iter_{paths['iter_pad']}:")
         print(f"  reward   : {reward_path_for(cfg, paths['gen_run_name'], version)}")
@@ -177,6 +183,7 @@ def main():
     ap.add_argument("--rounds", type=int, default=None)
     ap.add_argument("--total-timesteps", type=int, default=None)
     ap.add_argument("--eval-episodes", type=int, default=None)
+    ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
 
@@ -188,6 +195,7 @@ def main():
         total_timesteps=args.total_timesteps,
         eval_episodes=args.eval_episodes,
         mock=mock,
+        seed=args.seed,
     )
 
 

@@ -234,13 +234,17 @@ def main():
     ap.add_argument("--run-name", default=None)
     ap.add_argument("--total-timesteps", type=float, default=None)
     ap.add_argument("--eval-episodes", type=int, default=None)
+    ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
     train_cfg = dict(cfg["training"])
     reward_fn = load_reward_function(args.reward)
 
-    seed = int(train_cfg.get("seed", cfg.get("experiment", {}).get("seed", 0)))
+    if args.seed is not None:
+        seed = args.seed
+    else:
+        seed = int(train_cfg.get("seed", cfg.get("experiment", {}).get("seed", 0)))
     set_random_seed(seed)
 
     total_timesteps = int(float(args.total_timesteps if args.total_timesteps is not None else train_cfg.get("total_timesteps", 100000)))
