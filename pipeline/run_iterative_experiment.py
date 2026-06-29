@@ -117,6 +117,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 "python", "-m", "pipeline.run_direct_generation_pipeline",
                 "--config", config_path,
                 "--run-name", paths["gen_run_name"],
+                "--seed", str(seed),
                 *mock_args,
             ])
             current_reward = reward_path_for(cfg, paths["gen_run_name"], 1)

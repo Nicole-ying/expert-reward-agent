@@ -149,7 +149,7 @@ def validate_code(code):
     return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
 
 
-def run(config_path, run_name, mock=False):
+def run(config_path, run_name, mock=False, seed=0):
     cfg = load_config(config_path)
     run_dir = Path(cfg["experiment"]["run_root"]) / run_name
     system_prompt = read_text(cfg["prompts"]["reward_generator"])

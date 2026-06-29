@@ -8,12 +8,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/env001_deepseek_rag.yaml")
     ap.add_argument("--run-name", default="mock_run")
+    ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
 
     run_env(args.config, args.run_name, mock=args.mock)
     run_rag(args.config, args.run_name)
-    run_reward(args.config, args.run_name, mock=args.mock)
+    run_reward(args.config, args.run_name, mock=args.mock, seed=args.seed)
 
 
 if __name__ == "__main__":
