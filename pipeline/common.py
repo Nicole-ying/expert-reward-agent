@@ -40,11 +40,32 @@ def make_run_dir(cfg, run_name):
     return run_dir
 
 
+def _as_markdown_block(title, content, language=""):
+    if not isinstance(content, str):
+        content = json.dumps(content, ensure_ascii=False, indent=2)
+        language = "json"
+    fence = f"```{language}" if language else "```"
+    return f"## {title}\n\n{fence}\n{content}\n```\n"
+
+
 def record_prompt(run_dir, name, system_prompt, user_prompt):
-    p = Path(run_dir) / "prompt_records" / f"{name}.json"
-    write_json(p, {"system_prompt": system_prompt, "user_prompt": user_prompt})
+    """Save prompt records as Markdown instead of JSON so they are readable during debugging."""
+    p = Path(run_dir) / "prompt_records" / f"{name}.md"
+    text = "# Prompt Record\n\n"
+    text += _as_markdown_block("System Prompt", system_prompt, "text")
+    text += "\n"
+    text += _as_markdown_block("User Prompt", user_prompt, "markdown")
+    write_text(p, text)
 
 
 def record_response(run_dir, name, response):
-    p = Path(run_dir) / "response_records" / f"{name}.json"
-    write_json(p, {"response": response})
+    """Save response records as Markdown. Structured outputs are embedded as JSON code blocks only when unavoidable."""
+    p = Path(run_dir) / "response_records" / f"{name}.md"
+    text = "# Response Record\n\n"
+    if isinstance(response, str):
+        text += response
+        if not text.endswith("\n"):
+            text += "\n"
+    else:
+        text += _as_markdown_block("Response", response, "json")
+    write_text(p, text)
