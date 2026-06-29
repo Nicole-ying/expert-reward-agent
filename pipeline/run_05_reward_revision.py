@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 
 from .common import load_config, read_text, write_text, write_json, record_prompt, record_response
-from .run_03_direct_reward_generator import extract_code, validate_code, write_prompt_stats
+from .run_03_direct_reward_generator import extract_code, validate_code, estimate_tokens
 from llm_clients.deepseek_client import DeepSeekClient
 
 
@@ -66,6 +66,21 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 """
 
 
+def write_revision_prompt_stats(run_dir, system_prompt, user_prompt):
+    total_text = system_prompt + "\n" + user_prompt
+    lines = []
+    lines.append("# Reward Revision Prompt Stats")
+    lines.append("")
+    lines.append("Token count is an estimate because the exact tokenizer depends on the LLM provider.")
+    lines.append("")
+    lines.append("| part | chars | lines | estimated_tokens |")
+    lines.append("|---|---:|---:|---:|")
+    lines.append(f"| system_prompt | {len(system_prompt)} | {system_prompt.count(chr(10)) + 1} | {estimate_tokens(system_prompt)} |")
+    lines.append(f"| user_prompt | {len(user_prompt)} | {user_prompt.count(chr(10)) + 1} | {estimate_tokens(user_prompt)} |")
+    lines.append(f"| total | {len(total_text)} | {total_text.count(chr(10)) + 1} | {estimate_tokens(total_text)} |")
+    write_text(Path(run_dir) / "prompt_records/03_reward_revision.prompt_stats.md", "\n".join(lines) + "\n")
+
+
 def run(config_path, previous_reward_path, iteration_context_path, out_run_name, reward_version, mock=False):
     cfg = load_config(config_path)
     run_dir = Path(cfg["experiment"]["run_root"]) / out_run_name
@@ -87,7 +102,7 @@ def run(config_path, previous_reward_path, iteration_context_path, out_run_name,
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_revision.input.md", user_prompt)
     record_prompt(run_dir, "03_reward_revision", system_prompt, user_prompt)
-    write_prompt_stats(run_dir, system_prompt, user_prompt)
+    write_revision_prompt_stats(run_dir, system_prompt, user_prompt)
 
     if mock:
         out_md = MOCK_REVISION_MD
