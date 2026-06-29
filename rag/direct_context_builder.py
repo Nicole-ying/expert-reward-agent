@@ -114,11 +114,11 @@ def build_expert_reward_context(environment_card_md, chunks_path=None, max_chars
     lines.append("")
     lines.append("这份内容不是完整知识库原文，而是给 Reward Generator 直接使用的压缩决策摘要。")
     lines.append("")
-    lines.append("## 1. 当前任务类型")
-    lines.append(f"- selected_route_id: {route_id}")
+    lines.append("## 1. 任务路由摘要")
     if route_id == "navigation_goal_reaching":
-        lines.append("- 核心规则: 目标到达任务需要密集过程引导；如果 success flag 不可用，不要依赖终点成功奖励。")
-        lines.append("- 优先检查失败模式: goal_near_oscillation, high_reward_without_success, fast_crash_near_goal")
+        lines.append("- navigation_goal_reaching：用密集过程引导；无 success flag 时禁用终点成功核心项；重点观察 goal_near_oscillation / high_reward_without_success / fast_crash_near_goal。")
+    else:
+        lines.append(f"- {route_id}：按该任务类型选择主学习信号，并先检查接口可用性。")
     lines.append("")
     lines.append("## 2. 相关奖励骨架摘要")
     for sid in related:
