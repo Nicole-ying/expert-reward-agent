@@ -43,3 +43,21 @@ reward_generation:
     - success
     - failure
     - termination_reason
+
+training:
+  runner_env_id: LunarLander-v3
+  policy: MlpPolicy
+  n_envs: 4
+  total_timesteps: 1000000
+  n_steps: 1024
+  batch_size: 64
+  gae_lambda: 0.98
+  gamma: 0.999
+  n_epochs: 4
+  ent_coef: 0.01
+  device: auto
+  seed: 0
+  max_training_steps_for_progress: 1000000
+  save_dir: runs/env_001/training_runs
+  run_name: ppo_reward_v1_001
+  tensorboard_log: runs/env_001/tensorboard
