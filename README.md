@@ -22,17 +22,19 @@ reward_v1.py
   → PPO 训练
   → 原始 LunarLander-v3 external evaluation
   → training_feedback.md / training_summary.json
+  → reward_memory.md 自动更新
 ```
 
 第一次训练后新增的迭代流程：
 
 ```text
-training_feedback.md
+training_feedback.md + reward_memory.md
   → Iteration Context Builder（确定性脚本，不调用 LLM）
   → iteration_context.md
   → Reward Revision LLM
   → reward_v2.py / reward_v2.md
   → PPO 训练
+  → reward_memory.md 自动更新
 ```
 
 第二次训练后重复同样流程，生成 `reward_v3.py / reward_v3.md` 并训练。
@@ -49,8 +51,24 @@ training_feedback.md
 - wrapper 已兼容旧格式 `return total_reward` 和新格式 `return float(total_reward), components`。
 - wrapper 已加入 reward 异常兜底、NaN/inf 检查、reward clipping 和错误计数。
 - 训练完成后会用原始环境 reward 做 external evaluation。
+- 每轮训练结束后会自动更新 `runs/env_001/memory/reward_memory.md`。
 
 ## 一键 3 轮训练 / 2 轮迭代
+
+脚本内部使用 `for ITER in 1..3` 循环，不再手写 9 个步骤。
+每轮输出按统一目录组织：
+
+```text
+runs/env_001/experiments/<PREFIX>/iter_01/
+runs/env_001/experiments/<PREFIX>/iter_02/
+runs/env_001/experiments/<PREFIX>/iter_03/
+```
+
+训练输出仍在：
+
+```text
+runs/env_001/training_runs/experiments/<PREFIX>/iter_XX/training/
+```
 
 ### 10k smoke test
 
@@ -74,12 +92,12 @@ bash scripts/run_three_round_experiment.sh \
   10
 ```
 
-这个脚本会执行：
+这个脚本会循环执行：
 
 ```text
-v1: Environment Analyzer LLM → RAG → Reward Generator LLM → train
-v2: Iteration Context Builder → Reward Revision LLM → train
-v3: Iteration Context Builder → Reward Revision LLM → train
+iter_01: Environment Analyzer LLM → RAG → Reward Generator LLM → train → update memory
+iter_02: Build iteration_context → Reward Revision LLM → train → update memory
+iter_03: Build iteration_context → Reward Revision LLM → train → update memory
 ```
 
 ### mock 三轮流程测试
@@ -107,26 +125,27 @@ bash scripts/run_full_experiment.sh \
 
 ## 人类主要看哪些文件
 
-生成阶段重点看：
+每轮 reward 生成或修订结果：
 
 ```text
-runs/env_001/<GEN_RUN>/reward_v1.py 或 reward_v2.py / reward_v3.py
-runs/env_001/<GEN_RUN>/reward_v1.md 或 reward_v2.md / reward_v3.md
-runs/env_001/<GEN_RUN>/prompt_records/*.prompt_stats.md
-runs/env_001/<GEN_RUN>/validations/*.validation.json
+runs/env_001/experiments/<PREFIX>/iter_XX/generation/reward_vX.py
+runs/env_001/experiments/<PREFIX>/iter_XX/generation/reward_vX.md
+runs/env_001/experiments/<PREFIX>/iter_XX/generation/prompt_records/*.prompt_stats.md
+runs/env_001/experiments/<PREFIX>/iter_XX/generation/validations/*.validation.json
 ```
 
-训练阶段重点看：
+每轮训练反馈：
 
 ```text
-runs/env_001/training_runs/<TRAIN_RUN>/training_feedback.md
+runs/env_001/training_runs/experiments/<PREFIX>/iter_XX/training/training_feedback.md
 ```
 
 跨轮迭代重点看：
 
 ```text
 runs/env_001/memory/reward_memory.md
-runs/env_001/iterations/<ITER_NAME>/iteration_context.md
+runs/env_001/experiments/<PREFIX>/iter_02/iteration_context.md
+runs/env_001/experiments/<PREFIX>/iter_03/iteration_context.md
 knowledge_base/iteration/reward_misalignment_cards.md
 ```
 
@@ -148,33 +167,22 @@ model.zip
 - 每轮只把命中的 2~4 张专家卡片放入迭代上下文，不传整份知识库。
 - 迭代不是机械填充骨架，而是根据训练反馈决定 keep / weaken / revise / consider_add / still_defer。
 
-## 生成迭代上下文
-
-当前实验进入下一轮时，先生成一个唯一的迭代上下文文件：
+## 单独生成迭代上下文
 
 ```bash
 python -m pipeline.run_04_build_iteration_context \
-  --train-run-dir runs/env_001/training_runs/ppo_full_run_002 \
-  --out runs/env_001/iterations/iter_003/iteration_context.md
+  --train-run-dir runs/env_001/training_runs/experiments/exp3/iter_01/training \
+  --memory runs/env_001/memory/reward_memory.md \
+  --out runs/env_001/experiments/exp3/iter_02/iteration_context.md
 ```
 
-这个文件合并：
+## 单独更新 memory
 
-```text
-training_feedback.md
-+ reward_memory.md
-+ matched compressed expert cards
-→ iteration_context.md
-```
-
-`iteration_context.md` 是后续奖励迭代 LLM 的主输入，包含：
-
-```text
-previous_reward_summary
-training_feedback_summary
-matched_failure_and_misalignment_cards
-skeleton_revision_plan
-generation_constraints
+```bash
+python -m pipeline.run_06_update_reward_memory \
+  --iter 1 \
+  --train-run-dir runs/env_001/training_runs/experiments/exp3/iter_01/training \
+  --memory runs/env_001/memory/reward_memory.md
 ```
 
 ## 单独生成 reward
