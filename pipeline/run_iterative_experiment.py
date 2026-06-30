@@ -119,18 +119,26 @@ def build_agent_context_header(iteration_index, target_score, best_score, best_i
         trend = "solved"
         guidance = "Prefer small tunes over large changes. Preserve what works."
         suggest = "tune"
-    elif last_score is not None and best_score is not None and last_score < best_score:
+    elif last_score is not None and best_score is not None and last_score < best_score - 20:
         trend = "declining_from_best"
-        guidance = "Investigate why score dropped from best. Consider reverting harmful changes."
-        suggest = "tune or rebuild"
-    elif no_improve_count >= 2:
+        guidance = "Score dropped significantly from best. Investigate what changed and revert harmful modifications."
+        suggest = "tune (revert harmful changes)"
+    elif no_improve_count >= 3:
         trend = "stagnant"
-        guidance = "Current skeleton may have reached its limit. Consider exploring alternative structures."
+        guidance = "Current skeleton family has been tried 3+ rounds with no improvement. The KB skeleton suggestions below are DIFFERENT architectures — you MUST try one. Do NOT stay on the same skeleton with coefficient tuning."
+        suggest = "rebuild"
+    elif no_improve_count >= 1:
+        trend = "stalling"
+        guidance = "Current skeleton is not improving. Consider mix (add/delete components) or rebuild (switch skeleton family from KB suggestions)."
         suggest = "mix or rebuild"
+    elif last_score is not None and best_score is not None and last_score < best_score:
+        trend = "below_best"
+        guidance = "Investigate why score dropped from best. Consider reverting harmful changes."
+        suggest = "tune or mix"
     else:
         trend = "searching"
         guidance = "Continue refining based on evidence."
-        suggest = "tune or add"
+        suggest = "tune or mix"
 
     return f"""# Agent Context
 
@@ -138,12 +146,14 @@ def build_agent_context_header(iteration_index, target_score, best_score, best_i
 - target_score: {target_score:.3f}
 - best_score: {best_text} (iter {best_iter_text})
 - current_score: {last_text}
+- stagnation_rounds: {no_improve_count}
 - trend: {trend}
 - guidance: {guidance}
 - suggested_action: {suggest}
 
-The analysis report and expert cards below provide more detailed diagnostic evidence.
-Use them to decide your concrete action (tune/add/delete/mix/rebuild).
+When suggested_action is rebuild, the current skeleton family has FAILED.
+You MUST pick a different architecture from the KB Skeleton Suggestions below.
+Do NOT return another coefficient-tuned variant of the same skeleton.
 """
 
 

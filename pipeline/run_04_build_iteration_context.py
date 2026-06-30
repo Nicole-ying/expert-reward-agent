@@ -12,7 +12,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .common import load_config, read_text, write_text
+from .common import load_config, read_text, write_text, record_prompt, record_response
 from llm_clients.deepseek_client import DeepSeekClient
 
 
@@ -139,7 +139,7 @@ def filter_skeleton_suggestions(skeletons, forbidden=None):
     return [s for s in skeletons if s not in forbidden]
 
 
-def run_analysis_llm(feedback_md, memory_md, previous_code, system_prompt, config_path, mock=False):
+def run_analysis_llm(feedback_md, memory_md, previous_code, system_prompt, config_path, mock=False, analysis_dir=None):
     """Call analysis LLM and return diagnostic JSON dict."""
     cfg = load_config(config_path)
     llm_cfg = cfg["llm"]
@@ -189,6 +189,11 @@ Output ONLY the JSON. No markdown, no code block, no extra text.
         max_tokens=2048,
         json_mode=True,
     )
+    # Record analysis prompt and response
+    if analysis_dir:
+        record_prompt(analysis_dir, "04_analysis", system_prompt, user_prompt)
+        record_response(analysis_dir, "04_analysis", response)
+
     try:
         return json.loads(response.strip())
     except json.JSONDecodeError:
@@ -223,8 +228,9 @@ def build_context(
 
     # Step 1: Call analysis LLM
     analysis_prompt = read_text("prompts/04_analysis_prompt.md")
+    iter_dir = train_dir.parent.parent
     diagnosis = run_analysis_llm(
-        feedback_md, memory_md, previous_code, analysis_prompt, config_path, mock=mock
+        feedback_md, memory_md, previous_code, analysis_prompt, config_path, mock=mock, analysis_dir=str(iter_dir / "generation")
     )
 
     # Step 2: Retrieve expert cards based on diagnosis
