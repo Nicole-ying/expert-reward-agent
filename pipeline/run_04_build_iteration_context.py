@@ -239,46 +239,32 @@ def build_context(
     # Step 4: Render memory table
     memory_table = render_memory_table(memory_md) if memory_md else "(no history)"
 
-    # Step 5: Assemble context
+    # Step 5: Assemble context — compact, 3 sections
     lines = []
     lines.append("# Iteration Context for Reward Revision")
     lines.append("")
-    lines.append("## Agent Memory (history)")
+    lines.append("## Agent Memory (history table)")
     lines.append("")
     lines.append(memory_table)
     lines.append("")
-    lines.append("## Analysis Report")
+    lines.append("## Diagnosis Guidance")
     lines.append("")
-    lines.append(f"```json\n{json.dumps(diagnosis, ensure_ascii=False, indent=2)}\n```")
-    lines.append("")
-    lines.append("## Training Feedback")
-    lines.append("")
-    lines.append(feedback_md)
-    lines.append("")
-    lines.append("## Matched Expert Cards")
+    lines.append(f"### Analysis Summary\n```json\n{json.dumps(diagnosis, ensure_ascii=False, indent=2)}\n```")
     lines.append("")
     if card_blocks:
-        lines.append("\n\n".join(card_blocks))
-    else:
-        lines.append("- No specific card matched. Consider broader exploration.")
-    lines.append("")
-    lines.append("## Skeleton Suggestions (from expert knowledge base)")
-    lines.append("")
+        lines.append("### Expert Cards (compressed)")
+        for b in card_blocks:
+            lines.append(b)
+        lines.append("")
     if suggestions:
-        lines.append(f"- Task type: {task_route_id}")
-        lines.append(f"- Expert-recommended skeletons for this task: {', '.join(suggestions)}")
+        lines.append(f"### KB Recommended Skeletons for task `{task_route_id}`")
+        lines.append(f"- {', '.join(suggestions)}")
         if skeleton_family:
-            lines.append(f"- Previous skeleton family: {skeleton_family}")
-        lines.append("- These are the knowledge base's design guidance. You may adopt, combine, or propose your own.")
-    else:
-        lines.append("- No specific skeleton suggestions available.")
+            lines.append(f"- Previously tried skeleton family: {skeleton_family}")
+        lines.append("")
+    lines.append("## Training Feedback (raw evidence)")
     lines.append("")
-    lines.append("## Revision Boundary")
-    lines.append("")
-    lines.append("- Revise the previous reward instead of generating from scratch.")
-    lines.append("- Keep the function signature unchanged.")
-    lines.append("- Do not use original_reward or unavailable info fields.")
-    lines.append("- Do not add terminal success/failure rewards without explicit signals.")
+    lines.append(feedback_md)
     return "\n".join(lines).strip() + "\n"
 
 
