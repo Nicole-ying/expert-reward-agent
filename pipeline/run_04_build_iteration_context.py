@@ -95,27 +95,13 @@ def skeleton_signature(code_text):
 
 
 def render_memory_table(memory_md):
-    """Render a compact history table from reward_memory.md."""
-    lines = []
-    lines.append("| iter | score | best | skeleton_summary | trend |")
-    lines.append("|------|-------|------|------------------|-------|")
-    in_latest = False
+    """Extract existing table from reward_memory.md."""
+    import re
+    lines = ["| iter | skeleton | score | best | delta | len | key_signal | action |",
+             "|---:|---|---:|---:|---:|---:|---|---|"]
     for line in memory_md.splitlines():
-        s = line.strip()
-        if s.startswith("### iter_"):
-            in_latest = True
-            iter_id = s.replace("###", "").strip()
-            lines.append(f"| {iter_id} |")
-        elif in_latest and s.startswith("- external_score:"):
-            lines[-1] += f" {s.split(':')[1].strip()} |"
-        elif in_latest and s.startswith("- best_score_so_far:"):
-            lines[-1] += f" {s.split(':')[1].strip()} |"
-        elif in_latest and s.startswith("- reward_structure:"):
-            lines[-1] += f" {s.split(':', 1)[1].strip()} |"
-        elif in_latest and s.startswith("- decision:"):
-            lines[-1] += f" {s.split(':')[1].strip()} |"
-        elif in_latest and s.startswith("---"):
-            in_latest = False
+        if re.match(r"^\|\s*\d+\s*\|", line):
+            lines.append(line)
     return "\n".join(lines)
 
 
