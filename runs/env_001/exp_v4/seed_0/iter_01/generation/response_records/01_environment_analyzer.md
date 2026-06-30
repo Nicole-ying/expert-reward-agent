@@ -50,31 +50,28 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 ```
 
 允许使用：
-- obs - 当前观测（8维向量）
-- action - 当前动作（0-3整数）
-- next_obs - 下一时刻观测（8维向量）
-- info - 空字典，不可用
-- training_progress - 仅当prompt明确允许时才使用
+- obs（当前状态）
+- action（当前动作）
+- next_obs（下一状态）
+- training_progress（仅当prompt明确允许时才使用）
 
 禁止使用：
-- original_reward - 官方奖励已被屏蔽，禁止使用
-- official_reward - 禁止使用
-- 未声明的info字段 - info为空字典
-- 未声明的obs切片 - 仅允许使用已定义的8个维度
+- original_reward（官方奖励已屏蔽）
+- info（始终为空字典）
+- 未声明的obs切片
 
 ## 7. 可用于奖励函数的信号
-- position: obs[0]（x_position），obs[1]（y_position）- 相对于目标的位置
-- velocity: obs[2]（x_velocity），obs[3]（y_velocity）- 线速度
-- orientation: obs[4]（body_angle），obs[5]（angular_velocity）- 姿态和角速度
-- contact: obs[6]（left_support_contact），obs[7]（right_support_contact）- 支撑接触标志
-- action/engine: action（0-3）- 引擎使用情况，可用于惩罚燃料消耗
+- position: obs[0] x_position, obs[1] y_position - 相对于目标的位置
+- velocity: obs[2] x_velocity, obs[3] y_velocity - 线速度
+- orientation: obs[4] body_angle - 姿态角
+- angular_velocity: obs[5] angular_velocity - 角速度
+- contact: obs[6] left_support_contact, obs[7] right_support_contact - 支撑接触标志
+- action: action（0-3） - 当前执行的动作，可用于惩罚引擎使用
 
 ## 8. 不确定或不可用的信号
-- 目标平台的具体位置和尺寸：未知，只能通过obs[0]和obs[1]的相对坐标推断
-- 成功着陆的精确判定条件：body_not_awake_or_settled的具体阈值未知
-- 坠毁判定的具体条件：crash_or_body_contact的触发机制未知
-- 视口边界的具体范围：horizontal_position_outside_viewport的边界值未知
-- 初始随机力的方向和大小：未知
-- 引擎推力的具体参数：未知
-- 物理引擎的时间步长：未知
-- 任何info字段：info始终为空字典，不可用
+- 终止原因：无法区分成功（稳定着陆）和失败（坠毁/出界），因为terminated是三个条件的逻辑或
+- 燃料/能量消耗：未在观测空间中提供
+- 时间步数：未在观测空间中提供
+- 目标距离：需要从obs[0]和obs[1]计算
+- 接触力大小：只有接触标志，没有力的大小信息
+- 引擎推力大小：只有动作类型，没有推力幅度信息

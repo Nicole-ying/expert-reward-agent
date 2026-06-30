@@ -26,27 +26,35 @@
 
 # role-based component budget
 
-reward_v1 推荐使用 2~4 个组件，但每个组件必须有明确角色，不能为了显得完整而堆叠。
+reward_v1 使用 2~4 个核心奖励项（components dict 可以拆分子项用于追踪）。每个项必须有明确角色。
 
-必须包含：
-- 1 个主学习信号 learning guidance：通常选择 progress_delta_reward；如果无法计算 delta，才用 distance_reward。
+## 主学习信号（以下三种方案选一，不要同时大权重堆叠）
 
-允许包含：
-- 0~2 个稳定/安全约束：例如速度、姿态角、角速度惩罚。
-- 0~1 个任务完成 proxy：必须是 soft proxy，不能伪造 success flag；如果使用 contact，必须与 near_target、low_speed、stable_angle 等条件组合，并且权重较小。
-- 0~1 个效率/动作代价：默认后续版本再加；如果 v1 使用，权重要很小，并说明风险。
+方案 A — progress_delta_reward：
+  - 数学：Δd = d(obs) - d(next_obs)，系数通常 5~20
+  - 适合：目标位置明确的导航任务
+  - 风险：目标附近可能震荡
 
-默认不要在 v1 使用（如果环境条件不满足）：
+方案 B — potential_based_shaping：
+  - 数学：F = γ * Φ(s') - Φ(s)，需要定义一个势能函数 Φ（如 -distance）
+  - 优势：天然抗震荡，数学保证不改变最优策略
+  - 适合：任何可以定义"离目标多远"的任务
+
+方案 C — distance_reward：
+  - 数学：-d(obs)，小权重 anchor
+  - 仅当 delta 或 potential 无法计算时使用
+
+v1 推荐从方案 A 或 B 中选一个作为主信号。不同种子可以尝试不同方案。
+
+## 其他组件（按需选择，总共 2~4 个核心项）
+
+- 0~1 个稳定/安全约束：速度、姿态角、角速度惩罚。需命名清晰，可拆分子项追踪。
+- 0~1 个任务完成 proxy：soft proxy，不能伪造 success flag。contact 必须与 near_target、low_speed、stable_angle 组合。
+- 0~1 个效率/动作代价：权重要小（<0.05）。
+
+## v1 默认不使用（除非环境明确支持）
 - terminal_success_reward（需显式 success flag）
 - terminal_failure_penalty（需显式 failure flag）
-- dynamic curriculum（需 training_progress 支持）
-- 大权重 action_penalty
-- 大权重 contact_reward
-
-可以在 v1 使用的进阶骨架：
-- potential_based_shaping：如果你能定义一个合理的势能函数 Φ(s)，用 γΦ(s')-Φ(s) 替代或辅助 progress_delta。
-- gated_reward：如果你能把任务分成"接近"和"着陆"两个阶段，用不同组件组合。
-- 这些不是必须的，但如果 progress_delta 单独无法提供足够引导，优先考虑它们。
 
 避免重复：
 - 不要同时大权重使用 distance_reward 和 progress_delta_reward。

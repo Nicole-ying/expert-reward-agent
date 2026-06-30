@@ -5,5 +5,5 @@ Token count is an estimate because the exact tokenizer depends on the LLM provid
 | part | chars | lines | estimated_tokens |
 |---|---:|---:|---:|
 | system_prompt | 2845 | 108 | 1495 |
-| user_prompt | 5295 | 182 | 2687 |
-| total | 8141 | 290 | 4183 |
+| user_prompt | 5118 | 179 | 2585 |
+| total | 7964 | 287 | 4082 |
