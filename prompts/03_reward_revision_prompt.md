@@ -23,6 +23,7 @@
 
 # action
 
+- revert：best_reward 得分明显更高时，恢复到 best 的系数配置，仅做小幅改动。
 - tune：调系数/阈值/门控。
 - add：加新组件。
 - delete：删除有害/冗余组件。
@@ -41,7 +42,7 @@
 先 JSON decision，后 Python code。
 
 ```json
-{"action": "tune|add|delete|mix|rebuild", "target": "组件/骨架名", "reasoning": "证据", "expected_effect": "期望", "risk_awareness": "风险"}
+{"action": "revert|tune|add|delete|mix|rebuild", "target": "组件/骨架名", "reasoning": "证据", "expected_effect": "期望", "risk_awareness": "风险"}
 ```
 
 ```python
