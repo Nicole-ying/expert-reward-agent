@@ -92,8 +92,28 @@ def run(config_path, previous_reward_path, iteration_context_path, out_run_name,
     previous_reward = read_text(previous_reward_path)
     iteration_context = read_text(iteration_context_path)
 
+    # Find expert_reward_context from the same seed (generation iter or fresh restart)
+    expert_ctx = ""
+    gen_dir = Path(previous_reward_path).parent
+    ctx_path = gen_dir / "expert_reward_context.md"
+    if not ctx_path.exists():
+        # Walk up to find the most recent expert context in sibling iters
+        seed_dir = gen_dir.parent.parent
+        for d in sorted(Path(seed_dir).glob("iter_*/generation/expert_reward_context.md"), reverse=True):
+            ctx_path = d
+            break
+    if ctx_path.exists():
+        expert_ctx = read_text(str(ctx_path))
+
     user_parts = [
         ENV_CONTRACT,
+    ]
+    if expert_ctx:
+        user_parts += [
+            "# expert_reward_context.md",
+            expert_ctx,
+        ]
+    user_parts += [
         "# previous_reward.py",
         "```python\n" + previous_reward.strip() + "\n```",
     ]
@@ -101,7 +121,6 @@ def run(config_path, previous_reward_path, iteration_context_path, out_run_name,
         best_reward = read_text(best_reward_path)
         user_parts += [
             "# best_reward.py (historical best, for reference)",
-            "This is the highest-scoring reward so far. Learn from it, do not make it worse.",
             "```python\n" + best_reward.strip() + "\n```",
         ]
     user_parts += [
