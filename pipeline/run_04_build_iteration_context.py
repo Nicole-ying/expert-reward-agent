@@ -50,7 +50,23 @@ def extract_card(cards_md, card_id):
     return cards_md[start:next_start].strip()
 
 
-def retrieve_cards(cards_md, mode_names, top_k=4):
+def compress_card(block, max_chars=200):
+    """Keep only signal+fix lines, discard full description."""
+    if len(block) <= max_chars:
+        return block
+    lines = block.splitlines()
+    kept = []
+    for line in lines:
+        s = line.strip()
+        if s.startswith("- signal:") or s.startswith("- risk:") or s.startswith("- fix:"):
+            kept.append(line)
+    if kept:
+        header = lines[0] if lines else ""
+        return header + "\n" + "\n".join(kept)
+    return block[:max_chars] + "..."
+
+
+def retrieve_cards(cards_md, mode_names, top_k=4, max_chars_per_card=200):
     blocks = []
     seen = set()
     for name in mode_names:
@@ -59,7 +75,7 @@ def retrieve_cards(cards_md, mode_names, top_k=4):
         seen.add(name)
         block = extract_card(cards_md, name)
         if block:
-            blocks.append(block)
+            blocks.append(compress_card(block, max_chars=max_chars_per_card))
     return blocks[:max(1, int(top_k))]
 
 
@@ -249,9 +265,11 @@ def build_context(
     lines.append("## Skeleton Suggestions (from expert knowledge base)")
     lines.append("")
     if suggestions:
-        lines.append(f"- Current skeleton family: {skeleton_family or 'unknown'}")
         lines.append(f"- Task type: {task_route_id}")
-        lines.append(f"- Expert-recommended skeletons not yet tried: {', '.join(suggestions)}")
+        lines.append(f"- Expert-recommended skeletons for this task: {', '.join(suggestions)}")
+        if skeleton_family:
+            lines.append(f"- Previous skeleton family: {skeleton_family}")
+        lines.append("- These are the knowledge base's design guidance. You may adopt, combine, or propose your own.")
     else:
         lines.append("- No specific skeleton suggestions available.")
     lines.append("")
