@@ -235,6 +235,7 @@ def main():
     ap.add_argument("--total-timesteps", type=float, default=None)
     ap.add_argument("--eval-episodes", type=int, default=None)
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--save-dir", default=None)
     args = ap.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
@@ -250,7 +251,10 @@ def main():
     total_timesteps = int(float(args.total_timesteps if args.total_timesteps is not None else train_cfg.get("total_timesteps", 100000)))
     n_envs = int(train_cfg.get("n_envs", 1))
     run_name = args.run_name or train_cfg.get("run_name", "ppo_reward_run")
-    save_dir = Path(train_cfg.get("save_dir", "runs/env_001/training_runs")) / run_name
+    if args.save_dir:
+        save_dir = Path(args.save_dir)
+    else:
+        save_dir = Path(train_cfg.get("save_dir", "runs/env_001/training_runs")) / run_name
     monitor_dir = save_dir / "monitor"
     monitor_dir.mkdir(parents=True, exist_ok=True)
 

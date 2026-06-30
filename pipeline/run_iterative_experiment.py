@@ -31,26 +31,26 @@ def maybe_reset_memory(memory_path, reset):
 
 
 def experiment_root_for(cfg, prefix, seed):
+    """Top-level directory for one experiment prefix, nesting everything inside."""
     run_root = Path(cfg["experiment"]["run_root"])
-    experiment_root = Path(cfg.get("iteration", {}).get("experiment_root", str(run_root / "experiments")))
-    return experiment_root / f"seed_{seed}" / prefix
+    return run_root / prefix / f"seed_{seed}"
 
 
 def build_paths(cfg, prefix, iteration_index, seed):
+    """All paths live under experiment_root_for/iter_XX/."""
     iter_pad = pad_iter(iteration_index)
-    seed_dir = f"seed_{seed}"
-    run_root = Path(cfg["experiment"]["run_root"])
-    iter_root = experiment_root_for(cfg, prefix, seed) / f"iter_{iter_pad}"
-    gen_run_name = f"experiments/{seed_dir}/{prefix}/iter_{iter_pad}/generation"
-    train_run_name = f"experiments/{seed_dir}/{prefix}/iter_{iter_pad}/training"
-    train_dir = run_root / "training_runs" / train_run_name
+    seed_root = experiment_root_for(cfg, prefix, seed)
+    iter_root = seed_root / f"iter_{iter_pad}"
+    gen_dir = iter_root / "generation"
+    train_dir = iter_root / "training"
+    gen_run_name = f"{prefix}/seed_{seed}/iter_{iter_pad}/generation"
     context_path = iter_root / "iteration_context.md"
     return {
         "iter_pad": iter_pad,
-        "seed_dir": seed_dir,
+        "seed_root": seed_root,
         "iter_root": iter_root,
+        "gen_dir": gen_dir,
         "gen_run_name": gen_run_name,
-        "train_run_name": train_run_name,
         "train_dir": train_dir,
         "context_path": context_path,
     }
@@ -248,9 +248,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     retry_identical_unsolved = bool(iter_cfg.get("retry_identical_when_unsolved", True))
     max_identical_retries = int(iter_cfg.get("max_identical_revision_retries", 2))
 
-    memory_path = iter_cfg.get("memory_path", "runs/env_001/memory/reward_memory.md")
-    base_memory = Path(memory_path)
-    memory_path = str(base_memory.parent / f"seed_{seed}" / base_memory.name)
+    memory_path = str(experiment_root_for(cfg, prefix, seed) / "memory" / "reward_memory.md")
     cards_path = rag_cfg.get("reward_misalignment_cards_path", "knowledge_base/iteration/reward_misalignment_cards.md")
     maybe_reset_memory(memory_path, bool(iter_cfg.get("reset_memory_at_start", True)))
 
@@ -359,7 +357,8 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             "python", "-m", "training.train_sb3_wrapper",
             "--config", config_path,
             "--reward", str(current_reward),
-            "--run-name", paths["train_run_name"],
+            "--run-name", paths["gen_run_name"].replace("/generation", "/training"),
+            "--save-dir", str(paths["train_dir"]),
             "--total-timesteps", str(total_timesteps),
             "--eval-episodes", str(eval_episodes),
             "--seed", str(seed),

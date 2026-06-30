@@ -1,5 +1,5 @@
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # Extract relevant observations
+    # Extract observations
     x_pos = obs[0]
     y_pos = obs[1]
     x_vel = obs[2]
@@ -18,46 +18,40 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
     next_left_contact = next_obs[6]
     next_right_contact = next_obs[7]
     
-    # Component 1: Progress delta reward (main learning signal)
-    # Reward getting closer to the target (0,0)
+    # --- Component 1: Progress Delta Reward (main learning signal) ---
+    # Distance to target (target is at origin: x=0, y=0)
     current_dist = (x_pos ** 2 + y_pos ** 2) ** 0.5
     next_dist = (next_x_pos ** 2 + next_y_pos ** 2) ** 0.5
-    progress_delta = current_dist - next_dist
-    progress_reward = progress_delta * 10.0
+    progress_delta = current_dist - next_dist  # positive if moving closer
+    progress_reward = 10.0 * progress_delta  # scale to meaningful magnitude
     
-    # Component 2: Stability penalty (light constraint)
+    # --- Component 2: Stability Penalty (lightweight constraint) ---
     # Penalize high speed, large angle, and high angular velocity
-    speed = (next_x_vel ** 2 + next_y_vel ** 2) ** 0.5
-    angle_penalty = abs(next_body_angle) * 0.5
-    angular_vel_penalty = abs(next_angular_vel) * 0.3
-    speed_penalty = speed * 0.2
-    stability_penalty = -(angle_penalty + angular_vel_penalty + speed_penalty)
+    speed = (x_vel ** 2 + y_vel ** 2) ** 0.5
+    angle_penalty = 0.5 * (body_angle ** 2)  # quadratic penalty for angle deviation
+    speed_penalty = 0.1 * speed  # linear penalty for speed
+    angular_penalty = 0.2 * (angular_vel ** 2)  # quadratic penalty for angular velocity
+    stability_penalty = -(angle_penalty + speed_penalty + angular_penalty)
     
-    # Component 3: Soft landing proxy (small bonus for being near target with stability)
+    # --- Component 3: Soft Landing Proxy (small bonus for good landing conditions) ---
+    # Conditions: near target, low speed, stable angle, both supports in contact
     near_target = next_dist < 0.5
     low_speed = speed < 0.5
-    stable_angle = abs(next_body_angle) < 0.3
+    stable_angle = abs(next_body_angle) < 0.2
     both_contact = (next_left_contact > 0.5) and (next_right_contact > 0.5)
     
     soft_landing_bonus = 0.0
     if near_target and low_speed and stable_angle and both_contact:
-        soft_landing_bonus = 2.0
+        soft_landing_bonus = 2.0  # small bonus for achieving landing conditions
     
-    # Component 4: Small action penalty (efficiency, very small weight)
-    # Penalize using any engine (actions 1, 2, 3)
-    action_penalty = 0.0
-    if action != 0:
-        action_penalty = -0.05
+    # --- Total Reward ---
+    total_reward = progress_reward + stability_penalty + soft_landing_bonus
     
-    # Combine components
-    total_reward = progress_reward + stability_penalty + soft_landing_bonus + action_penalty
-    
-    # Build components dict
+    # --- Components dict ---
     components = {
         "progress_reward": progress_reward,
         "stability_penalty": stability_penalty,
         "soft_landing_bonus": soft_landing_bonus,
-        "action_penalty": action_penalty,
         "total_reward": total_reward
     }
     

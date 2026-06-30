@@ -4,7 +4,7 @@
 
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # Extract relevant observations
+    # Extract observations
     x_pos = obs[0]
     y_pos = obs[1]
     x_vel = obs[2]
@@ -23,46 +23,40 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
     next_left_contact = next_obs[6]
     next_right_contact = next_obs[7]
     
-    # Component 1: Progress delta reward (main learning signal)
-    # Reward getting closer to the target (0,0)
+    # --- Component 1: Progress Delta Reward (main learning signal) ---
+    # Distance to target (target is at origin: x=0, y=0)
     current_dist = (x_pos ** 2 + y_pos ** 2) ** 0.5
     next_dist = (next_x_pos ** 2 + next_y_pos ** 2) ** 0.5
-    progress_delta = current_dist - next_dist
-    progress_reward = progress_delta * 10.0
+    progress_delta = current_dist - next_dist  # positive if moving closer
+    progress_reward = 10.0 * progress_delta  # scale to meaningful magnitude
     
-    # Component 2: Stability penalty (light constraint)
+    # --- Component 2: Stability Penalty (lightweight constraint) ---
     # Penalize high speed, large angle, and high angular velocity
-    speed = (next_x_vel ** 2 + next_y_vel ** 2) ** 0.5
-    angle_penalty = abs(next_body_angle) * 0.5
-    angular_vel_penalty = abs(next_angular_vel) * 0.3
-    speed_penalty = speed * 0.2
-    stability_penalty = -(angle_penalty + angular_vel_penalty + speed_penalty)
+    speed = (x_vel ** 2 + y_vel ** 2) ** 0.5
+    angle_penalty = 0.5 * (body_angle ** 2)  # quadratic penalty for angle deviation
+    speed_penalty = 0.1 * speed  # linear penalty for speed
+    angular_penalty = 0.2 * (angular_vel ** 2)  # quadratic penalty for angular velocity
+    stability_penalty = -(angle_penalty + speed_penalty + angular_penalty)
     
-    # Component 3: Soft landing proxy (small bonus for being near target with stability)
+    # --- Component 3: Soft Landing Proxy (small bonus for good landing conditions) ---
+    # Conditions: near target, low speed, stable angle, both supports in contact
     near_target = next_dist < 0.5
     low_speed = speed < 0.5
-    stable_angle = abs(next_body_angle) < 0.3
+    stable_angle = abs(next_body_angle) < 0.2
     both_contact = (next_left_contact > 0.5) and (next_right_contact > 0.5)
     
     soft_landing_bonus = 0.0
     if near_target and low_speed and stable_angle and both_contact:
-        soft_landing_bonus = 2.0
+        soft_landing_bonus = 2.0  # small bonus for achieving landing conditions
     
-    # Component 4: Small action penalty (efficiency, very small weight)
-    # Penalize using any engine (actions 1, 2, 3)
-    action_penalty = 0.0
-    if action != 0:
-        action_penalty = -0.05
+    # --- Total Reward ---
+    total_reward = progress_reward + stability_penalty + soft_landing_bonus
     
-    # Combine components
-    total_reward = progress_reward + stability_penalty + soft_landing_bonus + action_penalty
-    
-    # Build components dict
+    # --- Components dict ---
     components = {
         "progress_reward": progress_reward,
         "stability_penalty": stability_penalty,
         "soft_landing_bonus": soft_landing_bonus,
-        "action_penalty": action_penalty,
         "total_reward": total_reward
     }
     
@@ -73,54 +67,38 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 
 ## 使用的奖励组件
 
-1. **progress_delta_reward**（主学习信号，权重10.0）
-   - 角色：提供密集的、连续的学习引导，奖励每一步更接近目标位置(0,0)
-   - 数学形式：`current_dist - next_dist`，正值表示向目标靠近
-   - 这是核心学习信号，让智能体学会向目标移动
+1. **Progress Delta Reward** (主学习信号，权重 10.0)
+   - 角色：提供密集的、基于距离变化的过程引导，鼓励智能体每一步都更接近目标。
+   - 数学形式：`10.0 * (current_dist - next_dist)`，其中距离为欧几里得距离。
+   - 选择理由：这是 navigation_goal_reaching 任务最直接、最有效的主信号，能引导智能体从起点向目标移动。
 
-2. **stability_penalty**（稳定约束，轻量）
-   - 角色：惩罚高速、大姿态角和高角速度，鼓励稳定飞行
-   - 包含三个子项：角度惩罚(0.5)、角速度惩罚(0.3)、速度惩罚(0.2)
-   - 权重较小，避免过度约束导致智能体不敢移动
+2. **Stability Penalty** (稳定/安全约束)
+   - 角色：轻量级约束，惩罚大姿态角、高速度和高角速度，防止智能体在接近目标时失控或姿态不稳。
+   - 数学形式：`-(0.5 * angle^2 + 0.1 * speed + 0.2 * angular_vel^2)`。
+   - 选择理由：任务要求"稳定在着陆台"，因此需要早期引入姿态和速度约束，避免智能体只关注接近目标而忽略稳定性。
 
-3. **soft_landing_proxy**（任务完成近似信号，小权重2.0）
-   - 角色：当智能体同时满足接近目标、低速、稳定姿态和双接触时给予小奖励
-   - 条件组合：`near_target and low_speed and stable_angle and both_contact`
-   - 权重很小，不会主导学习，但提供完成任务的额外激励
-
-4. **action_penalty**（效率约束，极小权重-0.05）
-   - 角色：轻微惩罚使用引擎，鼓励节能
-   - 权重极小(-0.05)，不会让智能体害怕使用引擎
-   - 风险说明：可能让智能体在早期不敢移动，但权重足够小，风险可控
+3. **Soft Landing Proxy** (任务完成近似信号，小权重 2.0)
+   - 角色：当智能体同时满足接近目标、低速、稳定姿态和双支撑接触时，给予小奖励，作为成功着陆的软代理。
+   - 数学形式：条件触发式小奖励，非持续信号。
+   - 选择理由：由于没有显式 success flag，需要一种方式鼓励智能体完成最终着陆动作，但权重很小以避免 reward hacking。
 
 ## 为什么没有使用 terminal_success_reward / terminal_failure_penalty
 
-- `explicit_success_flag_available=false`，info字典为空，无法获取成功/失败标志
-- 使用这些项会诱导伪造info字段或错误判断终止条件
-- 留到后续迭代，当wrapper明确暴露success/failure信号后再加入
+- 环境卡片明确说明 `explicit_success_flag_available=false` 和 `explicit_failure_flag_available=false`，info 字典为空。
+- 使用 terminal_success_reward 会诱导发明 info['success']，违反设计原则。
+- 使用 terminal_failure_penalty 需要区分失败终止原因，但当前无法可靠判断。
 
 ## 留到后续迭代的组件
 
-- **terminal_success_reward / terminal_failure_penalty**：需要显式成功/失败标志
-- **time_penalty**：当前任务没有时间限制，后续若发现拖太久再加入
-- **energy_penalty**（更大权重）：当前使用极小权重，后续可增大以优化燃料消耗
-- **gated_reward**：当前不需要复杂门控，后续若安全被进度奖励抵消再加入
-- **potential_based_shaping**：比progress_delta更抽象，后续若需要更标准shaping再替换
+- **Energy/Action Penalty**：v1 未加入，因为过早加入可能导致智能体不敢使用引擎，无法学习基本移动。后续当智能体能稳定到达目标后再优化燃料消耗。
+- **Time Penalty**：v1 未加入，因为可能鼓励冒险行为。后续如果发现智能体在目标附近徘徊太久再考虑加入。
+- **Gated Reward**：v1 未使用，因为门控机制可能过于复杂，且当前稳定性惩罚已提供基本安全约束。
+- **Terminal Rewards**：等待 wrapper 明确暴露 success/failure 信号后再加入。
 
-## 训练后应观察的failure mode
+## 训练后应观察的 failure mode
 
-1. **goal_near_oscillation**：目标附近震荡，不完成着陆
-   - 观察：progress_reward接近0但soft_landing_bonus不触发
-   - 对策：增大soft_landing_bonus或收紧条件
-
-2. **high_reward_without_success**：获得高奖励但未成功着陆
-   - 观察：progress_reward高但soft_landing_bonus不触发
-   - 对策：收紧soft_landing条件或加入terminal_success_reward
-
-3. **fast_crash_near_goal**：接近目标时高速撞击
-   - 观察：progress_reward高但stability_penalty也高
-   - 对策：增大stability_penalty权重
-
-4. **agent_afraid_to_move**：智能体不敢移动（action_penalty过强）
-   - 观察：action_penalty主导，progress_reward低
-   - 对策：减小action_penalty权重或移除
+1. **目标附近震荡 (goal_near_oscillation)**：如果 progress_delta_reward 导致智能体在目标附近来回移动而不稳定着陆，需要调整稳定性惩罚权重或收紧 soft_landing_proxy 条件。
+2. **高速撞击 (fast_crash_near_goal)**：如果智能体以高速接近目标并坠毁，说明速度惩罚不足，需要增大 speed_penalty 权重。
+3. **姿态失稳 (unstable_approach)**：如果智能体以倾斜姿态接近目标，需要增大 angle_penalty 或 angular_penalty。
+4. **接触奖励滥用 (contact reward hacking)**：如果智能体通过非正常方式触发接触（如侧翻），需要收紧 soft_landing_proxy 条件或移除该组件。
+5. **不敢移动 (agent_afraid_to_move)**：如果智能体停留在起点附近，说明稳定性惩罚过重或 progress_reward 权重不足，需要调整平衡。
