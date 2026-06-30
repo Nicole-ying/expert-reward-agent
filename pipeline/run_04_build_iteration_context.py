@@ -139,10 +139,19 @@ def filter_skeleton_suggestions(skeletons, forbidden=None):
     return [s for s in skeletons if s not in forbidden]
 
 
-def run_analysis_llm(feedback_md, memory_md, previous_code, system_prompt, config_path, expert_context_md="", mock=False, analysis_dir=None):
+def run_analysis_llm(feedback_md, memory_md, previous_code, system_prompt, config_path, expert_context_md="", best_code="", mock=False, analysis_dir=None):
     """Call analysis LLM and return diagnostic JSON dict."""
     cfg = load_config(config_path)
     llm_cfg = cfg["llm"]
+
+    best_block = ""
+    if best_code:
+        best_block = f"""
+# best_reward.py (historical highest score)
+```python
+{best_code}
+```
+"""
 
     user_prompt = f"""# training_feedback
 {feedback_md}
@@ -150,11 +159,11 @@ def run_analysis_llm(feedback_md, memory_md, previous_code, system_prompt, confi
 # agent_memory
 {memory_md}
 
-# previous_reward.py
+# previous_reward.py (current, being analyzed)
 ```python
 {previous_code}
 ```
-
+{best_block}
 # expert_knowledge_context
 {expert_context_md}
 
@@ -165,6 +174,8 @@ def run_analysis_llm(feedback_md, memory_md, previous_code, system_prompt, confi
 {', '.join(HACKING_RISK_NAMES)}
 
 Based on the evidence above, output a diagnostic JSON.
+If best_reward.py is provided and scored higher, compare its coefficients to previous_reward.py
+and identify exactly which changes caused the regression. Recommend whether to revert.
 """
 
     if mock:
@@ -238,11 +249,17 @@ def build_context(
     # Expert knowledge context (from iter_01 or last fresh restart)
     expert_context_md = find_expert_context(str(seed_root))
 
+    # Find best reward code for comparison
+    best_code = ""
+    best_dir = seed_root / "best"
+    if (best_dir / "best_reward.py").exists():
+        best_code = read_text(str(best_dir / "best_reward.py"))
+
     # Step 1: Analysis LLM
     analysis_prompt = read_text("prompts/04_analysis_prompt.md")
     diagnosis = run_analysis_llm(
         feedback_md, memory_md, previous_code, analysis_prompt, config_path,
-        expert_context_md=expert_context_md, mock=mock, analysis_dir=str(gen_dir),
+        expert_context_md=expert_context_md, best_code=best_code, mock=mock, analysis_dir=str(gen_dir),
     )
 
     # Step 2: RAG cards
