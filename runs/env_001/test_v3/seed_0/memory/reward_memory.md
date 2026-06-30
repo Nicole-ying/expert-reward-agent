@@ -8,6 +8,8 @@
 | 4 | landing_shaping + progress_reward + stability_penalty | -142.80 | 158.82 | -301.62 | 88.10 | landing_shaping=0.012 progress_reward=1.599 stability_penalty=-0.122 | no_meaningful_improvement |
 | 5 | landing_shaping + progress_reward + stability_penalty | -190.67 | 158.82 | -349.50 | 84.30 | landing_shaping=0.010 progress_reward=5.119 stability_penalty=-0.068 | no_meaningful_improvement |
 | 6 | distance_reward + progress_reward + stability_penalty | -109.08 | 158.82 | -267.91 | 83.60 | distance_reward=-0.093 progress_reward=8.255 stability_penalty=-0.133 | unsolved_stagnation_fresh_restart |
+| 7 | progress_reward + soft_landing_bonus + stability_penalty | 146.57 | 158.82 | -12.25 | 564.60 | progress_reward=0.091 soft_landing_bonus=0.397 stability_penalty=-0.146 | no_meaningful_improvement |
+| 8 | landing_shaping + progress_reward + stability_penalty | 100.05 | 158.82 | -58.77 | 846.40 | landing_shaping=1.370 progress_reward=0.228 stability_penalty=-0.022 | no_meaningful_improvement |
 
 ## Stable Lessons
 
@@ -16,13 +18,7 @@
 - Use external evaluation as fitness signal, not generated_reward alone.
 - Contact only inside guarded landing proxy (near target + low speed + stable angle).
 - Prefer continuous shaping over hard sparse bonuses.
-- stability_penalty coefficient must be reduced to avoid penalty dominance
-- progress_reward coefficient should be increased to drive learning
-- progress_reward coefficient must be >= 50 to overcome stability_penalty dominance
-- stability_penalty coefficient should be <= 0.1 to avoid penalty dominance
 - soft_landing_bonus trigger rate <1% indicates sparse proxy; consider continuous shaping or relaxed conditions
-- landing_shaping coefficient should be reduced to avoid proxy dominance
-- progress_reward coefficient may need to be > 50 to drive meaningful learning
-- progress_reward coefficient must be >= 200 to overcome stability_penalty and original_env_reward dominance
-- landing_shaping coefficient should be increased to 5.0 and conditions relaxed to achieve nonzero_rate > 0.1
 - landing_shaping with nonzero_rate < 1% is ineffective and should be replaced with denser proxy or removed
+- stability_penalty coefficients should be low (angle_penalty <=0.05, angular_penalty <=0.02, speed_penalty <=0.1) to avoid dominance
+- soft_landing_bonus should be continuous shaping (e.g., product of near_target, low_speed, stable_angle, both_contact) rather than sparse binary bonus

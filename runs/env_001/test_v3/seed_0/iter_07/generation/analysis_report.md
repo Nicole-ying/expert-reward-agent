@@ -1,0 +1,18 @@
+# Analysis Report
+
+## Recommended Action: rebuild
+当前骨架已迭代3轮，最佳得分146.57未达到目标200，且低于历史最佳158.82。progress_reward系数10.0过弱（均值0.091），stability_penalty系数过高（均值-0.146）主导总奖励，soft_landing_bonus稀疏（触发率19.8%）。最佳奖励使用progress_reward系数50.0、stability_penalty更低系数、连续landing_shaping，得分更高。建议回退到最佳奖励骨架并微调。
+
+## Skeleton Status
+- family: progress+stability+landing_proxy
+- stagnant: True
+- iterations_on_skeleton: 3
+
+## Component Analysis
+- progress_reward: role=progress dir=positive issue=Coefficient 10.0 is too low; mean 0.091 is negligible compared to stability_penalty mean -0.146 and soft_landing_bonus mean 0.397. Best reward used 50.0 and achieved higher score.
+- stability_penalty: role=constraint dir=negative issue=Dominates total reward with mean -0.146 and max -8.46, suppressing progress signal. Best reward had lower coefficients (angle_penalty 0.05, angular_penalty 0.02, speed_penalty 0.1).
+- soft_landing_bonus: role=proxy dir=positive issue=Sparse (nonzero_rate 19.8%) and binary; best reward used continuous landing_shaping with higher mean and denser signal.
+
+## Detected Issues
+- failure_modes: stability_penalty_dominance, sparse_completion_proxy
+- hacking_risks: stability_penalty_dominance

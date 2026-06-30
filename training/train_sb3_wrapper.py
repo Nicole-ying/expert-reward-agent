@@ -180,10 +180,8 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
     lines = []
     lines.append("# Training Feedback")
     lines.append("")
-    lines.append("## External evaluation")
-    lines.append(f"- score: {_fmt_float(eval_result['mean_eval_reward'])}")
-    lines.append(f"- episode_length: {_fmt_float(eval_result['mean_episode_length'])} (mean)")
-    lines.append(f"- errors: {component_summary['reward_error_count_max']}")
+    lines.append("## Training outcome")
+    lines.append(f"score={_fmt_float(eval_result['mean_eval_reward'])}, len={_fmt_float(eval_result['mean_episode_length'])}, errors={component_summary['reward_error_count_max']}")
     lines.append("")
     lines.append("## Component evidence")
     lines.append("")
@@ -198,33 +196,6 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
             f"| {short} | {_fmt_float(item.get('mean'))} | {_fmt_float(item.get('abs_mean'))} | "
             f"{_fmt_float(item.get('nonzero_rate'))} | {_fmt_float(item.get('min'))} | {_fmt_float(item.get('max'))} |"
         )
-    lines.append("")
-    lines.append("## Signals")
-    mean_reward = float(eval_result.get("mean_eval_reward", 0.0))
-    mean_len = float(eval_result.get("mean_episode_length", 0.0))
-    signals = []
-    if mean_reward < 0 and mean_len < 150:
-        signals.append("early_failure_or_crash")
-    elif mean_reward < 0 and mean_len >= 900:
-        signals.append("persistent_negative_score")
-    if 0 < mean_reward < 200:
-        signals.append("partial_progress")
-    if mean_reward >= 200:
-        signals.append("solved")
-    # Per-component signals (skip meta fields)
-    meta_skip = {"component.progress_reward", "component.total_reward", "component.generated_reward", "component.original_env_reward"}
-    progress_item = stats.get("component.progress_reward", {})
-    for name, item in stats.items():
-        if name in meta_skip or name.startswith("component.original_env"):
-            continue
-        if progress_item and abs(float(item.get("mean", 0))) > abs(float(progress_item.get("mean", 0))) * 0.8:
-            short = name.replace("component.", "", 1)
-            signals.append(f"penalty_dominance:{short}")
-        trigger = float(item.get("nonzero_rate", 1.0))
-        if trigger < 0.02 and float(item.get("mean", 0)) >= 0:
-            short = name.replace("component.", "", 1)
-            signals.append(f"sparse_proxy:{short}")
-    lines.append("; ".join(signals) if signals else "none_detected")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
