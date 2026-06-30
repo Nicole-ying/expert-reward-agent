@@ -47,7 +47,7 @@ reward_generation:
     - termination_reason
 
 iteration:
-  total_rounds: 3
+  total_rounds: 10
   experiment_prefix: exp_iter
   experiment_root: runs/env_001/experiments
   memory_path: runs/env_001/memory/reward_memory.md
@@ -55,6 +55,21 @@ iteration:
   cards_top_k: 4
   stop_on_invalid_reward: true
   use_mock_llm: false
+
+  # Env_001 is considered solved when external evaluation mean score reaches 200.
+  target_score: 200.0
+
+  # Best-retention and stopping policy.
+  save_best_artifacts: true
+  stop_after_solved_drop: true
+  stop_when_solved_and_identical: true
+  no_improvement_patience_after_solved: 2
+  no_improvement_patience_unsolved: 3
+  min_meaningful_improvement: 5.0
+
+  # No-op protection. This is a safety guard, not the main search strategy.
+  retry_identical_when_unsolved: true
+  max_identical_revision_retries: 2
 
 training:
   runner_env_id: LunarLander-v3
