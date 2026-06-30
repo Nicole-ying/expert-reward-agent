@@ -110,40 +110,6 @@ def is_identical_reward(path_a, path_b):
     return code_signature(path_a) == code_signature(path_b)
 
 
-def read_analysis_action(context_path):
-    """Extract recommended_action from analysis_report.md."""
-    report_path = Path(context_path).parent / "analysis_report.md"
-    if report_path.exists():
-        text = report_path.read_text(encoding="utf-8")
-        for line in text.splitlines():
-            if line.startswith("## Recommended Action:"):
-                return line.replace("## Recommended Action:", "").strip()
-    return "mix"
-
-
-def prepend_agent_context(context_path, iter_num, target_score, best_score, best_iter, solved_seen):
-    action = read_analysis_action(context_path)
-    best_text = "N/A" if best_score is None else f"{best_score:.3f}"
-    best_iter_text = "N/A" if best_iter is None else str(best_iter)
-
-    header = f"""# Agent Context
-
-- iteration: {iter_num}
-- target_score: {target_score:.3f}
-- best_score: {best_text} (iter {best_iter_text})
-- analysis_recommends: {action}
-- solved: {solved_seen}
-
-The analysis LLM (04) has diagnosed the previous training results.
-Its recommended action is **{action}**. Follow this direction unless you have strong evidence otherwise.
-If the recommendation is rebuild, pick a different skeleton from expert_reward_context.md.
-"""
-
-    p = Path(context_path)
-    old = p.read_text(encoding="utf-8") if p.exists() else ""
-    p.write_text(header.strip() + "\n\n" + old, encoding="utf-8")
-
-
 def append_noop_retry_instruction(context_path, attempt):
     p = Path(context_path)
     text = p.read_text(encoding="utf-8")
@@ -303,14 +269,6 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 "--config", config_path,
                 *mock_args,
             ])
-            prepend_agent_context(
-                paths["context_path"],
-                iter_num=iteration_index,
-                target_score=target_score,
-                best_score=best_score,
-                best_iter=best_iter,
-                solved_seen=solved_seen,
-            )
 
             identical_after_retries = False
             for attempt in range(max_identical_retries + 1):
