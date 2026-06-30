@@ -10,6 +10,7 @@ New flow (v2):
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 from .common import load_config, read_text, write_text, record_prompt, record_response
@@ -204,9 +205,12 @@ and identify exactly which changes caused the regression. Recommend whether to r
 
 
 def find_expert_context(seed_root):
-    """Find the most recent expert_reward_context.md."""
+    """Find the most recent expert_reward_context.md, strip v1-generation-only sections."""
     for d in sorted(Path(seed_root).glob("iter_*/generation/expert_reward_context.md"), reverse=True):
-        return read_text(str(d))
+        md = read_text(str(d))
+        # Remove v1 generation instructions (noise for analysis/revision LLMs)
+        md = re.split(r"\n## \d+\. reward_v1 生成要求", md)[0]
+        return md
     return ""
 
 

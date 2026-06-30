@@ -10,6 +10,7 @@
 | 6 | distance_reward + progress_reward + stability_penalty | -109.08 | 158.82 | -267.91 | 83.60 | distance_reward=-0.093 progress_reward=8.255 stability_penalty=-0.133 | unsolved_stagnation_fresh_restart |
 | 7 | progress_reward + soft_landing_bonus + stability_penalty | 146.57 | 158.82 | -12.25 | 564.60 | progress_reward=0.091 soft_landing_bonus=0.397 stability_penalty=-0.146 | no_meaningful_improvement |
 | 8 | landing_shaping + progress_reward + stability_penalty | 100.05 | 158.82 | -58.77 | 846.40 | landing_shaping=1.370 progress_reward=0.228 stability_penalty=-0.022 | no_meaningful_improvement |
+| 9 | distance_reward + progress_reward + stability_penalty | -230.17 | 158.82 | -388.99 | 77.40 | distance_reward=-0.091 progress_reward=0.905 stability_penalty=-0.053 | unsolved_stagnation_fresh_restart |
 
 ## Stable Lessons
 
@@ -22,3 +23,5 @@
 - landing_shaping with nonzero_rate < 1% is ineffective and should be replaced with denser proxy or removed
 - stability_penalty coefficients should be low (angle_penalty <=0.05, angular_penalty <=0.02, speed_penalty <=0.1) to avoid dominance
 - soft_landing_bonus should be continuous shaping (e.g., product of near_target, low_speed, stable_angle, both_contact) rather than sparse binary bonus
+- landing_shaping with nonzero_rate ~48% and coefficient 5.0 is insufficient to push score above 200; consider increasing coefficient or adding complementary proxy
+- progress_reward coefficient 50.0 yields mean 0.228, but external score remains below target; may need additional shaping or different main signal
