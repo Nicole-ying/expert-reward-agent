@@ -183,7 +183,6 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
     lines.append("## External evaluation")
     lines.append(f"- score: {_fmt_float(eval_result['mean_eval_reward'])}")
     lines.append(f"- episode_length: {_fmt_float(eval_result['mean_episode_length'])} (mean)")
-    lines.append(f"- range: [{_fmt_float(eval_result['min_eval_reward'])}, {_fmt_float(eval_result['max_eval_reward'])}]")
     lines.append(f"- errors: {component_summary['reward_error_count_max']}")
     lines.append("")
     lines.append("## Component evidence")
@@ -212,18 +211,19 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
         signals.append("partial_progress")
     if mean_reward >= 200:
         signals.append("solved")
-    # Penalty dominance
+    # Per-component signals (skip meta fields)
+    meta_skip = {"component.progress_reward", "component.total_reward", "component.generated_reward", "component.original_env_reward"}
     progress_item = stats.get("component.progress_reward", {})
     for name, item in stats.items():
-        if name in ("component.progress_reward", "component.total_reward", "component.generated_reward"):
-            continue
-        if name.startswith("component.original_env"):
+        if name in meta_skip or name.startswith("component.original_env"):
             continue
         if progress_item and abs(float(item.get("mean", 0))) > abs(float(progress_item.get("mean", 0))) * 0.8:
-            signals.append(f"penalty_dominance:{name.replace('component.', '', 1)}")
+            short = name.replace("component.", "", 1)
+            signals.append(f"penalty_dominance:{short}")
         trigger = float(item.get("nonzero_rate", 1.0))
         if trigger < 0.02 and float(item.get("mean", 0)) >= 0:
-            signals.append(f"sparse_proxy:{name.replace('component.', '', 1)}")
+            short = name.replace("component.", "", 1)
+            signals.append(f"sparse_proxy:{short}")
     lines.append("; ".join(signals) if signals else "none_detected")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

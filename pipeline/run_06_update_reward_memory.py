@@ -149,18 +149,33 @@ def build_memory(memory_path, iter_id, training_run_dir, target_score, best_scor
     existing_lessons = ""
     if "## Stable Lessons" in memory_md:
         existing_lessons = memory_md.split("## Stable Lessons", 1)[1].strip()
-    # Accumulate new lessons
+    # Accumulate new lessons with dedup
     if new_lessons:
         nl_list = json.loads(new_lessons) if isinstance(new_lessons, str) else new_lessons
         if isinstance(nl_list, list):
+            existing_set = set()
+            for line in existing_lessons.split("\n"):
+                line = line.strip().lstrip("- ").strip()
+                if line:
+                    existing_set.add(line.lower())
             for nl in nl_list:
-                nl_str = f"- {nl}"
-                if nl_str not in existing_lessons:
+                nl_key = nl.strip().lower()
+                if nl_key not in existing_set:
+                    existing_set.add(nl_key)
                     if existing_lessons:
-                        existing_lessons += "\n" + nl_str
+                        existing_lessons += "\n- " + nl.strip()
                     else:
-                        existing_lessons = nl_str
-    lessons = existing_lessons if existing_lessons else DEFAULT_LESSONS.strip()
+                        existing_lessons = "- " + nl.strip()
+    # Remove obvious coefficient-specific recommendations (keep principle-level lessons)
+    cleaned = []
+    for line in existing_lessons.split("\n"):
+        s = line.strip().lstrip("- ").strip()
+        # Drop transient coefficient advice (specific numbers that change between iterations)
+        if any(kw in s.lower() for kw in ["coefficient must", "should be increased to", "should be reduced to", "should be <= ", "must be >=", "must be >", "may need to be >"]):
+            continue
+        if s:
+            cleaned.append("- " + s)
+    lessons = "\n".join(cleaned) if cleaned else DEFAULT_LESSONS.strip()
 
     rows = [r for r in existing_rows(memory_md) if not re.match(rf"^\|\s*{iter_id}\s*\|", r)]
     rows.append(row)

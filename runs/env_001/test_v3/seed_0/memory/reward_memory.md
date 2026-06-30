@@ -7,6 +7,7 @@
 | 3 | landing_shaping + progress_reward + stability_penalty | 158.82 | 158.82 | 0.00 | 728.40 | landing_shaping=1.625 progress_reward=0.204 stability_penalty=-0.037 | new_best |
 | 4 | landing_shaping + progress_reward + stability_penalty | -142.80 | 158.82 | -301.62 | 88.10 | landing_shaping=0.012 progress_reward=1.599 stability_penalty=-0.122 | no_meaningful_improvement |
 | 5 | landing_shaping + progress_reward + stability_penalty | -190.67 | 158.82 | -349.50 | 84.30 | landing_shaping=0.010 progress_reward=5.119 stability_penalty=-0.068 | no_meaningful_improvement |
+| 6 | distance_reward + progress_reward + stability_penalty | -109.08 | 158.82 | -267.91 | 83.60 | distance_reward=-0.093 progress_reward=8.255 stability_penalty=-0.133 | unsolved_stagnation_fresh_restart |
 
 ## Stable Lessons
 
@@ -24,3 +25,4 @@
 - progress_reward coefficient may need to be > 50 to drive meaningful learning
 - progress_reward coefficient must be >= 200 to overcome stability_penalty and original_env_reward dominance
 - landing_shaping coefficient should be increased to 5.0 and conditions relaxed to achieve nonzero_rate > 0.1
+- landing_shaping with nonzero_rate < 1% is ineffective and should be replaced with denser proxy or removed
