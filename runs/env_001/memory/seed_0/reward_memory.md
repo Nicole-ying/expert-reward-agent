@@ -5,46 +5,45 @@ Do not copy full reward code, full logs, or full training summaries here.
 
 ## Evolution Summary
 
-| iter | reward_structure | external_score | len | gen_reward | key_component_signal | verdict | diagnosis | next_action |
-|---:|---|---:|---:|---:|---|---|---|---|
-| 1 | action_penalty + progress_reward + soft_landing_bonus + stability_penalty | -112.85 | 74.10 | -0.075 | progress 0.161; stability -0.242; soft 0.65% | failure | early_failure_or_crash; sparse_completion_proxy | add smoother approach/landing guidance; smooth landing proxy |
-| 2 | action_penalty + distance_anchor + landing_shaping + progress_reward + stability_penalty | -110.90 | 74.10 | 0.075 | progress 0.161; stability -0.116 | failure | early_failure_or_crash | add smoother approach/landing guidance |
-| 3 | action_penalty + distance_anchor + landing_shaping + progress_reward + stability_penalty | -110.90 | 74.10 | 0.075 | progress 0.161; stability -0.116 | failure | early_failure_or_crash | add smoother approach/landing guidance |
-| 4 | action_penalty + distance_anchor + progress_reward + proximity_reward + stability_penalty | 204.08 | 726.90 | 0.536 | progress 0.037; stability -0.023 | success | needs_review | inspect component balance |
-| 5 | action_penalty + conditional_speed_reward + progress_reward + proximity_reward + stability_penalty | 249.71 | 381.30 | 0.592 | progress 0.024; stability -0.011 | success | needs_review | inspect component balance |
-| 6 | action_penalty + conditional_speed_reward + progress_reward + proximity_reward + stability_penalty | 249.71 | 381.30 | 0.592 | progress 0.024; stability -0.011 | success | needs_review | inspect component balance |
-| 7 | action_penalty + conditional_speed_reward + progress_reward + proximity_reward + stability_penalty | 186.90 | 772.40 | 0.670 | progress 0.017; stability -0.013 | failure | needs_review | inspect component balance |
-| 8 | action_penalty + conditional_speed_reward + progress_reward + proximity_reward + stability_penalty | 186.90 | 772.40 | 0.670 | progress 0.017; stability -0.013 | failure | needs_review | inspect component balance |
-| 9 | action_penalty + conditional_speed_reward + progress_reward + proximity_reward + stability_penalty | 186.90 | 772.40 | 0.670 | progress 0.017; stability -0.013 | failure | needs_review | inspect component balance |
-| 10 | action_penalty + conditional_speed_reward + progress_reward + proximity_reward + stability_penalty | 186.90 | 772.40 | 0.670 | progress 0.017; stability -0.013 | failure | needs_review | inspect component balance |
+| iter | reward_structure | external_score | best_so_far | delta_from_best | len | gen_reward | key_component_signal | verdict | decision | diagnosis | next_action |
+|---:|---|---:|---:|---:|---:|---:|---|---|---|---|---|
+| 1 | progress_reward + stability_penalty | -282.78 | -282.78 | 0.00 | 73.80 | -0.026 | progress 0.011; stability -0.037 | failure | new_best | early_failure_or_crash | add smoother approach/landing guidance |
+| 2 | distance_anchor + landing_quality + progress_reward + speed_penalty + stability_penalty | -281.91 | -282.78 | 0.87 | 74.50 | -0.069 | progress 0.068; speed -0.075; stability -0.031; distance -0.051; landing 0.019 | failure | no_meaningful_improvement | early_failure_or_crash | add smoother approach/landing guidance |
 
 ## Stable Lessons
 
 - Use external evaluation reward as the fitness signal; generated reward alone is not enough.
+- Target solved threshold for Env_001: mean external evaluation score >= 200.
+- Preserve best-so-far reward; final reward should be the best reward, not necessarily the last reward.
+- If the task has been solved and a later revision drops below target, stop and keep the best reward.
 - Keep terminal_success_reward blocked until an explicit success signal is available.
 - Keep terminal_failure_penalty blocked until failure reason is available.
 - Contact flags are only usable inside a guarded landing proxy: near target + low speed + stable angle + contact.
 - Avoid speed or stability penalties dominating the main progress signal.
 - Avoid a hard sparse completion bonus as the only landing guidance.
-- Keep memory short: record component structure, key evidence, diagnosis, and next action only.
+- Keep memory short: record component structure, score, best-so-far, decision, diagnosis, and next action only.
 
 ## Latest Iter Detail
 
-### iter_10
+### iter_2
 
-- reward_structure: action_penalty + conditional_speed_reward + progress_reward + proximity_reward + stability_penalty
-- external_score: 186.90
-- mean_episode_length: 772.40
+- reward_structure: distance_anchor + landing_quality + progress_reward + speed_penalty + stability_penalty
+- external_score: -281.91
+- best_score_so_far: -282.78
+- best_iter: 1
+- mean_episode_length: 74.50
 - reward_error_count: 0
+- verdict: failure
+- decision: no_meaningful_improvement
 
 #### component_evidence
 
-- progress 0.017; stability -0.013
+- progress 0.068; speed -0.075; stability -0.031; distance -0.051; landing 0.019
 
 #### diagnosis
 
-- needs_review
+- early_failure_or_crash
 
 #### next_action
 
-- inspect component balance
+- add smoother approach/landing guidance
