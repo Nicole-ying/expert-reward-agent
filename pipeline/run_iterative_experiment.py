@@ -278,6 +278,8 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     stopped_reason = "completed_all_rounds"
     rounds_completed = 0
     last_score = None
+    force_fresh_restart = False
+    restart_count = 0
 
     for iteration_index in range(1, rounds + 1):
         version = iteration_index
@@ -288,12 +290,14 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
         print(f"Iteration {iteration_index}/{rounds}")
         print("-" * 60)
 
-        if iteration_index == 1:
+        if iteration_index == 1 or force_fresh_restart:
+            print(">>> Fresh restart: re-running full generation pipeline")
+            force_fresh_restart = False
             run_cmd([
                 "python", "-m", "pipeline.run_direct_generation_pipeline",
                 "--config", config_path,
                 "--run-name", paths["gen_run_name"],
-                "--seed", str(seed),
+                "--seed", str(seed + restart_count * 100),
                 *mock_args,
             ])
             current_reward = reward_path_for(cfg, paths["gen_run_name"], 1)
@@ -404,9 +408,11 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             stopped_reason = decision
             stop_now = True
         elif (not solved_seen) and no_improve_count >= patience_unsolved:
-            decision = "stop_unsolved_stagnation_keep_best"
-            stopped_reason = decision
-            stop_now = True
+            decision = "unsolved_stagnation_fresh_restart"
+            force_fresh_restart = True
+            restart_count += 1
+            no_improve_count = 0
+            print(f">>> Unsolved stagnation after {patience_unsolved} iters. Fresh restart #{restart_count} (full regeneration, seed offset +{restart_count * 100}).")
 
         run_cmd([
             "python", "-m", "pipeline.run_06_update_reward_memory",
