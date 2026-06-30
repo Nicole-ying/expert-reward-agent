@@ -110,57 +110,38 @@ def is_identical_reward(path_a, path_b):
     return code_signature(path_a) == code_signature(path_b)
 
 
-def build_agent_context_header(iteration_index, target_score, best_score, best_iter, last_score, no_improve_count, solved_seen):
+def read_analysis_action(context_path):
+    """Extract recommended_action from analysis_report.md."""
+    report_path = Path(context_path).parent / "analysis_report.md"
+    if report_path.exists():
+        text = report_path.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            if line.startswith("## Recommended Action:"):
+                return line.replace("## Recommended Action:", "").strip()
+    return "mix"
+
+
+def prepend_agent_context(context_path, iter_num, target_score, best_score, best_iter, solved_seen):
+    action = read_analysis_action(context_path)
     best_text = "N/A" if best_score is None else f"{best_score:.3f}"
     best_iter_text = "N/A" if best_iter is None else str(best_iter)
-    last_text = "N/A" if last_score is None else f"{last_score:.3f}"
 
-    if solved_seen:
-        trend = "solved"
-        guidance = "Prefer small tunes over large changes. Preserve what works."
-        suggest = "tune"
-    elif last_score is not None and best_score is not None and last_score < best_score - 20:
-        trend = "declining_from_best"
-        guidance = "Score dropped significantly from best. Investigate what changed and revert harmful modifications."
-        suggest = "tune (revert harmful changes)"
-    elif no_improve_count >= 3:
-        trend = "stagnant"
-        guidance = "Current skeleton family has been tried 3+ rounds with no improvement. The KB skeleton suggestions below are DIFFERENT architectures — you MUST try one. Do NOT stay on the same skeleton with coefficient tuning."
-        suggest = "rebuild"
-    elif no_improve_count >= 1:
-        trend = "stalling"
-        guidance = "Current skeleton is not improving. Consider mix (add/delete components) or rebuild (switch skeleton family from KB suggestions)."
-        suggest = "mix or rebuild"
-    elif last_score is not None and best_score is not None and last_score < best_score:
-        trend = "below_best"
-        guidance = "Investigate why score dropped from best. Consider reverting harmful changes."
-        suggest = "tune or mix"
-    else:
-        trend = "searching"
-        guidance = "Continue refining based on evidence."
-        suggest = "tune or mix"
+    header = f"""# Agent Context
 
-    return f"""# Agent Context
-
-- iteration: {iteration_index}
+- iteration: {iter_num}
 - target_score: {target_score:.3f}
 - best_score: {best_text} (iter {best_iter_text})
-- current_score: {last_text}
-- stagnation_rounds: {no_improve_count}
-- trend: {trend}
-- guidance: {guidance}
-- suggested_action: {suggest}
+- analysis_recommends: {action}
+- solved: {solved_seen}
 
-When suggested_action is rebuild, the current skeleton family has FAILED.
-You MUST pick a different architecture from the KB Skeleton Suggestions below.
-Do NOT return another coefficient-tuned variant of the same skeleton.
+The analysis LLM (04) has diagnosed the previous training results.
+Its recommended action is **{action}**. Follow this direction unless you have strong evidence otherwise.
+If the recommendation is rebuild, pick a different skeleton from expert_reward_context.md.
 """
 
-
-def prepend_agent_context(context_path, header_text):
     p = Path(context_path)
     old = p.read_text(encoding="utf-8") if p.exists() else ""
-    p.write_text(header_text.strip() + "\n\n" + old, encoding="utf-8")
+    p.write_text(header.strip() + "\n\n" + old, encoding="utf-8")
 
 
 def append_noop_retry_instruction(context_path, attempt):
@@ -322,16 +303,14 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 "--config", config_path,
                 *mock_args,
             ])
-            header_text = build_agent_context_header(
-                iteration_index=iteration_index,
+            prepend_agent_context(
+                paths["context_path"],
+                iter_num=iteration_index,
                 target_score=target_score,
                 best_score=best_score,
                 best_iter=best_iter,
-                last_score=last_score,
-                no_improve_count=no_improve_count,
                 solved_seen=solved_seen,
             )
-            prepend_agent_context(paths["context_path"], header_text)
 
             identical_after_retries = False
             for attempt in range(max_identical_retries + 1):
