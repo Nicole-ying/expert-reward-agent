@@ -420,6 +420,17 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             no_improve_count = 0
             print(f">>> Unsolved stagnation after {patience_unsolved} iters. Fresh restart #{restart_count} (full regeneration, seed offset +{restart_count * 100}).")
 
+        new_lessons_arg = []
+        if iteration_index > 1:
+            diag_file = paths["iter_root"] / "diagnosis.json"
+            if diag_file.exists():
+                try:
+                    diag = json.loads(diag_file.read_text(encoding="utf-8"))
+                    nl = diag.get("new_lessons", [])
+                    if nl:
+                        new_lessons_arg = ["--new-lessons", json.dumps(nl, ensure_ascii=False)]
+                except Exception:
+                    pass
         run_cmd([
             "python", "-m", "pipeline.run_06_update_reward_memory",
             "--iter", str(iteration_index),
@@ -429,6 +440,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             "--best-score", str(best_score),
             "--best-iter", str(best_iter),
             "--decision", decision,
+            *new_lessons_arg,
         ])
 
         previous_reward = current_reward

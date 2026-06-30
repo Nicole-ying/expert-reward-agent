@@ -265,7 +265,7 @@ def build_context(
     lines.append("## Training Feedback (raw evidence)")
     lines.append("")
     lines.append(feedback_md)
-    return "\n".join(lines).strip() + "\n"
+    return "\n".join(lines).strip() + "\n", diagnosis
 
 
 def main():
@@ -281,7 +281,7 @@ def main():
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
 
-    context = build_context(
+    context, diagnosis = build_context(
         train_run_dir=args.train_run_dir,
         memory_path=args.memory,
         cards_path=args.cards,
@@ -292,6 +292,10 @@ def main():
         mock=args.mock,
     )
     write_text(args.out, context)
+    # Write raw diagnosis JSON so the orchestrator can extract new_lessons
+    diag_path = str(Path(args.out).parent / "diagnosis.json")
+    import json as _json
+    write_text(diag_path, _json.dumps(diagnosis, ensure_ascii=False, indent=2))
     print(args.out)
 
 

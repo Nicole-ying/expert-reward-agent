@@ -5,15 +5,12 @@ from pathlib import Path
 
 
 HEADER = "# Reward Memory"
-TABLE_HEADER = "| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|"
-DEFAULT_LESSONS = """## Stable Lessons
-
-- Target: mean external score >= 200.
+TABLE_HEADER = "| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|\n"
+DEFAULT_LESSONS = """- Target: mean external score >= 200.
 - terminal_success_reward and terminal_failure_penalty blocked (no explicit flag).
 - Use external evaluation as fitness signal, not generated_reward alone.
 - Contact only inside guarded landing proxy (near target + low speed + stable angle).
-- Prefer continuous shaping over hard sparse bonuses.
-"""
+- Prefer continuous shaping over hard sparse bonuses."""
 
 
 def read_text(path, default=""):
@@ -121,7 +118,7 @@ def existing_rows(memory_md):
     return rows
 
 
-def build_memory(memory_path, iter_id, training_run_dir, target_score, best_score=None, best_iter=None, decision="continue"):
+def build_memory(memory_path, iter_id, training_run_dir, target_score, best_score=None, best_iter=None, decision="continue", new_lessons=None):
     run_dir = Path(training_run_dir)
     summary = read_json(run_dir / "training_summary.json")
     feedback_md = read_text(run_dir / "training_feedback.md")
@@ -148,10 +145,21 @@ def build_memory(memory_path, iter_id, training_run_dir, target_score, best_scor
     )
 
     memory_md = read_text(memory_path, "")
-    # Preserve existing lessons
+    # Preserve existing lessons (strip the heading)
     existing_lessons = ""
     if "## Stable Lessons" in memory_md:
-        existing_lessons = memory_md.split("## Stable Lessons")[1].strip()
+        existing_lessons = memory_md.split("## Stable Lessons", 1)[1].strip()
+    # Accumulate new lessons
+    if new_lessons:
+        nl_list = json.loads(new_lessons) if isinstance(new_lessons, str) else new_lessons
+        if isinstance(nl_list, list):
+            for nl in nl_list:
+                nl_str = f"- {nl}"
+                if nl_str not in existing_lessons:
+                    if existing_lessons:
+                        existing_lessons += "\n" + nl_str
+                    else:
+                        existing_lessons = nl_str
     lessons = existing_lessons if existing_lessons else DEFAULT_LESSONS.strip()
 
     rows = [r for r in existing_rows(memory_md) if not re.match(rf"^\|\s*{iter_id}\s*\|", r)]
@@ -175,6 +183,7 @@ def main():
     ap.add_argument("--best-score", type=float, default=None)
     ap.add_argument("--best-iter", type=int, default=None)
     ap.add_argument("--decision", default="continue")
+    ap.add_argument("--new-lessons", default=None)
     args = ap.parse_args()
 
     out = build_memory(
@@ -185,6 +194,7 @@ def main():
         best_score=args.best_score,
         best_iter=args.best_iter,
         decision=args.decision,
+        new_lessons=args.new_lessons,
     )
     print(out)
 
