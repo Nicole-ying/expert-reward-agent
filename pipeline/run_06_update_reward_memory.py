@@ -4,33 +4,15 @@ import re
 from pathlib import Path
 
 
-HEADER = """# Reward Memory for Env_001
+HEADER = "# Reward Memory"
+TABLE_HEADER = "| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|"
+DEFAULT_LESSONS = """## Stable Lessons
 
-This file stores compact cross-iteration history. It records:
-- Full reward code path per iteration (the code lives in the generation directory)
-- Per-iteration component structure and evidence
-- Score trend and diagnosis
-
-The history table is used by the analysis LLM to detect stagnation and repeated skeletons.
-"""
-
-STABLE_LESSONS = """## Stable Lessons
-
-- Use external evaluation reward as the fitness signal; generated reward alone is not enough.
-- Target solved threshold for Env_001: mean external evaluation score >= 200.
-- Preserve best-so-far reward; final reward should be the best reward, not necessarily the last reward.
-- If the task has been solved and a later revision drops below target, stop and keep the best reward.
-- Keep terminal_success_reward blocked until an explicit success signal is available.
-- Keep terminal_failure_penalty blocked until failure reason is available.
-- Contact flags are only usable inside a guarded landing proxy: near target + low speed + stable angle + contact.
-- Avoid speed or stability penalties dominating the main progress signal.
-- Avoid a hard sparse completion bonus as the only landing guidance.
-"""
-
-TABLE_HEADER = """## Evolution Summary
-
-| iter | reward_structure | external_score | best_so_far | delta_from_best | len | gen_reward | key_component_signal | verdict | decision | diagnosis | next_action |
-|---:|---|---:|---:|---:|---:|---:|---|---|---|---|---|
+- Target: mean external score >= 200.
+- terminal_success_reward and terminal_failure_penalty blocked (no explicit flag).
+- Use external evaluation as fitness signal, not generated_reward alone.
+- Contact only inside guarded landing proxy (near target + low speed + stable angle).
+- Prefer continuous shaping over hard sparse bonuses.
 """
 
 
@@ -84,7 +66,7 @@ def get_stat(component_stats, name):
 
 
 def key_signal(component_stats):
-    """Report ALL components, not just hardcoded names."""
+    """Compact component summary for table cell."""
     parts = []
     skip = {"component.total_reward", "component.generated_reward"}
     for name in sorted(component_stats.keys()):
@@ -92,15 +74,9 @@ def key_signal(component_stats):
             continue
         item = component_stats[name]
         short = component_name(name)
-        mean_val = float(item.get("mean", 0))
-        trigger = float(item.get("nonzero_rate", 1.0))
-        if trigger < 0.99:
-            parts.append(f"{short} {f3(mean_val)} ({trigger:.2%})")
-        else:
-            parts.append(f"{short} {f3(mean_val)}")
-    if not parts:
-        return "component stats unavailable"
-    return "; ".join(parts[:8])
+        m = float(item.get("mean", 0))
+        parts.append(f"{short}={f3(m)}")
+    return " ".join(parts[:5]) if parts else "—"
 
 
 def diagnosis_and_action(feedback_md, component_stats, mean_score, target_score):
@@ -145,35 +121,6 @@ def existing_rows(memory_md):
     return rows
 
 
-def latest_detail(iter_id, structure, mean_score, best_score, best_iter, mean_len, reward_error_count, key_component, verdict, decision, diagnosis, action, code_path=""):
-    block = f"""### iter_{iter_id}
-
-- reward_structure: {structure}
-- external_score: {f2(mean_score)}
-- best_score_so_far: {f2(best_score)}
-- best_iter: {best_iter}
-- mean_episode_length: {f2(mean_len)}
-- reward_error_count: {reward_error_count}
-- verdict: {verdict}
-- decision: {decision}
-
-#### component_evidence
-
-- {key_component}
-
-#### diagnosis
-
-- {diagnosis}
-
-#### next_action
-
-- {action}
-"""
-    if code_path:
-        block += f"\n#### reward_code_path\n- {code_path}\n"
-    return block
-
-
 def build_memory(memory_path, iter_id, training_run_dir, target_score, best_score=None, best_iter=None, decision="continue"):
     run_dir = Path(training_run_dir)
     summary = read_json(run_dir / "training_summary.json")
@@ -184,35 +131,34 @@ def build_memory(memory_path, iter_id, training_run_dir, target_score, best_scor
 
     mean_score = float(external_eval.get("mean_eval_reward", 0.0))
     mean_len = float(external_eval.get("mean_episode_length", 0.0))
-    gen_reward = get_stat(component_stats, "component.generated_reward").get("mean", "N/A")
-    reward_error_count = component_summary.get("reward_error_count_max", 0)
 
     if best_score is None:
         best_score = mean_score
     if best_iter is None:
         best_iter = iter_id
-    delta_from_best = mean_score - float(best_score)
+    delta = mean_score - float(best_score)
 
     structure = reward_structure(component_stats)
     signal = key_signal(component_stats)
     diagnosis, action = diagnosis_and_action(feedback_md, component_stats, mean_score, target_score)
-    verdict = "success" if mean_score >= target_score else "failure"
-
-    # Store reward code path for reference
-    code_path = str(run_dir.parent.parent / "generation" / f"reward_v{iter_id}.py")
 
     row = (
-        f"| {iter_id} | {structure} | {f2(mean_score)} | {f2(best_score)} | {f2(delta_from_best)} | "
-        f"{f2(mean_len)} | {f3(gen_reward)} | {signal} | {verdict} | {decision} | {diagnosis} | {action} |"
+        f"| {iter_id} | {structure} | {f2(mean_score)} | {f2(best_score)} | "
+        f"{f2(delta)} | {f2(mean_len)} | {signal} | {decision} |"
     )
 
     memory_md = read_text(memory_path, "")
+    # Preserve existing lessons
+    existing_lessons = ""
+    if "## Stable Lessons" in memory_md:
+        existing_lessons = memory_md.split("## Stable Lessons")[1].strip()
+    lessons = existing_lessons if existing_lessons else DEFAULT_LESSONS.strip()
+
     rows = [r for r in existing_rows(memory_md) if not re.match(rf"^\|\s*{iter_id}\s*\|", r)]
     rows.append(row)
     rows = sorted(rows, key=lambda r: int(r.split("|")[1].strip()))
 
-    text = HEADER.strip() + "\n\n" + TABLE_HEADER + "\n".join(rows) + "\n\n" + STABLE_LESSONS.strip() + "\n\n"
-    text += latest_detail(iter_id, structure, mean_score, best_score, best_iter, mean_len, reward_error_count, signal, verdict, decision, diagnosis, action, code_path=code_path)
+    text = HEADER.strip() + "\n\n" + TABLE_HEADER + "\n".join(rows) + "\n\n## Stable Lessons\n\n" + lessons + "\n"
 
     p = Path(memory_path)
     p.parent.mkdir(parents=True, exist_ok=True)

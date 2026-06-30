@@ -47,5 +47,6 @@
     "skeleton_family": "progress+stability+landing_proxy+anchor"
   },
   "recommended_action": "tune|add|delete|mix|rebuild",
-  "reasoning": "简短的中文诊断推理，引用关键证据"
+  "reasoning": "简短的中文诊断推理，引用关键证据",
+  "new_lessons": ["从本轮训练中学到的规律，如：progress_reward coefficient must be >= 50 to drive learning", "每条一条"]
 }

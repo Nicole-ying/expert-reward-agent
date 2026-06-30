@@ -178,69 +178,53 @@ def write_component_stats_md(path, component_summary):
 def write_training_feedback_md(path, summary, eval_result, component_summary):
     stats = component_summary.get("component_stats", {})
     lines = []
-    lines.append("# Training Feedback for Reward Revision")
+    lines.append("# Training Feedback")
     lines.append("")
-    lines.append("This file is the preferred LLM input for the next diagnosis/reflection step.")
-    lines.append("It is intentionally short and evidence-focused.")
+    lines.append("## External evaluation")
+    lines.append(f"- score: {_fmt_float(eval_result['mean_eval_reward'])}")
+    lines.append(f"- episode_length: {_fmt_float(eval_result['mean_episode_length'])} (mean)")
+    lines.append(f"- range: [{_fmt_float(eval_result['min_eval_reward'])}, {_fmt_float(eval_result['max_eval_reward'])}]")
+    lines.append(f"- errors: {component_summary['reward_error_count_max']}")
     lines.append("")
-    lines.append("## 1. Run")
-    lines.append(f"- reward_path: {summary['reward_path']}")
-    lines.append(f"- train_run: {summary['run_name']}")
-    lines.append(f"- total_timesteps: {summary['total_timesteps']}")
-    lines.append(f"- n_envs: {summary['n_envs']}")
-    lines.append(f"- reward_clip: {summary['reward_clip']}")
-    lines.append(f"- error_fallback: {summary['error_fallback']}")
+    lines.append("## Component evidence")
     lines.append("")
-    lines.append("## 2. External evaluation")
-    lines.append(f"- mean_eval_reward: {_fmt_float(eval_result['mean_eval_reward'])}")
-    lines.append(f"- mean_episode_length: {_fmt_float(eval_result['mean_episode_length'])}")
-    lines.append(f"- min_eval_reward: {_fmt_float(eval_result['min_eval_reward'])}")
-    lines.append(f"- max_eval_reward: {_fmt_float(eval_result['max_eval_reward'])}")
-    lines.append("")
-    lines.append("## 3. Reward execution health")
-    lines.append(f"- reward_error_count_max: {component_summary['reward_error_count_max']}")
-    lines.append("")
-    lines.append("## 4. All component evidence")
-    gen_r = stats.get("component.generated_reward", {})
-    if gen_r:
-        lines.append(f"- generated_reward  mean: {_fmt_float(gen_r.get('mean'))}, abs_mean: {_fmt_float(gen_r.get('abs_mean'))}")
+    lines.append("| component | mean | abs_mean | nonzero_rate | min | max |")
+    lines.append("|-----------|------|----------|-------------|-----|-----|")
     for name in sorted(stats.keys()):
-        if name == "component.generated_reward" or name.startswith("component.original_env"):
+        if name.startswith("component.original_env"):
             continue
         item = stats[name]
-        comp_short = name.replace("component.", "", 1)
-        lines.append(f"- {comp_short}  mean: {_fmt_float(item.get('mean'))}, "
-                      f"abs_mean: {_fmt_float(item.get('abs_mean'))}, "
-                      f"nonzero_rate: {_fmt_float(item.get('nonzero_rate'))}, "
-                      f"min: {_fmt_float(item.get('min'))}, max: {_fmt_float(item.get('max'))}")
+        short = name.replace("component.", "", 1)
+        lines.append(
+            f"| {short} | {_fmt_float(item.get('mean'))} | {_fmt_float(item.get('abs_mean'))} | "
+            f"{_fmt_float(item.get('nonzero_rate'))} | {_fmt_float(item.get('min'))} | {_fmt_float(item.get('max'))} |"
+        )
     lines.append("")
-    lines.append("## 5. Failure evidence")
+    lines.append("## Signals")
     mean_reward = float(eval_result.get("mean_eval_reward", 0.0))
     mean_len = float(eval_result.get("mean_episode_length", 0.0))
+    signals = []
     if mean_reward < 0 and mean_len < 150:
-        lines.append("- signal: early_failure_or_crash (negative score + short episodes)")
+        signals.append("early_failure_or_crash")
     elif mean_reward < 0 and mean_len >= 900:
-        lines.append("- signal: persistent_negative_score (survives full length but never achieves positive return)")
-    if mean_reward > 0 and mean_reward < 200:
-        lines.append("- signal: partial_progress (positive but below target 200)")
-    # Per-component dominance checks
+        signals.append("persistent_negative_score")
+    if 0 < mean_reward < 200:
+        signals.append("partial_progress")
+    if mean_reward >= 200:
+        signals.append("solved")
+    # Penalty dominance
     progress_item = stats.get("component.progress_reward", {})
     for name, item in stats.items():
-        if name in ("component.progress_reward", "component.generated_reward", "component.total_reward"):
+        if name in ("component.progress_reward", "component.total_reward", "component.generated_reward"):
             continue
         if name.startswith("component.original_env"):
             continue
         if progress_item and abs(float(item.get("mean", 0))) > abs(float(progress_item.get("mean", 0))) * 0.8:
-            comp_short = name.replace("component.", "", 1)
-            lines.append(f"- signal: penalty_dominance ({comp_short} abs_mean={_fmt_float(item.get('abs_mean'))} vs progress mean={_fmt_float(progress_item.get('mean'))})")
-        # Low trigger rate for bonus-like components
+            signals.append(f"penalty_dominance:{name.replace('component.', '', 1)}")
         trigger = float(item.get("nonzero_rate", 1.0))
         if trigger < 0.02 and float(item.get("mean", 0)) >= 0:
-            comp_short = name.replace("component.", "", 1)
-            lines.append(f"- signal: sparse_proxy ({comp_short} trigger_rate={_fmt_float(trigger)})")
-    lines.append("")
-    lines.append("## 6. Do not directly change from this file alone")
-    lines.append("Use this feedback together with reward code, memory history, and expert failure-mode knowledge before generating the next reward.")
+            signals.append(f"sparse_proxy:{name.replace('component.', '', 1)}")
+    lines.append("; ".join(signals) if signals else "none_detected")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
