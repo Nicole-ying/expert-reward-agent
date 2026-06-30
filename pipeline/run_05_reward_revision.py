@@ -81,7 +81,7 @@ def write_revision_prompt_stats(run_dir, system_prompt, user_prompt):
     write_text(Path(run_dir) / "prompt_records/03_reward_revision.prompt_stats.md", "\n".join(lines) + "\n")
 
 
-def run(config_path, previous_reward_path, iteration_context_path, out_run_name, reward_version, mock=False):
+def run(config_path, previous_reward_path, iteration_context_path, out_run_name, reward_version, mock=False, best_reward_path=None):
     cfg = load_config(config_path)
     run_dir = Path(cfg["experiment"]["run_root"]) / out_run_name
     for sub in ["llm_inputs", "prompt_records", "response_records", "validations"]:
@@ -92,13 +92,23 @@ def run(config_path, previous_reward_path, iteration_context_path, out_run_name,
     previous_reward = read_text(previous_reward_path)
     iteration_context = read_text(iteration_context_path)
 
-    user_prompt = "\n\n".join([
+    user_parts = [
         ENV_CONTRACT,
         "# previous_reward.py",
         "```python\n" + previous_reward.strip() + "\n```",
+    ]
+    if best_reward_path and Path(best_reward_path).exists():
+        best_reward = read_text(best_reward_path)
+        user_parts += [
+            "# best_reward.py (historical best, for reference)",
+            "This is the highest-scoring reward so far. Learn from it, do not make it worse.",
+            "```python\n" + best_reward.strip() + "\n```",
+        ]
+    user_parts += [
         "# iteration_context.md",
         iteration_context,
-    ])
+    ]
+    user_prompt = "\n\n".join(user_parts)
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_revision.input.md", user_prompt)
     record_prompt(run_dir, "03_reward_revision", system_prompt, user_prompt)
@@ -143,9 +153,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/env001_deepseek_rag.yaml")
     ap.add_argument("--previous-reward", required=True)
+    ap.add_argument("--best-reward", default=None)
     ap.add_argument("--iteration-context", required=True)
     ap.add_argument("--out-run-name", required=True)
     ap.add_argument("--reward-version", default="v2")
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
-    run(args.config, args.previous_reward, args.iteration_context, args.out_run_name, args.reward_version, args.mock)
+    run(args.config, args.previous_reward, args.iteration_context, args.out_run_name, args.reward_version, args.mock, args.best_reward)

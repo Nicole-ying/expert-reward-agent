@@ -110,10 +110,47 @@ def is_identical_reward(path_a, path_b):
     return code_signature(path_a) == code_signature(path_b)
 
 
-def prepend_control_decision(context_path, control_text):
+def build_agent_context_header(iteration_index, target_score, best_score, best_iter, last_score, no_improve_count, solved_seen):
+    best_text = "N/A" if best_score is None else f"{best_score:.3f}"
+    best_iter_text = "N/A" if best_iter is None else str(best_iter)
+    last_text = "N/A" if last_score is None else f"{last_score:.3f}"
+
+    if solved_seen:
+        trend = "solved"
+        guidance = "Prefer small tunes over large changes. Preserve what works."
+        suggest = "tune"
+    elif last_score is not None and best_score is not None and last_score < best_score:
+        trend = "declining_from_best"
+        guidance = "Investigate why score dropped from best. Consider reverting harmful changes."
+        suggest = "tune or rebuild"
+    elif no_improve_count >= 2:
+        trend = "stagnant"
+        guidance = "Current skeleton may have reached its limit. Consider exploring alternative structures."
+        suggest = "mix or rebuild"
+    else:
+        trend = "searching"
+        guidance = "Continue refining based on evidence."
+        suggest = "tune or add"
+
+    return f"""# Agent Context
+
+- iteration: {iteration_index}
+- target_score: {target_score:.3f}
+- best_score: {best_text} (iter {best_iter_text})
+- current_score: {last_text}
+- trend: {trend}
+- guidance: {guidance}
+- suggested_action: {suggest}
+
+The analysis report and expert cards below provide more detailed diagnostic evidence.
+Use them to decide your concrete action (tune/add/delete/mix/rebuild).
+"""
+
+
+def prepend_agent_context(context_path, header_text):
     p = Path(context_path)
     old = p.read_text(encoding="utf-8") if p.exists() else ""
-    p.write_text(control_text.strip() + "\n\n" + old, encoding="utf-8")
+    p.write_text(header_text.strip() + "\n\n" + old, encoding="utf-8")
 
 
 def append_noop_retry_instruction(context_path, attempt):
@@ -129,44 +166,6 @@ You must perform a concrete tune/delete/add/mix action justified by the training
 Do not return identical reward code again.
 """
     p.write_text(text, encoding="utf-8")
-
-
-def build_control_decision(iteration_index, target_score, best_score, best_iter, last_score, no_improve_count, solved_seen):
-    if solved_seen:
-        decision = "TARGET_SOLVED_PROTECT_BEST"
-        required_action = "small tune only if evidence supports improvement; otherwise preserve best"
-        forbidden = "large rebuild; large new penalties; ignoring best_score_so_far; returning identical reward as a fake revision"
-        trend = "solved_previous_iterations"
-    else:
-        decision = "MUST_MODIFY"
-        required_action = "tune/delete/add/mix based on failure evidence; do not return identical reward"
-        forbidden = "no-op revision; generic restatement; changing comments only"
-        trend = "unsolved_search"
-
-    if last_score is not None and best_score is not None:
-        if last_score < best_score:
-            trend = "below_best"
-        elif abs(last_score - best_score) < 1e-9:
-            trend = "at_best"
-
-    best_score_text = "N/A" if best_score is None else f"{best_score:.3f}"
-    best_iter_text = "N/A" if best_iter is None else str(best_iter)
-    last_score_text = "N/A" if last_score is None else f"{last_score:.3f}"
-
-    return f"""# Iteration Control Decision
-
-- iteration_to_generate: {iteration_index}
-- target_score: {target_score:.3f}
-- best_score_so_far: {best_score_text}
-- best_iter: {best_iter_text}
-- previous_score: {last_score_text}
-- no_improvement_count: {no_improve_count}
-- trend: {trend}
-- decision: {decision}
-- required_action: {required_action}
-- forbidden_action: {forbidden}
-- note: This control block has higher priority than matched expert cards.
-"""
 
 
 def copy_best_artifacts(cfg, prefix, seed, iteration_index, reward_path, reward_md_path, train_dir, best_score, target_score):
@@ -310,8 +309,10 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 "--cards", cards_path,
                 "--top-k", str(cards_top_k),
                 "--out", str(paths["context_path"]),
+                "--config", config_path,
+                *mock_args,
             ])
-            control_text = build_control_decision(
+            header_text = build_agent_context_header(
                 iteration_index=iteration_index,
                 target_score=target_score,
                 best_score=best_score,
@@ -320,12 +321,15 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 no_improve_count=no_improve_count,
                 solved_seen=solved_seen,
             )
-            prepend_control_decision(paths["context_path"], control_text)
+            prepend_agent_context(paths["context_path"], header_text)
 
             identical_after_retries = False
             for attempt in range(max_identical_retries + 1):
                 if attempt > 0:
                     append_noop_retry_instruction(paths["context_path"], attempt)
+                best_arg = []
+                if best_reward and str(best_reward) != str(previous_reward):
+                    best_arg = ["--best-reward", str(best_reward)]
                 run_cmd([
                     "python", "-m", "pipeline.run_05_reward_revision",
                     "--config", config_path,
@@ -333,6 +337,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                     "--iteration-context", str(paths["context_path"]),
                     "--out-run-name", paths["gen_run_name"],
                     "--reward-version", f"v{version}",
+                    *best_arg,
                     *mock_args,
                 ])
                 current_reward = reward_path_for(cfg, paths["gen_run_name"], version)

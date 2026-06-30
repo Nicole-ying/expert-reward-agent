@@ -177,9 +177,6 @@ def write_component_stats_md(path, component_summary):
 
 def write_training_feedback_md(path, summary, eval_result, component_summary):
     stats = component_summary.get("component_stats", {})
-    soft = stats.get("component.soft_landing_bonus", {})
-    progress = stats.get("component.progress_reward", {})
-    stability = stats.get("component.stability_penalty", {})
     lines = []
     lines.append("# Training Feedback for Reward Revision")
     lines.append("")
@@ -203,27 +200,47 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
     lines.append("## 3. Reward execution health")
     lines.append(f"- reward_error_count_max: {component_summary['reward_error_count_max']}")
     lines.append("")
-    lines.append("## 4. Key component evidence")
-    if progress:
-        lines.append(f"- progress_reward mean: {_fmt_float(progress.get('mean'))}, nonzero_rate: {_fmt_float(progress.get('nonzero_rate'))}")
-    if stability:
-        lines.append(f"- stability_penalty mean: {_fmt_float(stability.get('mean'))}, abs_mean: {_fmt_float(stability.get('abs_mean'))}")
-    if soft:
-        lines.append(f"- soft_landing_bonus mean: {_fmt_float(soft.get('mean'))}, trigger_rate: {_fmt_float(soft.get('nonzero_rate'))}")
+    lines.append("## 4. All component evidence")
+    gen_r = stats.get("component.generated_reward", {})
+    if gen_r:
+        lines.append(f"- generated_reward  mean: {_fmt_float(gen_r.get('mean'))}, abs_mean: {_fmt_float(gen_r.get('abs_mean'))}")
+    for name in sorted(stats.keys()):
+        if name == "component.generated_reward" or name.startswith("component.original_env"):
+            continue
+        item = stats[name]
+        comp_short = name.replace("component.", "", 1)
+        lines.append(f"- {comp_short}  mean: {_fmt_float(item.get('mean'))}, "
+                      f"abs_mean: {_fmt_float(item.get('abs_mean'))}, "
+                      f"nonzero_rate: {_fmt_float(item.get('nonzero_rate'))}, "
+                      f"min: {_fmt_float(item.get('min'))}, max: {_fmt_float(item.get('max'))}")
     lines.append("")
-    lines.append("## 5. Preliminary failure hints")
+    lines.append("## 5. Failure evidence")
     mean_reward = float(eval_result.get("mean_eval_reward", 0.0))
     mean_len = float(eval_result.get("mean_episode_length", 0.0))
     if mean_reward < 0 and mean_len < 150:
-        lines.append("- likely_failure_mode: early_failure_or_crash")
-        lines.append("- evidence: negative external reward and short episode length")
-    if soft and float(soft.get("nonzero_rate", 0.0)) < 0.01:
-        lines.append("- likely_issue: soft_landing_bonus is too sparse or never reached")
-    if stability and progress and abs(float(stability.get("mean", 0.0))) > abs(float(progress.get("mean", 0.0))):
-        lines.append("- likely_issue: stability penalty may dominate progress signal")
+        lines.append("- signal: early_failure_or_crash (negative score + short episodes)")
+    elif mean_reward < 0 and mean_len >= 900:
+        lines.append("- signal: persistent_negative_score (survives full length but never achieves positive return)")
+    if mean_reward > 0 and mean_reward < 200:
+        lines.append("- signal: partial_progress (positive but below target 200)")
+    # Per-component dominance checks
+    progress_item = stats.get("component.progress_reward", {})
+    for name, item in stats.items():
+        if name in ("component.progress_reward", "component.generated_reward", "component.total_reward"):
+            continue
+        if name.startswith("component.original_env"):
+            continue
+        if progress_item and abs(float(item.get("mean", 0))) > abs(float(progress_item.get("mean", 0))) * 0.8:
+            comp_short = name.replace("component.", "", 1)
+            lines.append(f"- signal: penalty_dominance ({comp_short} abs_mean={_fmt_float(item.get('abs_mean'))} vs progress mean={_fmt_float(progress_item.get('mean'))})")
+        # Low trigger rate for bonus-like components
+        trigger = float(item.get("nonzero_rate", 1.0))
+        if trigger < 0.02 and float(item.get("mean", 0)) >= 0:
+            comp_short = name.replace("component.", "", 1)
+            lines.append(f"- signal: sparse_proxy ({comp_short} trigger_rate={_fmt_float(trigger)})")
     lines.append("")
     lines.append("## 6. Do not directly change from this file alone")
-    lines.append("Use this feedback together with reward_v1.py, reward_v1.md, and expert failure-mode knowledge before generating reward_v2.")
+    lines.append("Use this feedback together with reward code, memory history, and expert failure-mode knowledge before generating the next reward.")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
