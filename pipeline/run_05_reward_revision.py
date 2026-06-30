@@ -8,21 +8,10 @@ from llm_clients.deepseek_client import DeepSeekClient
 
 ENV_CONTRACT = """# environment_contract
 
-- env_id: Env_001
 - function_signature: def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-- allowed observation signals:
-  - obs[0], next_obs[0]: x_position relative to target
-  - obs[1], next_obs[1]: y_position relative to target
-  - obs[2], next_obs[2]: x_velocity
-  - obs[3], next_obs[3]: y_velocity
-  - obs[4], next_obs[4]: body_angle
-  - obs[5], next_obs[5]: angular_velocity
-  - obs[6], next_obs[6]: left_support_contact
-  - obs[7], next_obs[7]: right_support_contact
-- action: discrete engine command, usable only as current action
-- info: no reliable fields available
+- allowed: obs[0..7], next_obs[0..7], action (0=noop,1=left,2=main,3=right), info (no reliable fields)
 - forbidden: original_reward, official_reward, fitness_score, individual_reward, info['success'], info['failure'], info['termination_reason']
-- terminal_success_reward and terminal_failure_penalty remain blocked unless explicit signals are added later
+- terminal_success_reward and terminal_failure_penalty remain blocked (no explicit success/failure flag available).
 """
 
 
@@ -92,35 +81,71 @@ def run(config_path, previous_reward_path, iteration_context_path, out_run_name,
     previous_reward = read_text(previous_reward_path)
     iteration_context = read_text(iteration_context_path)
 
-    # Find expert_reward_context from the same seed (generation iter or fresh restart)
+    # Find expert_reward_context, strip v1-generation-only sections
     expert_ctx = ""
     gen_dir = Path(previous_reward_path).parent
     ctx_path = gen_dir / "expert_reward_context.md"
     if not ctx_path.exists():
-        # Walk up to find the most recent expert context in sibling iters
         seed_dir = gen_dir.parent.parent
         for d in sorted(Path(seed_dir).glob("iter_*/generation/expert_reward_context.md"), reverse=True):
             ctx_path = d
             break
     if ctx_path.exists():
         expert_ctx = read_text(str(ctx_path))
+        # Strip v1 generation instructions (noise for revision)
+        import re as _re
+        expert_ctx = _re.split(r"\n## \d+\. reward_v1 生成要求", expert_ctx)[0]
+
+    # Find environment_card for task context
+    env_card = ""
+    for d in sorted(Path(seed_dir).glob("iter_*/generation/environment_card.md"), reverse=True):
+        # Extract sections 1-5 (task goal, type, obs, action, termination)
+        raw = read_text(str(d))
+        parts = raw.split("## 6. reward")[0] if "## 6. reward" in raw else raw
+        env_card = parts.strip()
+        break
+
+    # Extract score info from memory for previous/best annotations
+    import json as _json
+    prev_score = "?"
+    best_score = "?"
+    memory_path = str(Path(iteration_context_path).parent.parent / "memory" / "reward_memory.md")
+    try:
+        for line in Path(memory_path).read_text(encoding="utf-8").splitlines():
+            if line.startswith("|"):
+                cols = [c.strip() for c in line.split("|")]
+                if len(cols) >= 4:
+                    try:
+                        s = float(cols[3])
+                        if s > float(best_score.replace("?", "-999")):
+                            best_score = cols[3]
+                    except: pass
+    except: pass
+    # Get prev score from training_feedback
+    prev_train = gen_dir.parent / "training" / "training_feedback.md"
+    if prev_train.exists():
+        fb = read_text(str(prev_train))
+        m = _re.search(r"score=([-\d.]+)", fb)
+        if m: prev_score = m.group(1)
 
     user_parts = [
+        "# Environment",
+        env_card if env_card else ENV_CONTRACT,
         ENV_CONTRACT,
     ]
     if expert_ctx:
         user_parts += [
-            "# expert_reward_context.md",
+            "# Expert Knowledge",
             expert_ctx,
         ]
     user_parts += [
-        "# previous_reward.py",
+        f"# previous_reward.py (score: {prev_score})",
         "```python\n" + previous_reward.strip() + "\n```",
     ]
     if best_reward_path and Path(best_reward_path).exists():
         best_reward = read_text(best_reward_path)
         user_parts += [
-            "# best_reward.py (historical best, for reference)",
+            f"# best_reward.py (score: {best_score})",
             "```python\n" + best_reward.strip() + "\n```",
         ]
     user_parts += [

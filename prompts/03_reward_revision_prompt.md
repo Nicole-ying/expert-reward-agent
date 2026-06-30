@@ -39,11 +39,7 @@
 
 # 输出
 
-先 JSON decision，后 Python code。
-
-```json
-{"action": "revert|tune|add|delete|mix|rebuild", "target": "组件/骨架名", "reasoning": "证据", "expected_effect": "期望", "risk_awareness": "风险"}
-```
+直接输出 Python code。可以在代码前用注释简短说明改动。
 
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):

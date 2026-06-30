@@ -286,7 +286,12 @@ def build_context(
     # Step 4: Memory table
     memory_table = render_memory_table(memory_md) if memory_md else "(no history)"
 
-    # Step 5: Assemble iteration_context.md
+    # Step 5: Extract stable lessons from memory
+    lessons = ""
+    if "## Stable Lessons" in memory_md:
+        lessons = memory_md.split("## Stable Lessons", 1)[1].strip()
+
+    # Step 6: Assemble iteration_context.md
     lines = []
     lines.append("# Iteration Context")
     lines.append("")
@@ -300,8 +305,21 @@ def build_context(
         lines.append("## Expert Cards")
         lines.append("\n\n".join(card_blocks))
         lines.append("")
-    lines.append("## Training Evidence")
-    lines.append(feedback_md)
+    if lessons:
+        lines.append("## Stable Lessons (from previous iterations)")
+        lines.append(lessons)
+        lines.append("")
+    lines.append("## Component Evidence")
+    # Extract just the component table from feedback
+    fb_lines = feedback_md.splitlines()
+    in_table = False
+    for fl in fb_lines:
+        if fl.startswith("| component"):
+            in_table = True
+        if in_table:
+            lines.append(fl)
+            if not fl.startswith("|"):
+                in_table = False
     return "\n".join(lines).strip() + "\n", diagnosis
 
 

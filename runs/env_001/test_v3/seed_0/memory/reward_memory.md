@@ -11,6 +11,7 @@
 | 7 | progress_reward + soft_landing_bonus + stability_penalty | 146.57 | 158.82 | -12.25 | 564.60 | progress_reward=0.091 soft_landing_bonus=0.397 stability_penalty=-0.146 | no_meaningful_improvement |
 | 8 | landing_shaping + progress_reward + stability_penalty | 100.05 | 158.82 | -58.77 | 846.40 | landing_shaping=1.370 progress_reward=0.228 stability_penalty=-0.022 | no_meaningful_improvement |
 | 9 | distance_reward + progress_reward + stability_penalty | -230.17 | 158.82 | -388.99 | 77.40 | distance_reward=-0.091 progress_reward=0.905 stability_penalty=-0.053 | unsolved_stagnation_fresh_restart |
+| 10 | distance_anchor + progress_reward + soft_landing_bonus + stability_penalty | -110.79 | 158.82 | -269.61 | 74.10 | distance_anchor=-0.486 progress_reward=0.161 soft_landing_bonus=0.011 stability_penalty=-0.248 | no_meaningful_improvement |
 
 ## Stable Lessons
 
