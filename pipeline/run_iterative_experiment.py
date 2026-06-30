@@ -290,6 +290,8 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
 
         if iteration_index == 1 or force_fresh_restart:
             print(">>> Fresh restart: re-running full generation pipeline")
+            if force_fresh_restart:
+                version = 1  # generation pipeline always outputs reward_v1
             force_fresh_restart = False
             run_cmd([
                 "python", "-m", "pipeline.run_direct_generation_pipeline",
