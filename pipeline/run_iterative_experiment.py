@@ -1,4 +1,8 @@
 import argparse
+import ast
+import hashlib
+import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -26,12 +30,17 @@ def maybe_reset_memory(memory_path, reset):
     p.parent.mkdir(parents=True, exist_ok=True)
 
 
+def experiment_root_for(cfg, prefix, seed):
+    run_root = Path(cfg["experiment"]["run_root"])
+    experiment_root = Path(cfg.get("iteration", {}).get("experiment_root", str(run_root / "experiments")))
+    return experiment_root / f"seed_{seed}" / prefix
+
+
 def build_paths(cfg, prefix, iteration_index, seed):
     iter_pad = pad_iter(iteration_index)
     seed_dir = f"seed_{seed}"
     run_root = Path(cfg["experiment"]["run_root"])
-    experiment_root = Path(cfg.get("iteration", {}).get("experiment_root", str(run_root / "experiments"))) / seed_dir
-    iter_root = experiment_root / prefix / f"iter_{iter_pad}"
+    iter_root = experiment_root_for(cfg, prefix, seed) / f"iter_{iter_pad}"
     gen_run_name = f"experiments/{seed_dir}/{prefix}/iter_{iter_pad}/generation"
     train_run_name = f"experiments/{seed_dir}/{prefix}/iter_{iter_pad}/training"
     train_dir = run_root / "training_runs" / train_run_name
@@ -51,18 +60,167 @@ def reward_path_for(cfg, gen_run_name, version):
     return Path(cfg["experiment"]["run_root"]) / gen_run_name / f"reward_v{version}.py"
 
 
+def reward_md_path_for(cfg, gen_run_name, version):
+    return Path(cfg["experiment"]["run_root"]) / gen_run_name / f"reward_v{version}.md"
+
+
 def validation_path_for(cfg, gen_run_name, version):
     return Path(cfg["experiment"]["run_root"]) / gen_run_name / "validations" / f"reward_v{version}.validation.json"
 
 
 def check_reward_valid(cfg, gen_run_name, version, stop_on_invalid):
-    import json
     path = validation_path_for(cfg, gen_run_name, version)
     if not path.exists():
         raise FileNotFoundError(f"Missing validation file: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
     if stop_on_invalid and not data.get("valid", False):
         raise RuntimeError(f"Reward v{version} failed validation: {path}")
+
+
+def read_training_score(train_dir):
+    summary_path = Path(train_dir) / "training_summary.json"
+    if not summary_path.exists():
+        raise FileNotFoundError(f"Missing training_summary.json: {summary_path}")
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    external = summary.get("external_eval", {})
+    return float(external.get("mean_eval_reward", 0.0)), summary
+
+
+def code_signature(path):
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(text)
+        body = ast.dump(tree, include_attributes=False)
+    except Exception:
+        lines = []
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            lines.append(s)
+        body = "\n".join(lines)
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def is_identical_reward(path_a, path_b):
+    if not path_a or not path_b:
+        return False
+    if not Path(path_a).exists() or not Path(path_b).exists():
+        return False
+    return code_signature(path_a) == code_signature(path_b)
+
+
+def prepend_control_decision(context_path, control_text):
+    p = Path(context_path)
+    old = p.read_text(encoding="utf-8") if p.exists() else ""
+    p.write_text(control_text.strip() + "\n\n" + old, encoding="utf-8")
+
+
+def append_noop_retry_instruction(context_path, attempt):
+    p = Path(context_path)
+    text = p.read_text(encoding="utf-8")
+    text += f"""
+
+## No-op Retry Instruction
+
+The previous revision attempt #{attempt} produced a reward function that is semantically identical to previous_reward.py.
+This is not an acceptable iteration while the task is still unsolved.
+You must perform a concrete tune/delete/add/mix action justified by the training evidence.
+Do not return identical reward code again.
+"""
+    p.write_text(text, encoding="utf-8")
+
+
+def build_control_decision(iteration_index, target_score, best_score, best_iter, last_score, no_improve_count, solved_seen):
+    if solved_seen:
+        decision = "TARGET_SOLVED_PROTECT_BEST"
+        required_action = "small tune only if evidence supports improvement; otherwise preserve best"
+        forbidden = "large rebuild; large new penalties; ignoring best_score_so_far; returning identical reward as a fake revision"
+        trend = "solved_previous_iterations"
+    else:
+        decision = "MUST_MODIFY"
+        required_action = "tune/delete/add/mix based on failure evidence; do not return identical reward"
+        forbidden = "no-op revision; generic restatement; changing comments only"
+        trend = "unsolved_search"
+
+    if last_score is not None and best_score is not None:
+        if last_score < best_score:
+            trend = "below_best"
+        elif abs(last_score - best_score) < 1e-9:
+            trend = "at_best"
+
+    best_score_text = "N/A" if best_score is None else f"{best_score:.3f}"
+    best_iter_text = "N/A" if best_iter is None else str(best_iter)
+    last_score_text = "N/A" if last_score is None else f"{last_score:.3f}"
+
+    return f"""# Iteration Control Decision
+
+- iteration_to_generate: {iteration_index}
+- target_score: {target_score:.3f}
+- best_score_so_far: {best_score_text}
+- best_iter: {best_iter_text}
+- previous_score: {last_score_text}
+- no_improvement_count: {no_improve_count}
+- trend: {trend}
+- decision: {decision}
+- required_action: {required_action}
+- forbidden_action: {forbidden}
+- note: This control block has higher priority than matched expert cards.
+"""
+
+
+def copy_best_artifacts(cfg, prefix, seed, iteration_index, reward_path, reward_md_path, train_dir, best_score, target_score):
+    best_dir = experiment_root_for(cfg, prefix, seed) / "best"
+    best_dir.mkdir(parents=True, exist_ok=True)
+
+    shutil.copy2(reward_path, best_dir / "best_reward.py")
+    if Path(reward_md_path).exists():
+        shutil.copy2(reward_md_path, best_dir / "best_reward.md")
+    feedback = Path(train_dir) / "training_feedback.md"
+    summary = Path(train_dir) / "training_summary.json"
+    if feedback.exists():
+        shutil.copy2(feedback, best_dir / "best_training_feedback.md")
+    if summary.exists():
+        shutil.copy2(summary, best_dir / "best_training_summary.json")
+
+    summary_text = f"""# Best Reward Summary
+
+- best_iter: {iteration_index}
+- best_score: {best_score:.3f}
+- target_score: {target_score:.3f}
+- solved: {best_score >= target_score}
+- reward_path: {reward_path}
+- training_dir: {train_dir}
+
+Final reward should use `best_reward.py`, not necessarily the last generated reward.
+"""
+    (best_dir / "best_summary.md").write_text(summary_text, encoding="utf-8")
+    return best_dir
+
+
+def write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_score, target_score, rounds_completed):
+    exp_root = experiment_root_for(cfg, prefix, seed)
+    exp_root.mkdir(parents=True, exist_ok=True)
+    best_dir = exp_root / "best"
+    best_score_text = "N/A" if best_score is None else f"{best_score:.3f}"
+    text = f"""# Iterative Experiment Summary
+
+- prefix: {prefix}
+- seed: {seed}
+- rounds_completed: {rounds_completed}
+- target_score: {target_score:.3f}
+- best_iter: {best_iter}
+- best_score: {best_score_text}
+- solved: {best_score is not None and best_score >= target_score}
+- stopped_reason: {stopped_reason}
+
+## Best Artifact
+
+- best_dir: {best_dir}
+- best_reward: {best_dir / 'best_reward.py'}
+- best_summary: {best_dir / 'best_summary.md'}
+"""
+    (exp_root / "experiment_summary.md").write_text(text, encoding="utf-8")
 
 
 def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timesteps=None, eval_episodes=None, mock=None, seed=0):
@@ -72,7 +230,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     rag_cfg = cfg.get("rag", {})
 
     prefix = prefix or iter_cfg.get("experiment_prefix", "exp_iter")
-    rounds = int(rounds if rounds is not None else iter_cfg.get("total_rounds", 3))
+    rounds = int(rounds if rounds is not None else iter_cfg.get("total_rounds", 10))
     validate_rounds(rounds)
 
     total_timesteps = int(total_timesteps if total_timesteps is not None else train_cfg.get("total_timesteps", 1000000))
@@ -80,6 +238,15 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     use_mock = bool(iter_cfg.get("use_mock_llm", False) if mock is None else mock)
     stop_on_invalid = bool(iter_cfg.get("stop_on_invalid_reward", True))
     cards_top_k = int(iter_cfg.get("cards_top_k", 4))
+
+    target_score = float(iter_cfg.get("target_score", 200.0))
+    min_improvement = float(iter_cfg.get("min_meaningful_improvement", 5.0))
+    stop_after_solved_drop = bool(iter_cfg.get("stop_after_solved_drop", True))
+    stop_when_solved_and_identical = bool(iter_cfg.get("stop_when_solved_and_identical", True))
+    patience_after_solved = int(iter_cfg.get("no_improvement_patience_after_solved", 2))
+    patience_unsolved = int(iter_cfg.get("no_improvement_patience_unsolved", 3))
+    retry_identical_unsolved = bool(iter_cfg.get("retry_identical_when_unsolved", True))
+    max_identical_retries = int(iter_cfg.get("max_identical_revision_retries", 2))
 
     memory_path = iter_cfg.get("memory_path", "runs/env_001/memory/reward_memory.md")
     base_memory = Path(memory_path)
@@ -94,6 +261,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     print(f"prefix          : {prefix}")
     print(f"seed            : {seed}")
     print(f"rounds          : {rounds}")
+    print(f"target_score    : {target_score}")
     print(f"total_timesteps : {total_timesteps}")
     print(f"eval_episodes   : {eval_episodes}")
     print(f"memory_path     : {memory_path}")
@@ -102,6 +270,14 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     print(f"mock_llm        : {use_mock}")
 
     previous_reward = None
+    best_score = None
+    best_iter = None
+    best_reward = None
+    solved_seen = False
+    no_improve_count = 0
+    stopped_reason = "completed_all_rounds"
+    rounds_completed = 0
+    last_score = None
 
     for iteration_index in range(1, rounds + 1):
         version = iteration_index
@@ -131,16 +307,47 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 "--top-k", str(cards_top_k),
                 "--out", str(paths["context_path"]),
             ])
-            run_cmd([
-                "python", "-m", "pipeline.run_05_reward_revision",
-                "--config", config_path,
-                "--previous-reward", str(previous_reward),
-                "--iteration-context", str(paths["context_path"]),
-                "--out-run-name", paths["gen_run_name"],
-                "--reward-version", f"v{version}",
-                *mock_args,
-            ])
-            current_reward = reward_path_for(cfg, paths["gen_run_name"], version)
+            control_text = build_control_decision(
+                iteration_index=iteration_index,
+                target_score=target_score,
+                best_score=best_score,
+                best_iter=best_iter,
+                last_score=last_score,
+                no_improve_count=no_improve_count,
+                solved_seen=solved_seen,
+            )
+            prepend_control_decision(paths["context_path"], control_text)
+
+            identical_after_retries = False
+            for attempt in range(max_identical_retries + 1):
+                if attempt > 0:
+                    append_noop_retry_instruction(paths["context_path"], attempt)
+                run_cmd([
+                    "python", "-m", "pipeline.run_05_reward_revision",
+                    "--config", config_path,
+                    "--previous-reward", str(previous_reward),
+                    "--iteration-context", str(paths["context_path"]),
+                    "--out-run-name", paths["gen_run_name"],
+                    "--reward-version", f"v{version}",
+                    *mock_args,
+                ])
+                current_reward = reward_path_for(cfg, paths["gen_run_name"], version)
+                if not is_identical_reward(previous_reward, current_reward):
+                    break
+                identical_after_retries = True
+                if solved_seen and stop_when_solved_and_identical:
+                    stopped_reason = "stop_solved_identical_reward_keep_best"
+                    print("Identical reward after solved. Stop and keep best reward.")
+                    write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_score, target_score, rounds_completed)
+                    return
+                if not retry_identical_unsolved:
+                    break
+
+            if identical_after_retries and is_identical_reward(previous_reward, current_reward):
+                stopped_reason = "stop_identical_reward_after_retries_keep_best"
+                print("Revision remained identical after retries. Stop to avoid white-run training.")
+                write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_score, target_score, rounds_completed)
+                return
 
         check_reward_valid(cfg, paths["gen_run_name"], version, stop_on_invalid)
 
@@ -153,20 +360,77 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             "--eval-episodes", str(eval_episodes),
             "--seed", str(seed),
         ])
+        rounds_completed = iteration_index
+
+        current_score, _summary = read_training_score(paths["train_dir"])
+        last_score = current_score
+
+        improved = best_score is None or current_score > best_score + min_improvement
+        if improved:
+            best_score = current_score
+            best_iter = iteration_index
+            best_reward = current_reward
+            no_improve_count = 0
+            copy_best_artifacts(
+                cfg=cfg,
+                prefix=prefix,
+                seed=seed,
+                iteration_index=iteration_index,
+                reward_path=current_reward,
+                reward_md_path=reward_md_path_for(cfg, paths["gen_run_name"], version),
+                train_dir=paths["train_dir"],
+                best_score=best_score,
+                target_score=target_score,
+            )
+            decision = "new_best"
+        else:
+            no_improve_count += 1
+            decision = "no_meaningful_improvement"
+
+        if current_score >= target_score:
+            solved_seen = True
+            if decision == "new_best":
+                decision = "target_solved_new_best"
+            else:
+                decision = "target_solved_no_improvement"
+
+        stop_now = False
+        if solved_seen and stop_after_solved_drop and current_score < target_score:
+            decision = "stop_after_solved_drop_keep_best"
+            stopped_reason = decision
+            stop_now = True
+        elif solved_seen and no_improve_count >= patience_after_solved:
+            decision = "stop_solved_no_improvement_keep_best"
+            stopped_reason = decision
+            stop_now = True
+        elif (not solved_seen) and no_improve_count >= patience_unsolved:
+            decision = "stop_unsolved_stagnation_keep_best"
+            stopped_reason = decision
+            stop_now = True
 
         run_cmd([
             "python", "-m", "pipeline.run_06_update_reward_memory",
             "--iter", str(iteration_index),
             "--train-run-dir", str(paths["train_dir"]),
             "--memory", memory_path,
+            "--target-score", str(target_score),
+            "--best-score", str(best_score),
+            "--best-iter", str(best_iter),
+            "--decision", decision,
         ])
 
         previous_reward = current_reward
 
+        if stop_now:
+            print(f"Early stop: {stopped_reason}")
+            break
+
+    write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_score, target_score, rounds_completed)
+
     print("\n" + "=" * 60)
     print("Done. Key files")
     print("=" * 60)
-    for iteration_index in range(1, rounds + 1):
+    for iteration_index in range(1, rounds_completed + 1):
         paths = build_paths(cfg, prefix, iteration_index, seed)
         version = iteration_index
         print(f"iter_{paths['iter_pad']}:")
@@ -175,6 +439,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
         if iteration_index > 1:
             print(f"  context  : {paths['context_path']}")
     print(f"memory: {memory_path}")
+    print(f"best: {experiment_root_for(cfg, prefix, seed) / 'best' / 'best_reward.py'}")
 
 
 def main():
