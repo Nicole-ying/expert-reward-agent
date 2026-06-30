@@ -1,65 +1,43 @@
 # expert_eureka_env001_bridge_v9_direct_generator
 
-v9 删除 Reward Architect / 奖励骨架 LLM，改成两次 LLM 调用：
+当前版本是 config-driven iterative reward agent：
 
 ```text
-Environment Analyzer LLM
-  → environment_card.md
-
-RAG 压缩器
-  → expert_reward_context.md
-
-Reward Generator LLM
-  输入：environment_card.md + expert_reward_context.md
-  输出：reward_v1.py + reward_v1.md
-```
-
-随后进入训练：
-
-```text
-reward_v1.py
-  → RewardOverrideWrapper
-  → PPO 训练
-  → 原始 LunarLander-v3 external evaluation
+iter_01:
+  Environment Analyzer LLM
+  → RAG compressor
+  → Reward Generator LLM
+  → reward_v1.py
+  → PPO training
   → training_feedback.md / training_summary.json
-  → reward_memory.md 自动更新
-```
+  → reward_memory.md
 
-第一次训练后新增的迭代流程：
-
-```text
-training_feedback.md + reward_memory.md
-  → Iteration Context Builder（确定性脚本，不调用 LLM）
-  → iteration_context.md
+iter_02+:
+  previous training_feedback.md + reward_memory.md + matched expert cards
+  → iteration_context.md with Iteration Control Decision
   → Reward Revision LLM
-  → reward_v2.py / reward_v2.md
-  → PPO 训练
-  → reward_memory.md 自动更新
+  → reward_vN.py
+  → PPO training
+  → update reward_memory.md
+  → update best reward / early stop if needed
 ```
 
-后续轮次重复同样流程，直到达到 `iteration.total_rounds`。
+## 关键机制
 
-## 当前流程
+- 目标分数：Env_001 的 solved threshold 是 `target_score: 200.0`。
+- 最终结果使用 best reward，不使用最后一轮 reward。
+- 每轮训练后自动更新 compact memory。
+- 每轮 revision 前自动写入 `Iteration Control Decision`。
+- 已解决后如果新 reward 掉回 target 以下，停止并保留 best。
+- 已解决后如果 revision 生成 identical reward，停止并保留 best。
+- 未解决阶段如果 revision 生成 identical reward，会自动追加 no-op retry instruction 并重试；仍 identical 则停止，避免白跑训练。
+- 连续无明显提升会 early stop，避免 10 轮里后半段空转。
 
-- `prompt_records/` 保存 `.md`，不再保存 JSON prompt。
-- `response_records/` 保存 `.md`，方便直接阅读 LLM 原始输出。
-- 新 run 不再自动生成 `human_review/`、`raw_outputs/`、`final_outputs/`。
-- `expert_reward_context.md` 不再把知识库原始 YAML 整段塞进 prompt。
-- Reward Generator 使用 role-based component budget，不再用“最多两个组件”这种硬限制。
-- Reward Revision LLM 使用 `iteration_context.md`，只根据训练证据做继承式修订。
-- 新的推荐返回格式是：`return float(total_reward), components`。
-- wrapper 已兼容旧格式 `return total_reward` 和新格式 `return float(total_reward), components`。
-- wrapper 已加入 reward 异常兜底、NaN/inf 检查、reward clipping 和错误计数。
-- 训练完成后会用原始环境 reward 做 external evaluation。
-- 每轮训练结束后会自动更新 `runs/env_001/memory/reward_memory.md`。
-
-## 配置驱动的任意轮迭代
-
-迭代轮数写在 config 中：
+## 主要配置
 
 ```yaml
 iteration:
-  total_rounds: 3        # 想跑 10 轮就改成 10
+  total_rounds: 10
   experiment_prefix: exp_iter
   experiment_root: runs/env_001/experiments
   memory_path: runs/env_001/memory/reward_memory.md
@@ -67,47 +45,100 @@ iteration:
   cards_top_k: 4
   stop_on_invalid_reward: true
   use_mock_llm: false
+
+  target_score: 200.0
+  save_best_artifacts: true
+  stop_after_solved_drop: true
+  stop_when_solved_and_identical: true
+  no_improvement_patience_after_solved: 2
+  no_improvement_patience_unsolved: 3
+  min_meaningful_improvement: 5.0
+  retry_identical_when_unsolved: true
+  max_identical_revision_retries: 2
 ```
 
-训练规模也写在 config 中：
+`cards_top_k` 不是 reward 组件数，而是每轮最多放入 `iteration_context.md` 的 failure / reward-misalignment 专家卡片数量。
 
-```yaml
-training:
-  total_timesteps: 1000000
-  eval_episodes: 10
-```
+## 启动实验
 
-启动任意轮迭代实验：
+建议直接使用 Python orchestrator，因为它支持 seed、rounds、mock 等完整参数：
 
 ```bash
 export DEEPSEEK_API_KEY="你的key"
-bash scripts/run_iterative_experiment.sh configs/env001_deepseek_rag.yaml exp_iter
-```
 
-也可以直接运行 Python orchestrator：
-
-```bash
 python -m pipeline.run_iterative_experiment \
   --config configs/env001_deepseek_rag.yaml \
-  --prefix exp_iter
+  --prefix exp_iter \
+  --seed 0
 ```
 
-如果临时覆盖轮数，而不改 config：
+临时覆盖轮数：
 
 ```bash
 python -m pipeline.run_iterative_experiment \
   --config configs/env001_deepseek_rag.yaml \
   --prefix exp10 \
-  --rounds 10
+  --rounds 10 \
+  --seed 0
 ```
 
 mock 流程测试：
 
 ```bash
-bash scripts/run_iterative_experiment.sh configs/env001_deepseek_rag.yaml mock_iter --mock
+python -m pipeline.run_iterative_experiment \
+  --config configs/env001_deepseek_rag.yaml \
+  --prefix mock_iter \
+  --seed 0 \
+  --mock
 ```
 
-旧入口 `scripts/run_three_round_experiment.sh` 已废弃，只作为兼容包装器。
+跑 seed0-5：
+
+```bash
+for s in 0 1 2 3 4 5; do
+  python -m pipeline.run_iterative_experiment \
+    --config configs/env001_deepseek_rag.yaml \
+    --prefix exp10 \
+    --rounds 10 \
+    --seed "$s"
+done
+```
+
+## 输出目录
+
+每个 seed 独立保存：
+
+```text
+runs/env_001/experiments/seed_<SEED>/<PREFIX>/iter_01/
+runs/env_001/experiments/seed_<SEED>/<PREFIX>/iter_02/
+...
+runs/env_001/experiments/seed_<SEED>/<PREFIX>/best/
+runs/env_001/experiments/seed_<SEED>/<PREFIX>/experiment_summary.md
+```
+
+训练输出：
+
+```text
+runs/env_001/training_runs/experiments/seed_<SEED>/<PREFIX>/iter_XX/training/
+```
+
+每个 seed 的 memory：
+
+```text
+runs/env_001/memory/seed_<SEED>/reward_memory.md
+```
+
+## 主要查看文件
+
+```text
+runs/env_001/memory/seed_<SEED>/reward_memory.md
+runs/env_001/experiments/seed_<SEED>/<PREFIX>/experiment_summary.md
+runs/env_001/experiments/seed_<SEED>/<PREFIX>/best/best_reward.py
+runs/env_001/experiments/seed_<SEED>/<PREFIX>/best/best_summary.md
+runs/env_001/experiments/seed_<SEED>/<PREFIX>/iter_XX/iteration_context.md
+runs/env_001/experiments/seed_<SEED>/<PREFIX>/iter_XX/generation/reward_vX.py
+runs/env_001/training_runs/experiments/seed_<SEED>/<PREFIX>/iter_XX/training/training_feedback.md
+```
 
 ## 方法借鉴
 
@@ -115,87 +146,19 @@ bash scripts/run_iterative_experiment.sh configs/env001_deepseek_rag.yaml mock_i
 
 - 用历史 reward 和分数指导下一轮，不每轮从零生成；
 - 根据 score trend、episode length、组件结构判断 tune / add / delete / rebuild；
-- 强制检查组件方向、尺度和冗余；
 - 只记录 compact memory，而不是全量日志；
-- 当前项目额外加入 RAG：每轮只给命中的 failure / reward-misalignment 专家卡片。
-
-## 输出目录组织
-
-每轮输出按统一目录组织：
-
-```text
-runs/env_001/experiments/<PREFIX>/iter_01/
-runs/env_001/experiments/<PREFIX>/iter_02/
-runs/env_001/experiments/<PREFIX>/iter_03/
-...
-runs/env_001/experiments/<PREFIX>/iter_10/
-```
-
-每轮训练输出在：
-
-```text
-runs/env_001/training_runs/experiments/<PREFIX>/iter_XX/training/
-```
-
-每轮执行逻辑：
-
-```text
-iter_01: Environment Analyzer LLM → RAG → Reward Generator LLM → train → update memory
-iter_02+: Build iteration_context → Reward Revision LLM → train → update memory
-```
-
-## 人类主要看哪些文件
-
-每轮 reward 生成或修订结果：
-
-```text
-runs/env_001/experiments/<PREFIX>/iter_XX/generation/reward_vX.py
-runs/env_001/experiments/<PREFIX>/iter_XX/generation/reward_vX.md
-runs/env_001/experiments/<PREFIX>/iter_XX/generation/prompt_records/*.prompt_stats.md
-runs/env_001/experiments/<PREFIX>/iter_XX/generation/validations/*.validation.json
-```
-
-每轮训练反馈：
-
-```text
-runs/env_001/training_runs/experiments/<PREFIX>/iter_XX/training/training_feedback.md
-```
-
-跨轮迭代重点看：
-
-```text
-runs/env_001/memory/reward_memory.md
-runs/env_001/experiments/<PREFIX>/iter_XX/iteration_context.md
-knowledge_base/iteration/reward_misalignment_cards.md
-```
-
-机器日志可以保留，但不要作为 LLM 主输入：
-
-```text
-training_summary.json
-eval_result.json
-monitor/
-model.zip
-```
-
-## 迭代文件原则
-
-- 不把 reward 路径作为 memory 的核心信息；路径只适合人工追溯，LLM 更需要 reward 结构和关键证据。
-- `reward_memory.md` 只记录：组件结构、外部得分、episode length、关键组件信号、诊断、下一步动作。
-- 不复制完整 reward 代码、完整日志、完整 summary 到 memory。
-- failure / reward-misalignment 知识必须压缩成短卡片。
-- 每轮只把命中的 `cards_top_k` 张专家卡片放入迭代上下文，不传整份知识库。
-- 迭代不是机械填充骨架，而是根据训练反馈决定 keep / weaken / revise / consider_add / still_defer。
+- 当前项目额外加入 RAG：每轮只给命中的 failure / reward-misalignment 专家卡片；
+- 达到目标后保护 best reward，而不是继续盲目迭代。
 
 ## 单独生成迭代上下文
 
 ```bash
 python -m pipeline.run_04_build_iteration_context \
-  --train-run-dir runs/env_001/training_runs/experiments/exp_iter/iter_01/training \
-  --memory runs/env_001/memory/reward_memory.md \
+  --train-run-dir runs/env_001/training_runs/experiments/seed_0/exp10/iter_01/training \
+  --memory runs/env_001/memory/seed_0/reward_memory.md \
   --cards knowledge_base/iteration/reward_misalignment_cards.md \
   --top-k 4 \
-  --out runs/env_001/experiments/exp_iter/iter_02/iteration_context.md
+  --out runs/env_001/experiments/seed_0/exp10/iter_02/iteration_context.md
 ```
 
 ## 单独更新 memory
@@ -203,35 +166,10 @@ python -m pipeline.run_04_build_iteration_context \
 ```bash
 python -m pipeline.run_06_update_reward_memory \
   --iter 1 \
-  --train-run-dir runs/env_001/training_runs/experiments/exp_iter/iter_01/training \
-  --memory runs/env_001/memory/reward_memory.md
-```
-
-## 单独生成 reward
-
-```bash
-python -m pipeline.run_direct_generation_pipeline \
-  --config configs/env001_deepseek_rag.yaml \
-  --run-name deepseek_run_002
-```
-
-## 单独训练已有 reward
-
-```bash
-python -m training.train_sb3_wrapper \
-  --config configs/env001_deepseek_rag.yaml \
-  --reward runs/env_001/deepseek_run_002/reward_v1.py \
-  --run-name ppo_reward_v1_001 \
-  --total-timesteps 1000000 \
-  --eval-episodes 10
-```
-
-## 是否让 Reward Generator 看 step 函数
-
-默认不看。  
-如果测试后仍然越界使用信号，可在 config 中打开：
-
-```yaml
-context:
-  include_masked_step_in_reward_generator: true
+  --train-run-dir runs/env_001/training_runs/experiments/seed_0/exp10/iter_01/training \
+  --memory runs/env_001/memory/seed_0/reward_memory.md \
+  --target-score 200 \
+  --best-score 210 \
+  --best-iter 1 \
+  --decision target_solved_new_best
 ```
