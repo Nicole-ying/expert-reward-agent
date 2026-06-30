@@ -84,9 +84,9 @@ def run(config_path, previous_reward_path, iteration_context_path, out_run_name,
     # Find expert_reward_context, strip v1-generation-only sections
     expert_ctx = ""
     gen_dir = Path(previous_reward_path).parent
+    seed_dir = gen_dir.parent.parent
     ctx_path = gen_dir / "expert_reward_context.md"
     if not ctx_path.exists():
-        seed_dir = gen_dir.parent.parent
         for d in sorted(Path(seed_dir).glob("iter_*/generation/expert_reward_context.md"), reverse=True):
             ctx_path = d
             break
