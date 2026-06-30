@@ -31,27 +31,23 @@
 
 # role-based component budget
 
-reward_v1 推荐使用 2~4 个组件，但每个组件必须有明确角色，不能为了显得完整而堆叠。
+reward_v1 推荐使用 2~4 个组件，每个必须有明确角色，不能为了显得完整而堆叠。
 
 必须包含：
-- 1 个主学习信号 learning guidance：通常选择 progress_delta_reward；如果无法计算 delta，才用 distance_reward。
+- 1 个主学习信号：通常选择 progress_delta_reward；如果无法计算 delta，用 distance_reward。也可以尝试 potential_based_shaping（Φ(s')-γΦ(s)），但需写出明确的势能函数。
 
 允许包含：
 - 0~2 个稳定/安全约束：例如速度、姿态角、角速度惩罚。
-- 0~1 个任务完成 proxy：必须是 soft proxy，不能伪造 success flag；如果使用 contact，必须与 near_target、low_speed、stable_angle 等条件组合，并且权重较小。
-- 0~1 个效率/动作代价：默认后续版本再加；如果 v1 使用，权重要很小，并说明风险。
+- 0~1 个任务完成 proxy：soft proxy，不能伪造 success flag。
+- 0~1 个效率/动作代价：权重必须很小。
 
-默认不要在 v1 使用（如果环境条件不满足）：
+默认不在 v1 使用：
 - terminal_success_reward（需显式 success flag）
 - terminal_failure_penalty（需显式 failure flag）
-- dynamic curriculum（需 training_progress 支持）
-- 大权重 action_penalty
-- 大权重 contact_reward
+- gated_reward（多阶段，后续迭代再加）
+- dynamic curriculum
 
-可以在 v1 使用的进阶骨架：
-- potential_based_shaping：如果你能定义一个合理的势能函数 Φ(s)，用 γΦ(s')-Φ(s) 替代或辅助 progress_delta。
-- gated_reward：如果你能把任务分成"接近"和"着陆"两个阶段，用不同组件组合。
-- 这些不是必须的，但如果 progress_delta 单独无法提供足够引导，优先考虑它们。
+components dict 只放参与 total_reward 的核心项，不要把中间变量（如单独的 angle_penalty）放进去。
 
 避免重复：
 - 不要同时大权重使用 distance_reward 和 progress_delta_reward。
@@ -126,40 +122,40 @@ def compute_reward(...):
 ## 2. 任务类型选择
 selected_route_id: navigation_goal_reaching
 confidence: high
-reason: 任务描述明确要求"到达并稳定在中央目标平台"，核心目标是导航到目标位置并保持稳定，同时优化燃料消耗。这符合导航到达任务的定义。
+reason: 任务描述明确要求"到达并稳定在中央目标着陆平台"，涉及位置到达、速度控制、姿态稳定，属于典型的导航到达任务。同时包含燃料效率优化（使用尽可能少的引擎推力），但核心目标是到达目标位置。
 
 ## 3. 观察空间 observation_space
 - type: Box
 - shape: [8]
-- dtype: float32 (推断)
-- obs[0]: x_position - 相对于目标平台的水平坐标
-- obs[1]: y_position - 相对于平台高度的垂直坐标
+- dtype: float32（推测）
+- obs[0]: x_position - 相对于目标着陆平台的水平坐标
+- obs[1]: y_position - 相对于着陆平台高度的垂直坐标
 - obs[2]: x_velocity - 水平线速度
 - obs[3]: y_velocity - 垂直线速度
-- obs[4]: body_angle - 机体角度（姿态角）
+- obs[4]: body_angle - 机体姿态角
 - obs[5]: angular_velocity - 角速度
-- obs[6]: left_support_contact - 左侧支撑接触标志（1.0=接触，0.0=未接触）
-- obs[7]: right_support_contact - 右侧支撑接触标志（1.0=接触，0.0=未接触）
+- obs[6]: left_support_contact - 左侧支撑接触标志（1.0表示接触，0.0表示未接触）
+- obs[7]: right_support_contact - 右侧支撑接触标志（1.0表示接触，0.0表示未接触）
 
 ## 4. 动作空间 action_space
 - type: Discrete
 - action 0: no_engine - 不执行任何操作
-- action 1: left_orientation_engine - 点火左侧姿态引擎
-- action 2: main_engine - 点火主引擎
-- action 3: right_orientation_engine - 点火右侧姿态引擎
+- action 1: left_orientation_engine - 点火左侧姿态发动机
+- action 2: main_engine - 点火主发动机
+- action 3: right_orientation_engine - 点火右侧姿态发动机
 
 ## 5. step 与终止条件分析
 ### 5.1 终止模式
-- success-like termination: body_not_awake_or_settled - 机体停止运动/稳定在平台上，可能是成功着陆的标志
-- failure-like termination: crash_or_body_contact - 坠毁或非正常机体接触；horizontal_position_outside_viewport - 水平位置超出视口边界
-- ambiguous termination: 无
-- truncation: 无（step返回truncated=False）
+- success-like termination: body_not_awake_or_settled（机体稳定/静止在目标区域，可能表示成功着陆）
+- failure-like termination: crash_or_body_contact（坠毁或机体接触地面，可能表示失败）
+- ambiguous termination: horizontal_position_outside_viewport（水平位置超出视口，可能是失败或边界条件）
+- truncation: 无显式截断（step返回的truncated固定为False）
 
 ### 5.2 success/failure 信号可用性
-- explicit_success_flag_available: false（info为空字典，无显式成功标志）
-- explicit_failure_flag_available: false（info为空字典，无显式失败标志）
-- allowed_info_fields: 无（info始终返回空字典{}）
-- forbidden_or_uncertain_info_fields: 所有info字段均不可用
+- explicit_success_flag_available: false（info字典为空{}，无显式成功标志）
+- explicit_failure_flag_available: false（info字典为空{}，无显式失败标志）
+- allowed_info_fields: 无（info为空字典）
+- forbidden_or_uncertain_info_fields: 所有info字段（因为info为空）
 
 ## 6. reward 函数接口契约
 函数签名：
@@ -168,31 +164,36 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 ```
 
 允许使用：
-- obs（当前状态）
-- action（当前动作）
-- next_obs（下一状态）
+- obs（当前状态，8维向量）
+- action（当前动作，0-3的整数）
+- next_obs（下一状态，8维向量）
+- info（当前为空字典，仅当明确允许的字段出现时才可使用）
 - training_progress（仅当prompt明确允许时才使用）
 
 禁止使用：
-- original_reward（官方奖励已屏蔽）
-- info（始终为空字典）
-- 未声明的obs切片
+- original_reward（官方奖励已被屏蔽，不可重构）
+- official_reward（任何形式的官方奖励）
+- 未声明的info字段（info为空）
+- 未声明的obs切片（仅可使用上述8个字段）
 
 ## 7. 可用于奖励函数的信号
-- position: obs[0] x_position, obs[1] y_position - 相对于目标的位置
-- velocity: obs[2] x_velocity, obs[3] y_velocity - 线速度
-- orientation: obs[4] body_angle - 姿态角
-- angular_velocity: obs[5] angular_velocity - 角速度
-- contact: obs[6] left_support_contact, obs[7] right_support_contact - 支撑接触标志
-- action: action（0-3） - 当前执行的动作，可用于惩罚引擎使用
+- position: obs[0]（x_position）、obs[1]（y_position）——可用于计算与目标的距离
+- velocity: obs[2]（x_velocity）、obs[3]（y_velocity）——可用于鼓励减速
+- orientation: obs[4]（body_angle）——可用于鼓励稳定姿态
+- angular_velocity: obs[5]（angular_velocity）——可用于鼓励角速度归零
+- contact: obs[6]（left_support_contact）、obs[7]（right_support_contact）——可用于检测是否成功着陆
+- action: action（0-3）——可用于惩罚引擎使用，鼓励燃料效率
 
 ## 8. 不确定或不可用的信号
-- 终止原因：无法区分成功（稳定着陆）和失败（坠毁/出界），因为terminated是三个条件的逻辑或
-- 燃料/能量消耗：未在观测空间中提供
-- 时间步数：未在观测空间中提供
-- 目标距离：需要从obs[0]和obs[1]计算
-- 接触力大小：只有接触标志，没有力的大小信息
-- 引擎推力大小：只有动作类型，没有推力幅度信息
+- 终止条件的具体阈值：crash_or_body_contact、horizontal_position_outside_viewport、body_not_awake_or_settled的具体判断条件未知
+- 目标平台的精确位置和尺寸：只知道obs[0]和obs[1]是相对坐标，但具体目标范围未知
+- 初始随机力的方向和大小：任务描述提到有初始随机力，但具体参数未知
+- 引擎推力的具体物理参数：各引擎的推力大小、燃料消耗等未知
+- 成功着陆的精确判定标准：body_not_awake_or_settled的具体含义（速度阈值、位置范围等）未知
+- 坠毁的判定标准：crash_or_body_contact的具体条件（接触力阈值、角度范围等）未知
+- 视口边界的具体范围：horizontal_position_outside_viewport的边界值未知
+- 时间步限制：无显式时间步截断，但可能有隐式限制
+- 任何info字段：当前info为空字典，无法获取额外信号
 
 
 
