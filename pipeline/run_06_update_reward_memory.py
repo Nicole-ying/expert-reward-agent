@@ -6,11 +6,6 @@ from pathlib import Path
 
 HEADER = "# Reward Memory"
 TABLE_HEADER = "| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|\n"
-DEFAULT_LESSONS = """- Target: mean external score >= 200.
-- terminal_success_reward and terminal_failure_penalty blocked (no explicit flag).
-- Use external evaluation as fitness signal, not generated_reward alone.
-- Contact only inside guarded landing proxy (near target + low speed + stable angle).
-- Prefer continuous shaping over hard sparse bonuses."""
 
 
 def read_text(path, default=""):
@@ -145,43 +140,12 @@ def build_memory(memory_path, iter_id, training_run_dir, target_score, best_scor
     )
 
     memory_md = read_text(memory_path, "")
-    # Preserve existing lessons (strip the heading)
-    existing_lessons = ""
-    if "## Stable Lessons" in memory_md:
-        existing_lessons = memory_md.split("## Stable Lessons", 1)[1].strip()
-    # Accumulate new lessons with dedup
-    if new_lessons:
-        nl_list = json.loads(new_lessons) if isinstance(new_lessons, str) else new_lessons
-        if isinstance(nl_list, list):
-            existing_set = set()
-            for line in existing_lessons.split("\n"):
-                line = line.strip().lstrip("- ").strip()
-                if line:
-                    existing_set.add(line.lower())
-            for nl in nl_list:
-                nl_key = nl.strip().lower()
-                if nl_key not in existing_set:
-                    existing_set.add(nl_key)
-                    if existing_lessons:
-                        existing_lessons += "\n- " + nl.strip()
-                    else:
-                        existing_lessons = "- " + nl.strip()
-    # Remove obvious coefficient-specific recommendations (keep principle-level lessons)
-    cleaned = []
-    for line in existing_lessons.split("\n"):
-        s = line.strip().lstrip("- ").strip()
-        # Drop transient coefficient advice (specific numbers that change between iterations)
-        if any(kw in s.lower() for kw in ["coefficient must", "should be increased to", "should be reduced to", "should be <= ", "must be >=", "must be >", "may need to be >"]):
-            continue
-        if s:
-            cleaned.append("- " + s)
-    lessons = "\n".join(cleaned) if cleaned else DEFAULT_LESSONS.strip()
 
     rows = [r for r in existing_rows(memory_md) if not re.match(rf"^\|\s*{iter_id}\s*\|", r)]
     rows.append(row)
     rows = sorted(rows, key=lambda r: int(r.split("|")[1].strip()))
 
-    text = HEADER.strip() + "\n\n" + TABLE_HEADER + "\n".join(rows) + "\n\n## Stable Lessons\n\n" + lessons + "\n"
+    text = HEADER.strip() + "\n\n" + TABLE_HEADER + "\n".join(rows) + "\n"
 
     p = Path(memory_path)
     p.parent.mkdir(parents=True, exist_ok=True)
