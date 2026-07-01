@@ -142,7 +142,7 @@ def run_reflection_agent(
             {"role": "user", "content": user_prompt}
         ]
 
-        max_tool_rounds = 3
+        max_tool_rounds = 4
         for _ in range(max_tool_rounds):
             resp = client.client.chat.completions.create(
                 model=llm_cfg["model_reward"],
