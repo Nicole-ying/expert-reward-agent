@@ -1,76 +1,124 @@
-# reward_v1.py
+现在让我分析当前情况：
+
+**诊断：**
+
+1. **score=-116.95**，target 显然远高于此（至少 >0）。所有 10/10 的 episode 都在 <150 步内提前终止且 score<-50。这是严重的 early_failure_or_crash。
+
+2. **progress_delta_reward** 的 ratio=1.0（基准），mean=0.162，nonzero_rate=99.99%。看起来正常，但 agent 仍然无法到达目标——说明这个信号不够强，或者 agent 被其他因素干扰。
+
+3. **stability_penalty** ratio=-0.207，mean=-0.033，nonzero_rate=100%。虽然比上一轮（-3.45）好很多，但仍然是全程生效的惩罚。agent 每步都在被惩罚，这抑制了探索。
+
+4. **soft_landing_bonus** nonzero_rate=0.54%！几乎从不触发。这是典型的稀疏完成信号问题。
+
+5. 历史记忆显示：已经迭代了 6 轮，最佳得分 -108.81，从未突破。当前得分 -116.95 甚至更差。**这已经满足 rebuild 条件**（同一骨架迭代超过 2 轮，最佳得分远低于 target）。
+
+**rebuild 策略：**
+
+核心问题：progress_delta 作为主信号不够强，agent 无法到达目标区域。需要换一个更强的主信号框架。
+
+我选择用 **bounded_proximity_reward** 作为主信号（自动 bounded 在 [0,1]，靠近时饱和），配合 **potential_based_shaping** 的势能差来提供梯度。同时把 soft_landing_bonus 从二值改为连续乘积形式。
 
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # 主学习信号：progress_delta_reward
-    # 计算当前位置到目标（0,0）的距离
+    # ========== 诊断与修改说明 ==========
+    # 问题：6轮迭代，最佳得分-108.81，当前-116.95，所有episode提前终止。
+    # 核心问题：progress_delta 信号不足以引导agent到达目标区域。
+    # 
+    # 修改1（换骨架）：用 bounded_proximity_reward 替代 progress_delta_reward
+    #   - 数学形态：1/(1+k*dist)，自动 bounded 在 [0,1]
+    #   - 靠近目标时信号饱和，不会因距离变化剧烈而震荡
+    #   - k=5 使初始距离(~5)处 reward≈0.17，与当前 progress_delta 均值相当
+    #
+    # 修改2（换骨架）：用 potential_based_shaping 补充梯度
+    #   - Φ = -distance - 0.3*speed - 0.2*abs(angle)
+    #   - 势能差 F = γ*Φ(next) - Φ(current)，γ=0.99
+    #   - 同时引导接近、减速、稳定，且保持最优策略不变
+    #
+    # 修改3（层次2）：soft_landing_bonus 从二值改为连续乘积
+    #   - 每个条件用 max(0, 1-dim/threshold) 形式
+    #   - 提供密集梯度，不再依赖<1%的触发率
+    #
+    # 修改4（层次1）：stability_penalty 进一步削弱并改为 bounded 形式
+    #   - 用 1/(1+k*x) 形式使惩罚有上界
+    #   - 系数从 0.05/0.03/0.02 降到 0.02/0.01/0.01
+    #   - 保持距离门控
+    
+    # ========== 公共计算 ==========
     current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
     next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
-    progress_delta = current_dist - next_dist
-    progress_reward = 10.0 * progress_delta  # 正奖励表示更接近目标
-
-    # 稳定约束：stability_penalty
-    # 惩罚高速、大姿态角和大角速度
-    speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
-    angle_penalty = 0.5 * abs(next_obs[4])  # 姿态角惩罚
-    angular_vel_penalty = 0.2 * abs(next_obs[5])  # 角速度惩罚
-    speed_penalty = 0.1 * speed  # 速度惩罚
-    stability_penalty = -(angle_penalty + angular_vel_penalty + speed_penalty)
-
-    # 任务完成 proxy：soft_landing_proxy
-    # 当接近目标、低速、小姿态角且双接触时给予小奖励
-    near_target = next_dist < 0.5
-    low_speed = speed < 0.5
-    stable_angle = abs(next_obs[4]) < 0.3
-    both_contact = (next_obs[6] > 0.5) and (next_obs[7] > 0.5)
-    landing_bonus = 2.0 if (near_target and low_speed and stable_angle and both_contact) else 0.0
-
-    # 动作代价：energy_penalty（小权重）
-    # 惩罚使用引擎的动作（action 1,2,3）
-    engine_use = 1.0 if action != 0 else 0.0
+    current_speed = (obs[2] ** 2 + obs[3] ** 2) ** 0.5
+    next_speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
+    next_angle = abs(next_obs[4])
+    next_angular_vel = abs(next_obs[5])
+    
+    # ========== 主信号1：bounded_proximity_reward ==========
+    # 1/(1+k*dist)，自动 bounded 在 [0,1]，k=5
+    k_proximity = 5.0
+    proximity_reward = 1.0 / (1.0 + k_proximity * next_dist)
+    # 放大到与 progress_delta 相当的尺度
+    proximity_reward_scaled = 10.0 * proximity_reward
+    
+    # ========== 主信号2：potential_based_shaping ==========
+    # Φ = -distance - 0.3*speed - 0.2*abs(angle)
+    # F = γ*Φ(next) - Φ(current)
+    gamma = 0.99
+    phi_current = -(current_dist + 0.3 * current_speed + 0.2 * abs(obs[4]))
+    phi_next = -(next_dist + 0.3 * next_speed + 0.2 * next_angle)
+    shaping_reward = gamma * phi_next - phi_current
+    # 放大到合理尺度
+    shaping_reward_scaled = 5.0 * shaping_reward
+    
+    # ========== 稳定约束：bounded_stability_penalty ==========
+    # 用 1/(1+k*x) 形式使惩罚 bounded，避免数值爆炸
+    # 系数大幅降低，保持距离门控
+    gate_radius = 2.0
+    distance_gate = max(0.0, 1.0 - next_dist / gate_radius)
+    
+    # bounded 形式的惩罚项，每项在 [0,1) 范围内
+    speed_penalty = 1.0 / (1.0 + 1.0 / (next_speed + 0.01))  # 约等于 1 - exp(-speed)
+    # 简化：直接用 bounded 线性形式
+    speed_penalty_bounded = next_speed / (next_speed + 1.0)  # bounded in [0,1)
+    angle_penalty_bounded = next_angle / (next_angle + 0.5)  # bounded in [0,1)
+    angular_vel_bounded = next_angular_vel / (next_angular_vel + 1.0)  # bounded in [0,1)
+    
+    stability_penalty = -distance_gate * (
+        0.02 * speed_penalty_bounded + 
+        0.01 * angle_penalty_bounded + 
+        0.01 * angular_vel_bounded
+    )
+    
+    # ========== 连续 soft_landing_proxy ==========
+    # 用连续乘积替代二值 if 条件
+    # 每个因子用 max(0, 1-dim/threshold) 形式
+    near_factor = max(0.0, 1.0 - next_dist / 0.5)  # dist<0.5 时>0
+    low_speed_factor = max(0.0, 1.0 - next_speed / 0.3)  # speed<0.3 时>0
+    stable_angle_factor = max(0.0, 1.0 - next_angle / 0.2)  # angle<0.2 时>0
+    # contact 用连续值（obs[6], obs[7] 是接触传感器，假设在 [0,1]）
+    contact_factor = next_obs[6] * next_obs[7]  # 两个支撑都接触时接近1
+    
+    # 连续乘积：所有因子相乘，提供密集梯度
+    soft_landing_bonus = 3.0 * near_factor * low_speed_factor * stable_angle_factor * contact_factor
+    
+    # ========== 动作代价：energy_penalty（小权重） ==========
+    engine_use = 0.0
+    if action == 1 or action == 3:
+        engine_use = 0.5
+    elif action == 2:
+        engine_use = 1.0
     energy_penalty = -0.05 * engine_use
-
-    # 组合总奖励
-    total_reward = progress_reward + stability_penalty + landing_bonus + energy_penalty
-
-    # 构建组件字典
+    
+    # ========== 总奖励 ==========
+    total_reward = proximity_reward_scaled + shaping_reward_scaled + stability_penalty + soft_landing_bonus + energy_penalty
+    
+    # ========== 组件字典 ==========
     components = {
-        "progress_reward": progress_reward,
+        "proximity_reward": proximity_reward_scaled,
+        "shaping_reward": shaping_reward_scaled,
         "stability_penalty": stability_penalty,
-        "landing_bonus": landing_bonus,
+        "soft_landing_bonus": soft_landing_bonus,
         "energy_penalty": energy_penalty,
         "total_reward": total_reward
     }
-
+    
     return float(total_reward), components
 ```
-
-# reward_v1 设计说明
-
-## 使用的奖励组件
-
-1. **progress_reward**（主学习信号）：基于每一步到目标距离的变化量（progress_delta），奖励智能体更接近目标。这是核心引导信号，提供密集的、与任务目标直接相关的学习信号。
-
-2. **stability_penalty**（稳定约束）：惩罚高速、大姿态角和大角速度，鼓励智能体以稳定、可控的方式接近目标。这对于着陆任务至关重要，防止智能体高速撞击或姿态失控。
-
-3. **landing_bonus**（任务完成 proxy）：当智能体同时满足接近目标、低速、小姿态角和双接触时给予小奖励。这是一个软性的成功近似信号，鼓励智能体完成最终着陆，但不作为硬性成功条件。
-
-4. **energy_penalty**（动作代价）：小权重惩罚使用引擎，鼓励智能体高效使用燃料。权重很小（-0.05），避免智能体因害怕使用引擎而不敢移动。
-
-## 为什么没有使用 terminal_success_reward / terminal_failure_penalty
-
-根据环境卡片，`explicit_success_flag_available=false` 且 `explicit_failure_flag_available=false`，info 字典为空，没有可用的成功/失败标志。因此，在 v1 中不使用终端奖励，避免伪造信号或误判终止原因。
-
-## 留到后续迭代的组件
-
-- **terminal_success_reward / terminal_failure_penalty**：当 wrapper 能明确暴露成功/失败标志后再加入。
-- **time_penalty**：如果智能体能接近目标但拖太久，后续可小权重加入。
-- **gated_reward**：如果安全约束被进度奖励抵消，后续可加入门控机制。
-- **potential_based_shaping**：如果需要更标准的塑形，后续可替换 progress_delta。
-
-## 训练后应观察的 failure mode
-
-1. **goal_near_oscillation**：智能体在目标附近震荡，无法稳定着陆。如果出现，需要增大 stability_penalty 或调整 landing_bonus 条件。
-2. **high_reward_without_success**：智能体获得高奖励但未成功着陆。如果出现，需要收紧 landing_bonus 条件或加入更严格的稳定约束。
-3. **fast_crash_near_goal**：智能体高速冲向目标但坠毁。如果出现，需要增大速度惩罚或加入速度上限约束。
-4. **agent_afraid_to_move**：智能体因惩罚过重而不敢移动。如果出现，需要降低 stability_penalty 或 energy_penalty 的权重。

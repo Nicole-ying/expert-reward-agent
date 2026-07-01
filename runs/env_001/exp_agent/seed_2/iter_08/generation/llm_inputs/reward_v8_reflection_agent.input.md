@@ -1,3 +1,5 @@
+# 上一轮奖励函数代码（该轮得分: -37.739748）
+```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
     # ========== 诊断与修改说明 ==========
     # 问题：6轮迭代，最佳得分-108.81，当前-116.95，所有episode提前终止。
@@ -100,3 +102,43 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
     }
     
     return float(total_reward), components
+```
+
+# 训练反馈（上一轮代码的训练结果）
+# Training Feedback
+
+## Training outcome
+score=-37.739748, len=1000.000000, errors=0
+
+## Component evidence
+
+| component | mean | abs_mean | nonzero_rate | ratio_to_progress |
+|-----------|------|----------|-------------|------------------|
+| energy_penalty | -0.029615 | 0.029615 | 0.803217 | -0.029615 |
+| proximity_reward | 3.683910 | 3.683910 | 1.000000 | 3.683910 |
+| shaping_reward | 0.051027 | 0.056905 | 1.000000 | 0.051027 |
+| soft_landing_bonus | 0.326787 | 0.326787 | 0.187213 | 0.326787 |
+| stability_penalty | -0.004575 | 0.004575 | 0.999378 | -0.004575 |
+| total_reward | 4.027534 | 4.027534 | 1.000000 | 4.027534 |
+| generated_reward | 4.027534 | 4.027534 | 1.000000 | 4.027534 |
+| original_env_reward | -0.395825 | 2.817910 | 1.000000 | -0.395825 |
+
+## Distribution
+- score: mean=-37.739748, min=-76.726194, max=-2.984833
+- episode_length: mean=1000.000000
+- early_terminal (<150 steps + score<-50): 0/10 (0%)
+- errors: 0
+
+
+# 历史记忆
+# Reward Memory
+
+| iter | skeleton | score | best | delta | len | key_signal | action |
+|---:|---|---:|---:|---:|---:|---|---|
+| 1 | energy_penalty + landing_bonus + progress_reward + stability_penalty | -108.81 | -108.81 | 0.00 | 72.00 | energy_penalty=-0.007 landing_bonus=0.013 progress_reward=0.161 stability_penalty=-0.129 | new_best |
+| 2 | energy_penalty + landing_bonus + progress_reward + stability_penalty | -110.34 | -108.81 | -1.52 | 72.00 | energy_penalty=-0.006 landing_bonus=0.018 progress_reward=0.161 stability_penalty=-0.014 | no_meaningful_improvement |
+| 3 | energy_penalty + landing_bonus + progress_reward + stability_penalty | -115.02 | -108.81 | -6.21 | 71.90 | energy_penalty=-0.006 landing_bonus=0.043 progress_reward=0.161 stability_penalty=-0.014 | no_meaningful_improvement |
+| 4 | energy_penalty + landing_bonus + progress_reward + stability_penalty | -227.71 | -108.81 | -118.89 | 697.20 | energy_penalty=-0.044 landing_bonus=2.333 progress_reward=0.009 stability_penalty=-0.007 | unsolved_stagnation_fresh_restart |
+| 5 | energy_penalty + progress_delta_reward + soft_landing_bonus + stability_penalty | -111.68 | -108.81 | -2.86 | 71.90 | energy_penalty=-0.008 progress_delta_reward=0.161 soft_landing_bonus=0.011 stability_penalty=-0.556 | no_meaningful_improvement |
+| 6 | energy_penalty + progress_delta_reward + soft_landing_bonus + stability_penalty | -116.95 | -108.81 | -8.14 | 71.80 | energy_penalty=-0.005 progress_delta_reward=0.162 soft_landing_bonus=0.011 stability_penalty=-0.033 | no_meaningful_improvement |
+| 7 | energy_penalty + proximity_reward + shaping_reward + soft_landing_bonus + stability_penalty | -37.74 | -37.74 | 0.00 | 1000.00 | energy_penalty=-0.030 proximity_reward=3.684 shaping_reward=0.051 soft_landing_bonus=0.327 stability_penalty=-0.005 | new_best |
