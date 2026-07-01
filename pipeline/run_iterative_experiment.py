@@ -281,9 +281,32 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
         print("-" * 60)
 
         if iteration_index == 1 or force_fresh_restart:
-            print(">>> Fresh restart: re-running full generation pipeline")
             if force_fresh_restart:
-                version = 1  # generation pipeline always outputs reward_v1
+                print(">>> Fresh restart: injecting failed-skeleton context into generation")
+                version = 1
+                # Build summary of failed skeletons from memory
+                failed_info = ""
+                mem = Path(memory_path)
+                if mem.exists():
+                    skeletons_seen = set()
+                    best_score = None
+                    for line in mem.read_text(encoding="utf-8").splitlines():
+                        if line.startswith("|") and "|" in line[2:]:
+                            cols = [c.strip() for c in line.split("|")]
+                            if len(cols) >= 3 and cols[2]:
+                                skeletons_seen.add(cols[2])
+                    if skeletons_seen:
+                        failed_info = "# ⚠️ Restart Context\n\n"
+                        failed_info += "以下骨架在前序迭代中已尝试但未成功：\n"
+                        for sk in sorted(skeletons_seen):
+                            failed_info += f"- {sk}\n"
+                        failed_info += "\n请选择一个**完全不同的主信号骨架**。例如如果上述列表都是 progress_delta 系列，请尝试 potential_based_shaping 或 bounded_proximity。不要重复已失败的骨架。\n"
+                # Write restart context where run_03 can read it
+                gen_dir = Path(cfg["experiment"]["run_root"]) / paths["gen_run_name"]
+                gen_dir.mkdir(parents=True, exist_ok=True)
+                (gen_dir / "restart_context.md").write_text(failed_info, encoding="utf-8")
+            else:
+                version = iteration_index
             force_fresh_restart = False
             run_cmd([
                 "python", "-m", "pipeline.run_direct_generation_pipeline",

@@ -165,6 +165,10 @@ def run(config_path, run_name, mock=False, seed=0):
     ]
     if cfg.get("context", {}).get("include_masked_step_in_reward_generator", False):
         user_parts += ["", "# masked_step_source.py", read_text(cfg["inputs"]["masked_step_path"])]
+    # Read restart context if present (from fresh restart)
+    restart_ctx = run_dir / "restart_context.md"
+    if restart_ctx.exists():
+        user_parts += ["", read_text(str(restart_ctx))]
     user_prompt = "\n\n".join(user_parts)
 
     write_text(run_dir / "llm_inputs/02_reward_generator.input.md", user_prompt)
