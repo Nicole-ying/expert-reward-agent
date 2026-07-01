@@ -365,7 +365,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
         valid = False
         for retry in range(3):
             try:
-                check_reward_valid(cfg, paths["gen_run_name"], version, stop_on_invalid=False)
+                check_reward_valid(cfg, paths["gen_run_name"], version, True)
                 valid = True
                 break
             except (RuntimeError, FileNotFoundError) as e:
