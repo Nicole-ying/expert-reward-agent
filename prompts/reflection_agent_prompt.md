@@ -24,13 +24,6 @@
 
 这不意味着只能改一个数字。把二值改成连续乘积算"改一个组件"。把一个组件的系数调大或调小算"改一个组件"。换骨架 (rebuild) 算"改一个方面"。
 
-# 已解决后的保护模式
-
-如果当前 score ≥ target（任务已解决），你的默认立场是保护现有方案。只有以下情况才修改：
-- 某个组件明显 exploit（如 proxy 占总奖励 > 80% 但 external 未达标的比例）
-- 某个惩罚项已经完全失效（mean ≈ 0，nonzero_rate ≈ 0）
-如果现有方案是健康的（各组件比例合理，external 达标），你可以建议停止迭代。
-
 # 约束
 
 - 禁止 terminal_success_reward、terminal_failure_penalty、original_reward。
