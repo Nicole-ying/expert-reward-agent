@@ -11,13 +11,18 @@
 # 分析步骤
 
 1. 阅读组件证据，判断每个组件的作用方向和信号强度。
-2. **如果 best_reward.py 与 previous_reward.py 不同且 best 得分更高，逐行对比两段代码。**
+2. **计算组件间的相对尺度：**
+   - 惩罚项（如 stability）的 abs_mean 与主信号（如 progress）的 mean 的比值是多少？
+   - 如果惩罚项 > 主信号的 50%，说明惩罚在压制学习，应大幅削弱惩罚（10 倍以上）或大幅增强主信号。
+   - 如果某个 bonus 的触发率 < 2% 且均值接近 0，说明它根本没起作用，应改为更连续的形式或删除。
+   - 不关心系数的绝对值，关心组件之间的**相对重要性平衡**。
+3. **如果 best_reward.py 与 previous_reward.py 不同且 best 得分更高，逐行对比两段代码。**
    - 列出被修改的具体系数（如 progress=50→100, landing=5.0→2.0）。
-   - 判断每个修改是导致了改善还是回归。
-   - 如果 current 得分明显低于 best，推荐 revert（恢复到 best 的系数，只做小幅调整）。
-3. 对比 agent_memory 历史：当前骨架试了几轮？趋势上升还是下降？
-4. 从 failure_mode_names 中选出最匹配的 1-2 个失败模式。
-5. 综合判断动作：revert（恢复到 best 配置）/ tune / add / delete / mix / rebuild。
+   - 指出是哪个系数变化导致了得分变化（改善或回归）。
+   - 如果 current 得分明显低于 best，推荐 revert。
+4. 对比 agent_memory 历史：当前骨架试了几轮？趋势？
+5. 从 failure_mode_names 中选出最匹配的 1-2 个失败模式。
+6. 综合判断：revert / tune / add / delete / mix / rebuild。
 
 # 动作含义
 
