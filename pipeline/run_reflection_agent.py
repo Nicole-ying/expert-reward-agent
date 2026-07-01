@@ -53,6 +53,7 @@ def run_reflection_agent(
     out_run_name,
     reward_version,
     mock=False,
+    validation_retry=None,
 ):
     cfg = load_config(config_path)
     run_dir = Path(cfg["experiment"]["run_root"]) / out_run_name
@@ -90,7 +91,16 @@ def run_reflection_agent(
         "- forbidden: original_reward, official_reward, terminal_success_reward, terminal_failure_penalty\n"
     )
 
-    user_prompt = build_user_prompt(
+    if validation_retry:
+        user_prompt = (
+            f"# ⚠️ 上一版代码验证失败\n"
+            f"错误信息：{validation_retry}\n"
+            f"请修复以上错误，重新生成完整的奖励函数代码。\n\n"
+        ) + build_user_prompt(
+            feedback_md, memory_md, previous_code, best_code, env_contract, expert_context, env_card
+        )
+    else:
+        user_prompt = build_user_prompt(
         feedback_md, memory_md, previous_code, best_code, env_contract, expert_context, env_card
     )
 
@@ -212,6 +222,7 @@ def main():
     ap.add_argument("--memory", default="runs/env_001/memory/reward_memory.md")
     ap.add_argument("--out-run-name", required=True)
     ap.add_argument("--reward-version", default="v2")
+    ap.add_argument("--validation-retry", default=None)
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
 
@@ -224,6 +235,7 @@ def main():
         out_run_name=args.out_run_name,
         reward_version=args.reward_version,
         mock=args.mock,
+        validation_retry=args.validation_retry,
     )
 
 

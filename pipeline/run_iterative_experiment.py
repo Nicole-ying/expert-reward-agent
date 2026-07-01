@@ -326,13 +326,56 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                     write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_score, target_score, rounds_completed)
                     return
 
-        try:
-            check_reward_valid(cfg, paths["gen_run_name"], version, stop_on_invalid)
-        except (RuntimeError, FileNotFoundError) as e:
-            print(f"Reward validation failed: {e}")
-            print("Skipping this iteration due to invalid generated code. Using previous reward for next iteration.")
-            # Don't update previous_reward — keep the last valid one
-            force_fresh_restart = True  # Force a fresh generation next iteration
+        # Validate, with retries if invalid
+        valid = False
+        for retry in range(3):
+            try:
+                check_reward_valid(cfg, paths["gen_run_name"], version, stop_on_invalid=False)
+                valid = True
+                break
+            except (RuntimeError, FileNotFoundError) as e:
+                print(f"Reward validation failed (retry {retry+1}/3): {e}")
+                if retry == 2:
+                    break
+                # Retry: re-run the same LLM call with validation errors
+                if iteration_index == 1 or force_fresh_restart:
+                    cmd = [
+                        "python", "-m", "pipeline.run_direct_generation_pipeline",
+                        "--config", config_path,
+                        "--run-name", paths["gen_run_name"],
+                        "--seed", str(seed + restart_count * 100 + retry),
+                        *mock_args,
+                    ]
+                elif use_reflection_agent:
+                    cmd = [
+                        "python", "-m", "pipeline.run_reflection_agent",
+                        "--config", config_path,
+                        "--previous-reward", str(previous_reward),
+                        "--train-run-dir", str(prev_paths["train_dir"]),
+                        "--memory", memory_path,
+                        "--out-run-name", paths["gen_run_name"],
+                        "--reward-version", f"v{version}",
+                        "--validation-retry", str(e),
+                    ]
+                    if best_reward and str(best_reward) != str(previous_reward):
+                        cmd += ["--best-reward", str(best_reward)]
+                    cmd += mock_args
+                else:
+                    cmd = [
+                        "python", "-m", "pipeline.run_05_reward_revision",
+                        "--config", config_path,
+                        "--previous-reward", str(previous_reward),
+                        "--iteration-context", str(paths["context_path"]),
+                        "--out-run-name", paths["gen_run_name"],
+                        "--reward-version", f"v{version}",
+                    ]
+                    if best_reward and str(best_reward) != str(previous_reward):
+                        cmd += ["--best-reward", str(best_reward)]
+                    cmd += mock_args
+                run_cmd(cmd)
+        if not valid:
+            print("Invalid code after 3 retries. Skipping iteration, forcing fresh restart next.")
+            force_fresh_restart = True
             restart_count += 1
             no_improve_count += 1
             continue
