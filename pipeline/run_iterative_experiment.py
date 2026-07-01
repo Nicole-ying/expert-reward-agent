@@ -305,7 +305,12 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_score, target_score, rounds_completed)
                 return
 
-        check_reward_valid(cfg, paths["gen_run_name"], version, stop_on_invalid)
+        try:
+            check_reward_valid(cfg, paths["gen_run_name"], version, stop_on_invalid)
+        except (RuntimeError, FileNotFoundError) as e:
+            print(f"Reward validation failed: {e}")
+            print("Skipping this iteration due to invalid generated code.")
+            continue
 
         run_cmd([
             "python", "-m", "training.train_sb3_wrapper",
