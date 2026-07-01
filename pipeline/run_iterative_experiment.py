@@ -203,6 +203,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     patience_unsolved = int(iter_cfg.get("no_improvement_patience_unsolved", 3))
     retry_identical_unsolved = bool(iter_cfg.get("retry_identical_when_unsolved", True))
     max_identical_retries = int(iter_cfg.get("max_identical_revision_retries", 2))
+    use_reflection_agent = bool(iter_cfg.get("use_reflection_agent", False))
 
     memory_path = str(experiment_root_for(cfg, prefix, seed) / "memory" / "reward_memory.md")
     cards_path = rag_cfg.get("reward_misalignment_cards_path", "knowledge_base/iteration/reward_misalignment_cards.md")
@@ -259,51 +260,71 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             current_reward = reward_path_for(cfg, paths["gen_run_name"], 1)
         else:
             prev_paths = build_paths(cfg, prefix, iteration_index - 1, seed)
-            run_cmd([
-                "python", "-m", "pipeline.run_04_build_iteration_context",
-                "--train-run-dir", str(prev_paths["train_dir"]),
-                "--memory", memory_path,
-                "--cards", cards_path,
-                "--top-k", str(cards_top_k),
-                "--out", str(paths["context_path"]),
-                "--config", config_path,
-                *mock_args,
-            ])
 
-            identical_after_retries = False
-            for attempt in range(max_identical_retries + 1):
-                if attempt > 0:
-                    append_noop_retry_instruction(paths["context_path"], attempt)
+            if use_reflection_agent:
+                # Single-agent reflection mode
                 best_arg = []
                 if best_reward and str(best_reward) != str(previous_reward):
                     best_arg = ["--best-reward", str(best_reward)]
                 run_cmd([
-                    "python", "-m", "pipeline.run_05_reward_revision",
+                    "python", "-m", "pipeline.run_reflection_agent",
                     "--config", config_path,
                     "--previous-reward", str(previous_reward),
-                    "--iteration-context", str(paths["context_path"]),
+                    "--train-run-dir", str(prev_paths["train_dir"]),
+                    "--memory", memory_path,
                     "--out-run-name", paths["gen_run_name"],
                     "--reward-version", f"v{version}",
                     *best_arg,
                     *mock_args,
                 ])
                 current_reward = reward_path_for(cfg, paths["gen_run_name"], version)
-                if not is_identical_reward(previous_reward, current_reward):
-                    break
-                identical_after_retries = True
-                if solved_seen and stop_when_solved_and_identical:
-                    stopped_reason = "stop_solved_identical_reward_keep_best"
-                    print("Identical reward after solved. Stop and keep best reward.")
+            else:
+                # Legacy: run_04 analysis + run_05 revision
+                run_cmd([
+                    "python", "-m", "pipeline.run_04_build_iteration_context",
+                    "--train-run-dir", str(prev_paths["train_dir"]),
+                    "--memory", memory_path,
+                    "--cards", cards_path,
+                    "--top-k", str(cards_top_k),
+                    "--out", str(paths["context_path"]),
+                    "--config", config_path,
+                    *mock_args,
+                ])
+
+                identical_after_retries = False
+                for attempt in range(max_identical_retries + 1):
+                    if attempt > 0:
+                        append_noop_retry_instruction(paths["context_path"], attempt)
+                    best_arg = []
+                    if best_reward and str(best_reward) != str(previous_reward):
+                        best_arg = ["--best-reward", str(best_reward)]
+                    run_cmd([
+                        "python", "-m", "pipeline.run_05_reward_revision",
+                        "--config", config_path,
+                        "--previous-reward", str(previous_reward),
+                        "--iteration-context", str(paths["context_path"]),
+                        "--out-run-name", paths["gen_run_name"],
+                        "--reward-version", f"v{version}",
+                        *best_arg,
+                        *mock_args,
+                    ])
+                    current_reward = reward_path_for(cfg, paths["gen_run_name"], version)
+                    if not is_identical_reward(previous_reward, current_reward):
+                        break
+                    identical_after_retries = True
+                    if solved_seen and stop_when_solved_and_identical:
+                        stopped_reason = "stop_solved_identical_reward_keep_best"
+                        print("Identical reward after solved. Stop and keep best reward.")
+                        write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_score, target_score, rounds_completed)
+                        return
+                    if not retry_identical_unsolved:
+                        break
+
+                if identical_after_retries and is_identical_reward(previous_reward, current_reward):
+                    stopped_reason = "stop_identical_reward_after_retries_keep_best"
+                    print("Revision remained identical after retries. Stop to avoid white-run training.")
                     write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_score, target_score, rounds_completed)
                     return
-                if not retry_identical_unsolved:
-                    break
-
-            if identical_after_retries and is_identical_reward(previous_reward, current_reward):
-                stopped_reason = "stop_identical_reward_after_retries_keep_best"
-                print("Revision remained identical after retries. Stop to avoid white-run training.")
-                write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_score, target_score, rounds_completed)
-                return
 
         try:
             check_reward_valid(cfg, paths["gen_run_name"], version, stop_on_invalid)

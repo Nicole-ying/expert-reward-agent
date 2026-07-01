@@ -194,19 +194,44 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
     lines.append("## Training outcome")
     lines.append(f"score={_fmt_float(eval_result['mean_eval_reward'])}, len={_fmt_float(eval_result['mean_episode_length'])}, errors={component_summary['reward_error_count_max']}")
     lines.append("")
+    # Calculate progress reference for ratio column
+    progress_ref = 1.0
+    for name in sorted(stats.keys()):
+        short = name.replace("component.", "", 1)
+        if short in ("progress_reward", "progress_delta_reward", "progress_delta"):
+            progress_ref = max(abs(float(stats[name].get("mean", 1.0))), 0.001)
+            break
+
     lines.append("## Component evidence")
     lines.append("")
-    lines.append("| component | mean | abs_mean | nonzero_rate | min | max |")
-    lines.append("|-----------|------|----------|-------------|-----|-----|")
+    lines.append("| component | mean | abs_mean | nonzero_rate | ratio_to_progress |")
+    lines.append("|-----------|------|----------|-------------|------------------|")
     for name in sorted(stats.keys()):
         if name.startswith("component.original_env"):
             continue
         item = stats[name]
         short = name.replace("component.", "", 1)
+        ratio_val = float(item.get("mean", 0)) / progress_ref
         lines.append(
             f"| {short} | {_fmt_float(item.get('mean'))} | {_fmt_float(item.get('abs_mean'))} | "
-            f"{_fmt_float(item.get('nonzero_rate'))} | {_fmt_float(item.get('min'))} | {_fmt_float(item.get('max'))} |"
+            f"{_fmt_float(item.get('nonzero_rate'))} | {_fmt_float(ratio_val)} |"
         )
+
+    # Distribution summary
+    mean_len = float(eval_result.get("mean_episode_length", 0))
+    mean_score = float(eval_result.get("mean_eval_reward", 0))
+    lines.append("")
+    lines.append("## Distribution")
+    early_term = "N/A"
+    ep_rewards = eval_result.get("episode_rewards", [])
+    ep_lengths = eval_result.get("episode_lengths", [])
+    if ep_lengths and ep_rewards:
+        early_count = sum(1 for i in range(len(ep_lengths)) if ep_lengths[i] < 150 and ep_rewards[i] < -50)
+        early_term = f"{early_count}/{len(ep_lengths)} ({100*early_count/len(ep_lengths):.0f}%)"
+    lines.append(f"- score: mean={_fmt_float(mean_score)}, min={_fmt_float(eval_result.get('min_eval_reward', 0))}, max={_fmt_float(eval_result.get('max_eval_reward', 0))}")
+    lines.append(f"- episode_length: mean={_fmt_float(mean_len)}")
+    lines.append(f"- early_terminal (<150 steps + score<-50): {early_term}")
+    lines.append(f"- errors: {component_summary['reward_error_count_max']}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
