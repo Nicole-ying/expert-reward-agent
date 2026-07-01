@@ -15,21 +15,9 @@ from .run_03_direct_reward_generator import extract_code, validate_code
 from llm_clients.deepseek_client import DeepSeekClient
 
 
-def build_user_prompt(feedback_md, memory_md, previous_code, best_code, env_contract, expert_context, env_card):
-    """Assemble the reflection agent's user prompt."""
+def build_user_prompt(feedback_md, memory_md, previous_code, best_code):
+    """Assemble the reflection agent's user prompt — focused, no noise."""
     parts = []
-
-    if env_card:
-        # Trim env_card to key sections (1-5)
-        env_trimmed = env_card.split("## 6.")[0] if "## 6." in env_card else env_card
-        parts.append(f"# 环境信息\n{env_trimmed}")
-
-    parts.append(f"# 环境契约\n{env_contract}")
-
-    if expert_context:
-        # Strip v1 generation instructions
-        ctx = re.split(r"\n## \d+\. reward_v1 生成要求", expert_context)[0]
-        parts.append(f"# 专家知识骨架\n{ctx}")
 
     parts.append(f"# 当前奖励函数代码\n```python\n{previous_code.strip()}\n```")
 
@@ -72,37 +60,14 @@ def run_reflection_agent(
     if best_reward_path and Path(best_reward_path).exists():
         best_code = read_text(best_reward_path)
 
-    # Expert context — walk up from reward_vN.py → generation → iter_NN → seed_N
-    seed_dir = Path(previous_reward_path).parent.parent.parent
-    expert_context = ""
-    for d in sorted(Path(seed_dir).glob("iter_*/generation/expert_reward_context.md"), reverse=True):
-        expert_context = read_text(str(d))
-        break
-
-    # Environment card
-    env_card = ""
-    for d in sorted(Path(seed_dir).glob("iter_*/generation/environment_card.md"), reverse=True):
-        env_card = read_text(str(d))
-        break
-
-    env_contract = (
-        "- function_signature: def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n"
-        "- allowed: obs[0..7], next_obs[0..7], action (0=noop,1=left,2=main,3=right), info (no reliable fields)\n"
-        "- forbidden: original_reward, official_reward, terminal_success_reward, terminal_failure_penalty\n"
-    )
-
     if validation_retry:
         user_prompt = (
             f"# ⚠️ 上一版代码验证失败\n"
             f"错误信息：{validation_retry}\n"
             f"请修复以上错误，重新生成完整的奖励函数代码。\n\n"
-        ) + build_user_prompt(
-            feedback_md, memory_md, previous_code, best_code, env_contract, expert_context, env_card
-        )
+        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code)
     else:
-        user_prompt = build_user_prompt(
-        feedback_md, memory_md, previous_code, best_code, env_contract, expert_context, env_card
-    )
+        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code)
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_reflection_agent.input.md", user_prompt)
     record_prompt(run_dir, "agent_reflection", system_prompt, user_prompt)
