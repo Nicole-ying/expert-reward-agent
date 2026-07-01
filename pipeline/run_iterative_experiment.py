@@ -179,7 +179,7 @@ def write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_
     (exp_root / "experiment_summary.md").write_text(text, encoding="utf-8")
 
 
-def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timesteps=None, eval_episodes=None, mock=None, seed=0):
+def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timesteps=None, eval_episodes=None, mock=None, seed=0, resume_from=None):
     cfg = load_config(config_path)
     iter_cfg = cfg.get("iteration", {})
     train_cfg = cfg.get("training", {})
@@ -207,23 +207,9 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
 
     memory_path = str(experiment_root_for(cfg, prefix, seed) / "memory" / "reward_memory.md")
     cards_path = rag_cfg.get("reward_misalignment_cards_path", "knowledge_base/iteration/reward_misalignment_cards.md")
-    maybe_reset_memory(memory_path, bool(iter_cfg.get("reset_memory_at_start", True)))
 
-    print("=" * 60)
-    print("Config-driven iterative reward experiment")
-    print("=" * 60)
-    print(f"config          : {config_path}")
-    print(f"prefix          : {prefix}")
-    print(f"seed            : {seed}")
-    print(f"rounds          : {rounds}")
-    print(f"target_score    : {target_score}")
-    print(f"total_timesteps : {total_timesteps}")
-    print(f"eval_episodes   : {eval_episodes}")
-    print(f"memory_path     : {memory_path}")
-    print(f"cards_path      : {cards_path}")
-    print(f"cards_top_k     : {cards_top_k}")
-    print(f"mock_llm        : {use_mock}")
-
+    # Resume support
+    start_iter = 1
     previous_reward = None
     best_score = None
     best_iter = None
@@ -236,7 +222,56 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     force_fresh_restart = False
     restart_count = 0
 
-    for iteration_index in range(1, rounds + 1):
+    if resume_from and resume_from > 1:
+        start_iter = resume_from
+        print(f"Resuming from iteration {resume_from}")
+        # Don't reset memory when resuming
+        maybe_reset_memory(memory_path, False)
+        # Read state from previous iteration
+        prev_iter = resume_from - 1
+        prev_paths = build_paths(cfg, prefix, prev_iter, seed)
+        reward_path = reward_path_for(cfg, prev_paths["gen_run_name"], prev_iter)
+        if Path(reward_path).exists():
+            previous_reward = reward_path
+        # Read best score from memory
+        import re
+        mem = Path(memory_path)
+        if mem.exists():
+            for line in mem.read_text(encoding="utf-8").splitlines():
+                if line.startswith("|") and re.match(r"\|\s*\d+\s*\|", line):
+                    cols = [c.strip() for c in line.split("|")]
+                    try:
+                        s = float(cols[3])
+                        if best_score is None or s > best_score:
+                            best_score = s
+                            best_iter = int(cols[1])
+                    except: pass
+            if best_score is not None:
+                solved_seen = best_score >= target_score
+                # Find best reward path
+                bp = experiment_root_for(cfg, prefix, seed) / "best" / "best_reward.py"
+                if bp.exists():
+                    best_reward = str(bp)
+    else:
+        maybe_reset_memory(memory_path, bool(iter_cfg.get("reset_memory_at_start", True)))
+
+    print("=" * 60)
+    print("Config-driven iterative reward experiment")
+    print("=" * 60)
+    print(f"config          : {config_path}")
+    print(f"prefix          : {prefix}")
+    print(f"seed            : {seed}")
+    print(f"rounds          : {rounds}")
+    print(f"start_iter      : {start_iter}")
+    print(f"target_score    : {target_score}")
+    print(f"total_timesteps : {total_timesteps}")
+    print(f"eval_episodes   : {eval_episodes}")
+    print(f"memory_path     : {memory_path}")
+    print(f"cards_path      : {cards_path}")
+    print(f"cards_top_k     : {cards_top_k}")
+    print(f"mock_llm        : {use_mock}")
+
+    for iteration_index in range(start_iter, rounds + 1):
         version = iteration_index
         paths = build_paths(cfg, prefix, iteration_index, seed)
         mock_args = ["--mock"] if use_mock else []
@@ -494,6 +529,7 @@ def main():
     ap.add_argument("--total-timesteps", type=int, default=None)
     ap.add_argument("--eval-episodes", type=int, default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--resume-from", type=int, default=None)
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
 
@@ -506,6 +542,7 @@ def main():
         eval_episodes=args.eval_episodes,
         mock=mock,
         seed=args.seed,
+        resume_from=args.resume_from,
     )
 
 
