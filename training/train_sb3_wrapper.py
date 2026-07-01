@@ -7,7 +7,7 @@ import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from training.reward_wrapper import RewardOverrideWrapper, load_reward_function
 
@@ -80,25 +80,36 @@ class RewardComponentStatsCallback(BaseCallback):
         }
 
 
-def build_env(env_id, reward_fn, max_progress_steps, seed, rank, monitor_dir, reward_clip, error_fallback):
-    def _init():
-        env = gym.make(env_id)
-        env.reset(seed=seed + rank)
-        env.action_space.seed(seed + rank)
-        env = RewardOverrideWrapper(
-            env,
-            reward_fn,
-            max_training_steps_for_progress=max_progress_steps,
-            reward_clip=reward_clip,
-            error_fallback=error_fallback,
-        )
-        env = Monitor(
-            env,
-            filename=str(Path(monitor_dir) / f"monitor_{rank}.csv"),
-            info_keywords=("original_env_reward", "generated_reward", "reward_error_count"),
-        )
-        return env
-    return _init
+def _make_env(env_id, reward_fn, max_progress_steps, seed, rank, monitor_dir, reward_clip, error_fallback):
+    """Module-level env factory for SubprocVecEnv (must be picklable)."""
+    import gymnasium as gym
+    from training.reward_wrapper import RewardOverrideWrapper
+    from stable_baselines3.common.monitor import Monitor
+    env = gym.make(env_id)
+    env.reset(seed=seed + rank)
+    env.action_space.seed(seed + rank)
+    env = RewardOverrideWrapper(
+        env,
+        reward_fn,
+        max_training_steps_for_progress=max_progress_steps,
+        reward_clip=reward_clip,
+        error_fallback=error_fallback,
+    )
+    env = Monitor(
+        env,
+        filename=str(Path(monitor_dir) / f"monitor_{rank}.csv"),
+        info_keywords=("original_env_reward", "generated_reward", "reward_error_count"),
+    )
+    return env
+
+
+def build_env_fns(env_id, reward_fn, max_progress_steps, seed, n_envs, monitor_dir, reward_clip, error_fallback):
+    """Return list of env factory functions for SubprocVecEnv."""
+    from functools import partial
+    fns = []
+    for rank in range(n_envs):
+        fns.append(partial(_make_env, env_id, reward_fn, max_progress_steps, seed, rank, str(monitor_dir), reward_clip, error_fallback))
+    return fns
 
 
 def evaluate_model_on_original_env(model, env_id, eval_episodes, seed):
@@ -234,19 +245,17 @@ def main():
     error_fallback = train_cfg.get("error_fallback", "zero")
     max_progress_steps = int(train_cfg.get("max_training_steps_for_progress", total_timesteps))
 
-    env = DummyVecEnv([
-        build_env(
-            train_cfg["runner_env_id"],
-            reward_fn,
-            max_progress_steps,
-            seed,
-            i,
-            monitor_dir,
-            reward_clip,
-            error_fallback,
-        )
-        for i in range(n_envs)
-    ])
+    env_fns = build_env_fns(
+        train_cfg["runner_env_id"],
+        reward_fn,
+        max_progress_steps,
+        seed,
+        n_envs,
+        monitor_dir,
+        reward_clip,
+        error_fallback,
+    )
+    env = SubprocVecEnv(env_fns)
 
     ppo_args = {
         "policy": train_cfg.get("policy", "MlpPolicy"),
