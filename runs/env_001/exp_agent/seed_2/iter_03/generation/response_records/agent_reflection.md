@@ -2,91 +2,64 @@
 
 Let me analyze the situation carefully.
 
-## Analysis
+**Current state analysis:**
 
-**Current score**: -118.44 (worse than best -110.68)
-**Episode length**: 71.9 steps (all episodes terminate early, 100% early terminal)
-**Key observations**:
+1. **score = -118.44** (very bad), **episode length = 71.9** (very short), **100% early termination** - the agent is dying/crashing very early.
 
-1. **progress_delta_reward** (ratio=1.0): This is the dominant signal. Mean=0.162, which is positive but small. The agent is making some progress but not enough to reach the target.
+2. **progress_delta_reward** has mean=0.162, ratio=1.0 - this is positive, meaning the agent IS moving toward the target. But it's dying before reaching it.
 
-2. **soft_landing_bonus** (nonzero_rate=1.57%): Still very sparse! The continuous product form I used still has a binary `contact_factor` which kills the gradient. The product of 5 factors where one is binary means the bonus is almost always zero.
+3. **stability_penalty** has mean=-0.006, ratio=-0.037 - very small, not dominating. The distance gate is working (it's very weak).
 
-3. **stability_penalty** (ratio=-0.037): Very weak now, which is good - it's not dominating. But maybe too weak? The agent falls before reaching target.
+4. **soft_landing_bonus** has nonzero_rate=1.57% - barely ever triggers. The contact_factor (both feet on ground) is a hard binary gate that kills the bonus.
 
-4. **energy_penalty** (ratio=-0.03): Negligible, fine.
+5. **energy_penalty** is negligible.
 
-5. **original_env_reward** = -1.72 mean → The environment itself is punishing the agent heavily. The agent is falling/dying.
+**The core problem:** The agent moves toward the target (positive progress) but falls over and dies early. The stability penalty is too weak to teach the agent to stay upright while moving. The distance gate makes it even weaker.
 
-The core problem: **The agent dies (early termination) before it can reach the target and get the soft landing bonus.** The progress_delta_reward is the only meaningful signal, but it's not strong enough to teach the agent to survive long enough to reach the target.
+**What I changed from iter 1 to iter 2:** I reduced stability_penalty coefficients by ~20x (from -0.5, -0.3, -0.2 to -0.025, -0.015, -0.01) and added a distance gate. This made the penalty much weaker, and the agent got WORSE (score dropped from -110.68 to -118.44).
 
-Let me think about what to change:
+The problem is clear: **the stability penalty is too weak** to prevent the agent from falling over. The agent moves toward the target but tumbles and dies. I need to increase the stability penalty significantly, but in a smarter way - not a flat penalty that discourages all movement, but one that specifically penalizes the dangerous behaviors that cause falling.
 
-1. The **contact_factor** being binary (0 or 1) kills the soft_landing_bonus gradient. I should make it continuous too.
-2. The **stability_penalty** might be too weak now - the agent falls over and dies. But the original version had ratio=-0.242 which was too dominant. I need a middle ground.
-3. The **progress_delta_reward** coefficient (10.0) might need adjustment.
+Let me think about what to do:
 
-Actually, looking more carefully: the agent terminates early (100% of episodes < 150 steps with score < -50). This means the agent is crashing/failing. The progress_delta_reward is positive (0.162 mean) but the original_env_reward is -1.72 mean - the environment is punishing the agent for bad states (probably falling).
+1. The progress_delta_reward is working (positive mean) - keep it.
+2. The stability_penalty is too weak - need to strengthen it.
+3. The soft_landing_bonus never triggers because the agent dies before reaching the target - need to make it easier to trigger or focus on survival first.
 
-The key insight: **The agent needs to survive longer to reach the target.** The stability_penalty was reduced too much (from -0.242 to -0.006). While it was dominating before, now it's too weak to teach the agent to stay upright.
+Actually, looking more carefully: the agent dies at ~72 steps with score -118. The original env reward is -1.72 per step on average. So the agent is getting negative env reward (probably falling and getting -100 terminal penalty or something). The agent needs to learn to stay upright FIRST, then move toward target.
 
-Let me try a balanced approach:
-- Keep the distance-gated stability penalty but increase its magnitude moderately
-- Make the contact_factor continuous (not binary) to provide gradient for soft_landing_bonus
-- Keep progress_delta_reward as the main signal
+Let me try a different approach: **increase stability penalty significantly** but make it more nuanced. The previous version (iter 1) had stability_penalty mean=-0.242 which was too harsh. But now it's -0.006 which is too weak. Let me find a middle ground.
 
-Let me look at the soft_landing_bonus more carefully. The current form:
-```python
-soft_landing_bonus = 5.0 * proximity_factor * speed_factor * angle_factor * angular_vel_factor * contact_factor
-```
+Also, the soft_landing_bonus with contact_factor as a hard binary gate is problematic. Let me make it continuous.
 
-Where `contact_factor` is binary (0 or 1). This means if both feet aren't on the ground, the whole product is zero. This is the main reason nonzero_rate is only 1.57%.
+Let me also consider: the agent is dying early. The progress_delta_reward encourages moving toward target, but the agent falls over while doing so. I need stability to be strong enough to keep the agent upright.
 
-I should make contact_factor continuous too. Something like:
-```python
-contact_factor = min(1.0, (next_left_contact + next_right_contact) / 2.0)  # continuous [0,1]
-```
+Let me try:
+- Increase stability penalty coefficients to something moderate
+- Remove the distance gate (or make it much weaker) so stability applies everywhere
+- Make soft_landing_bonus continuous (remove the binary contact_factor gate)
 
-Wait, but the obs values for contact are already binary (0 or 1 based on the info). Let me check - the code says `left_contact = obs[6]` and `right_contact = obs[7]`. If these are binary, then `(next_left_contact + next_right_contact) / 2.0` would be 0, 0.5, or 1.0. That's still not truly continuous but at least gives partial credit for one foot.
+Actually, let me reconsider. The ratio_to_progress for stability_penalty in iter 1 was likely much higher (mean=-0.242). Let me check: progress_delta_reward mean was 0.160 in iter 1. So ratio was -0.242/0.160 = -1.51. That's too dominant.
 
-Actually, let me reconsider the approach. The main issue is that the agent dies too quickly. Let me:
+Now it's -0.006/0.162 = -0.037. Too weak.
 
-1. **Increase stability_penalty moderately** - not back to the original level, but enough to discourage falling
-2. **Make contact_factor continuous** - so the soft_landing_bonus can provide gradient even when only one foot is on ground
-3. **Increase soft_landing_bonus weight** - to make it more attractive
+I need something in between. Let me try coefficients that give ratio around -0.3 to -0.5.
 
-Let me also consider: maybe I should try a different skeleton. The progress_delta approach has been tried twice and the score hasn't improved much. Let me look at potential_based_shaping.
+If progress mean ≈ 0.16, and I want stability mean ≈ -0.05 to -0.08 (ratio -0.3 to -0.5):
+- angle_penalty: -0.1 * abs(body_angle) → mean abs(body_angle) maybe ~0.3? So -0.03
+- angular_vel_penalty: -0.05 * abs(angular_vel) → mean maybe ~0.5? So -0.025
+- speed_penalty: -0.03 * speed → mean speed maybe ~1.0? So -0.03
+Total ≈ -0.085. That's ratio ≈ -0.53. Might work.
 
-Actually, let me try a hybrid approach - keep progress_delta but add a potential-based shaping component that also considers stability.
+Let me also remove the distance gate since the agent dies early (far from target) and needs stability guidance everywhere.
 
-Let me go with a focused modification:
+For soft_landing_bonus: make contact_factor continuous too. Use `float(next_left_contact > 0.5) * float(next_right_contact > 0.5)` but maybe as a soft product.
 
-**Changes:**
-1. Make `contact_factor` continuous: `(next_left_contact + next_right_contact) / 2.0` instead of binary AND
-2. Increase stability_penalty coefficients moderately (about 3x from current, but still distance-gated)
-3. Increase soft_landing_bonus weight from 5.0 to 8.0
+Actually, let me make contact_factor also continuous: `(next_left_contact) * (next_right_contact)` since contact values are likely in [0,1] range.
 
-This is "改一个组件" (making contact_factor continuous) + adjusting coefficients, which is reasonable as one focused change.
+Let me also increase the soft_landing_bonus weight since it barely triggers.
 
-Wait, actually let me reconsider. The stability_penalty was reduced from -0.242 to -0.006 (ratio). That's a 40x reduction. The agent is now falling over because there's no penalty for being unstable. Let me increase it to a moderate level.
-
-Let me set:
-- angle_penalty: -0.15 * abs(next_body_angle) (was -0.025)
-- angular_vel_penalty: -0.08 * abs(next_angular_vel) (was -0.015)  
-- speed_penalty: -0.05 * speed (was -0.01)
-
-These are still much lower than the original (-0.5, -0.3, -0.2) but provide meaningful guidance.
-
-And for the contact_factor, make it continuous.
-
-Let me also increase the soft_landing_bonus weight to make it more attractive.
-
-Actually, I want to be careful about making too many changes at once. Let me focus on the two most impactful changes:
-
-1. **Continuous contact_factor** - this is the main reason soft_landing_bonus is sparse
-2. **Moderate increase in stability_penalty** - to prevent early death
-
-Let me write the code.
+Let me write the new code:
 
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
@@ -115,26 +88,25 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
     progress_delta = current_dist - next_dist
     progress_delta_reward = 10.0 * progress_delta
     
-    # 2. Stability penalty - moderate level, distance-gated
+    # 2. Stability penalty - moderate strength, no distance gate
+    # The agent dies early because it falls over while moving toward target
+    # Need enough penalty to teach upright posture
     speed = (next_x_vel ** 2 + next_y_vel ** 2) ** 0.5
-    angle_penalty = -0.15 * abs(next_body_angle)
-    angular_vel_penalty = -0.08 * abs(next_angular_vel)
-    speed_penalty = -0.05 * speed
-    
-    # Distance gate: only apply stability penalty when near target
-    gate = 1.0 / (1.0 + 2.0 * next_dist)
-    stability_penalty = gate * (angle_penalty + angular_vel_penalty + speed_penalty)
+    angle_penalty = -0.1 * abs(next_body_angle)
+    angular_vel_penalty = -0.05 * abs(next_angular_vel)
+    speed_penalty = -0.03 * speed
+    stability_penalty = angle_penalty + angular_vel_penalty + speed_penalty
     
     # 3. Soft landing proxy: continuous product of bounded factors
+    # Make contact_factor continuous too (use raw contact values)
     proximity_factor = 1.0 / (1.0 + 5.0 * next_dist)
     speed_factor = 1.0 / (1.0 + 5.0 * speed)
     angle_factor = 1.0 / (1.0 + 10.0 * abs(next_body_angle))
     angular_vel_factor = 1.0 / (1.0 + 5.0 * abs(next_angular_vel))
+    # Continuous contact factor - use raw values as probabilities
+    contact_factor = next_left_contact * next_right_contact  # continuous in [0,1]
     
-    # Continuous contact factor: average of both feet (gives partial credit for one foot)
-    contact_factor = (next_left_contact + next_right_contact) / 2.0
-    
-    soft_landing_bonus = 8.0 * proximity_factor * speed_factor * angle_factor * angular_vel_factor * contact_factor
+    soft_landing_bonus = 10.0 * proximity_factor * speed_factor * angle_factor * angular_vel_factor * contact_factor
     
     # 4. Small energy penalty for using engines
     energy_penalty = 0.0
@@ -154,41 +126,54 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
     return float(total_reward), components
 ```
 
-Wait, I need to think about this more carefully. The stability_penalty ratio went from -0.242 (original) to -0.006 (current). That's a massive reduction. The agent is now dying because there's no penalty for being unstable.
+Wait, but I need to be careful. Let me re-examine the problem.
 
-But the original had ratio=-0.242 which was "dominating" according to the knowledge base. The fix was to reduce by 10x or use distance gating. I did both - reduced by ~40x AND added distance gating.
+The agent dies at step ~72 with score -118. The env reward is -1.72 per step. So total env reward over 72 steps ≈ -124. That's close to -118. So the env is giving very negative rewards (probably a big penalty for falling).
 
-The problem is that with distance gating AND the 40x reduction, the penalty is now negligible. The agent falls over before it even gets close to the target, so the gate is always small, and the penalty coefficients are tiny.
+The progress_delta_reward is +0.16 per step, so over 72 steps that's about +11.5. The total reward is 0.165 per step, so over 72 steps ≈ +11.9. But the env reward is -1.72 per step = -124 total.
 
-I think the right approach is:
-1. Keep distance gating (good idea)
-2. But increase the coefficients so that even with the gate, there's meaningful signal
-3. Make contact_factor continuous
+So the agent IS making progress (moving toward target) but the env is punishing it heavily (probably for falling/terminating badly). The custom reward is positive but the env reward is very negative.
 
-Let me set the coefficients to something like:
-- angle_penalty: -0.5 * abs(next_body_angle) (back to original level)
-- angular_vel_penalty: -0.3 * abs(next_angular_vel) (back to original level)
-- speed_penalty: -0.2 * speed (back to original level)
+This means the agent needs to learn to stay upright AND move toward target simultaneously. The stability penalty needs to be strong enough to teach upright behavior.
 
-With the gate `1/(1+2*dist)`:
-- At dist=0: gate=1.0, full penalty
-- At dist=1: gate=0.33, 1/3 penalty
-- At dist=2: gate=0.2, 1/5 penalty
-- At dist=5: gate=0.09, ~1/11 penalty
+Let me also consider: maybe I should increase the progress_delta_reward scale to give more positive signal, or change the approach entirely.
 
-So even at the start (dist maybe ~5-10), the penalty is heavily gated. This should prevent the "freezing" behavior while still providing guidance near the target.
+Actually, let me look at this differently. The agent terminates early (100% of episodes < 150 steps). The env likely gives a large negative terminal reward for falling. The agent needs to survive longer.
 
-Let me go with this approach.
+To survive longer, the agent needs to:
+1. Stay upright (stability)
+2. Not crash into the ground
 
-Actually, I realize I should also consider: the agent is dying at step ~72 on average. The distance at the start might be around 5-10. The agent needs to survive long enough to reach the target. The stability penalty at the original level but distance-gated should help the agent learn to stay upright without dominating the early exploration.
+The progress_delta_reward is fine for guiding toward target. The stability_penalty needs to be strong enough to teach the agent to balance.
 
-Let me finalize the changes:
+Let me go with moderate stability penalties and see.
 
-1. **Stability penalty**: Back to original coefficients but with distance gating
-2. **Contact factor**: Continuous instead of binary
-3. **Soft landing bonus weight**: Increased from 5.0 to 8.0
+Actually, I realize I should also consider: maybe the issue is that the agent is moving too fast and crashing. The speed_penalty could help with that. Let me keep my plan.
 
-This is a focused set of changes that addresses the two main issues: (a) agent dies too early, (b) soft_landing_bonus is too sparse.
+Let me also increase the soft_landing_bonus weight to 10.0 (from 5.0) since it's a product of 5 factors each in [0,1], so the product is very small.
+
+Let me finalize my changes:
+
+1. **Stability penalty**: Increase coefficients from (-0.025, -0.015, -0.01) to (-0.1, -0.05, -0.03) - roughly 4x stronger. Remove distance gate so it applies everywhere.
+2. **Soft landing bonus**: Make contact_factor continuous (product of raw values instead of binary AND), increase weight from 5.0 to 10.0.
+3. Keep everything else the same.
+
+This is a focused change: adjusting stability penalty magnitude and making soft_landing_bonus more accessible.
+
+## 诊断
+
+**核心问题：Agent 在 72 步内 100% 提前终止，score -118。** 虽然 progress_delta_reward 为正（+0.16/步），说明 agent 在向目标移动，但它一边移动一边摔倒/坠毁。
+
+**Iter 1 → Iter 2 的改动**：把 stability_penalty 系数从 (-0.5, -0.3, -0.2) 降到 (-0.025, -0.015, -0.01) 并加了距离门控。结果 score 从 -110.68 降到 -118.44，**变差了**。说明稳定性惩罚太弱，无法阻止 agent 摔倒。
+
+**当前症状**：
+- stability_penalty ratio=-0.037 → 太弱，几乎不起作用
+- soft_landing_bonus nonzero_rate=1.57% → 几乎从不触发（agent 在到达目标前就死了）
+- 100% 提前终止 → agent 需要更强的稳定性引导才能存活更久
+
+**修改计划（一次改一个方面）**：
+1. **稳定性惩罚系数提升约 4 倍**：从 (-0.025, -0.015, -0.01) → (-0.1, -0.05, -0.03)，并**移除距离门控**（agent 在远处也需要稳定性，否则还没到目标就摔了）
+2. **软着陆奖励的 contact_factor 改为连续值**：用 `next_left_contact * next_right_contact` 代替二值 AND，让梯度更密集；同时权重从 5.0 提升到 10.0
 
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
@@ -212,38 +197,45 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
     next_right_contact = next_obs[7]
     
     # 1. Main learning signal: progress_delta_reward
+    # Reward for moving closer to the target (origin in relative coordinates)
     current_dist = (x_pos ** 2 + y_pos ** 2) ** 0.5
     next_dist = (next_x_pos ** 2 + next_y_pos ** 2) ** 0.5
     progress_delta = current_dist - next_dist
     progress_delta_reward = 10.0 * progress_delta
     
-    # 2. Stability penalty - distance-gated to avoid dominating early exploration
-    # Coefficients restored to original level, but gate ensures they only matter near target
+    # 2. Stability penalty - moderate strength, NO distance gate
+    # Agent dies early (step ~72) because it falls over while moving.
+    # Previous iteration had penalty too weak (ratio=-0.037).
+    # Increasing coefficients ~4x to provide meaningful guidance.
+    # Removing distance gate because agent needs stability everywhere,
+    # not just near target - it dies before reaching target.
     speed = (next_x_vel ** 2 + next_y_vel ** 2) ** 0.5
-    angle_penalty = -0.5 * abs(next_body_angle)
-    angular_vel_penalty = -0.3 * abs(next_angular_vel)
-    speed_penalty = -0.2 * speed
-    
-    # Distance gate: gate ~1 when dist=0, ~0.33 when dist=1, ~0.09 when dist=5
-    gate = 1.0 / (1.0 + 2.0 * next_dist)
-    stability_penalty = gate * (angle_penalty + angular_vel_penalty + speed_penalty)
+    angle_penalty = -0.1 * abs(next_body_angle)
+    angular_vel_penalty = -0.05 * abs(next_angular_vel)
+    speed_penalty = -0.03 * speed
+    stability_penalty = angle_penalty + angular_vel_penalty + speed_penalty
     
     # 3. Soft landing proxy: continuous product of bounded factors
-    proximity_factor = 1.0 / (1.0 + 5.0 * next_dist)
-    speed_factor = 1.0 / (1.0 + 5.0 * speed)
-    angle_factor = 1.0 / (1.0 + 10.0 * abs(next_body_angle))
-    angular_vel_factor = 1.0 / (1.0 + 5.0 * abs(next_angular_vel))
+    # Changed contact_factor from binary AND to continuous product
+    # of raw contact values, providing gradient even when only one foot touches.
+    # Increased weight from 5.0 to 10.0 to compensate for product attenuation.
+    proximity_factor = 1.0 / (1.0 + 5.0 * next_dist)  # bounded [0,1], high when near target
+    speed_factor = 1.0 / (1.0 + 5.0 * speed)  # bounded [0,1], high when slow
+    angle_factor = 1.0 / (1.0 + 10.0 * abs(next_body_angle))  # bounded [0,1], high when upright
+    angular_vel_factor = 1.0 / (1.0 + 5.0 * abs(next_angular_vel))  # bounded [0,1], low angular vel
     
-    # Continuous contact factor: average of both feet (gives partial credit for one foot)
-    contact_factor = (next_left_contact + next_right_contact) / 2.0
+    # Continuous contact factor: product of raw values (assumed in [0,1])
+    # This gives gradient even when only one foot contacts
+    contact_factor = next_left_contact * next_right_contact  # continuous in [0,1]
     
-    soft_landing_bonus = 8.0 * proximity_factor * speed_factor * angle_factor * angular_vel_factor * contact_factor
+    soft_landing_bonus = 10.0 * proximity_factor * speed_factor * angle_factor * angular_vel_factor * contact_factor
     
-    # 4. Small energy penalty for using engines
+    # 4. Small energy penalty for using engines (action != 0)
     energy_penalty = 0.0
     if action != 0:
         energy_penalty = -0.05
     
+    # Combine rewards
     total_reward = progress_delta_reward + stability_penalty + soft_landing_bonus + energy_penalty
     
     components = {
@@ -256,38 +248,3 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
     
     return float(total_reward), components
 ```
-
-Hmm, but wait. Let me reconsider. The stability_penalty with original coefficients (-0.5, -0.3, -0.2) even with gating might still be too strong. Let me think about what happens at different distances.
-
-At dist=0.5 (near target): gate = 1/(1+2*0.5) = 1/2 = 0.5
-- angle_penalty: -0.5 * angle (say angle=0.1) = -0.05 → gated: -0.025
-- angular_vel_penalty: -0.3 * ang_vel (say 0.1) = -0.03 → gated: -0.015
-- speed_penalty: -0.2 * speed (say 0.5) = -0.1 → gated: -0.05
-- Total gated: -0.09
-
-At dist=2.0: gate = 1/(1+4) = 0.2
-- Same values: -0.01, -0.006, -0.02 → total: -0.036
-
-At dist=5.0: gate = 1/(1+10) = 0.09
-- Total: -0.016
-
-These seem reasonable. The penalty is meaningful near the target but negligible far away.
-
-But actually, the agent is dying at step 72. The distance at death might be around 3-5. At dist=3, gate=1/7≈0.14, so the penalty is quite small. The agent is dying because it's unstable, not because of the penalty being too strong.
-
-I think the issue is more fundamental - the progress_delta_reward alone isn't enough to teach the agent to stay upright. The stability penalty needs to provide some signal even at medium distances.
-
-Let me try a slightly different approach: use a softer gate that decays more slowly.
-
-gate = 1.0 / (1.0 + 0.5 * next_dist)  # gate=1 at dist=0, 0.67 at dist=1, 0.5 at dist=2, 0.29 at dist=5
-
-This way the penalty has more influence at medium distances, helping the agent learn to stay upright earlier.
-
-Actually, let me just go with the plan and see. The key changes are:
-1. Continuous contact_factor
-2. Higher stability penalty with distance gating
-3. Higher soft_landing_bonus weight
-
-Let me finalize.
-
-Actually, I want to

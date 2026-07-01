@@ -72,8 +72,8 @@ def run_reflection_agent(
     if best_reward_path and Path(best_reward_path).exists():
         best_code = read_text(best_reward_path)
 
-    # Expert context
-    seed_dir = Path(previous_reward_path).parent.parent
+    # Expert context — walk up from reward_vN.py → generation → iter_NN → seed_N
+    seed_dir = Path(previous_reward_path).parent.parent.parent
     expert_context = ""
     for d in sorted(Path(seed_dir).glob("iter_*/generation/expert_reward_context.md"), reverse=True):
         expert_context = read_text(str(d))
