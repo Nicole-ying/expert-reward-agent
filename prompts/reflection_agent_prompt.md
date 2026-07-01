@@ -18,16 +18,6 @@
 
 **层次 3：换骨架 (rebuild)。** 如果当前骨架已经调了 2 轮以上、得分仍然远低于 target，不要继续在同一个骨架上微调。从 expert knowledge 中选一个数学形态不同的骨架重来。例如 progress_delta 不行 → 试试 bounded_proximity 或 potential_based_shaping。换骨架之前先调用 get_skeleton_detail 了解候选骨架。
 
-# 常用技法速查
-
-| 症状 | 可能解法 |
-|------|---------|
-| penalty 的 ratio_to_progress > 0.5，episode 短 | 削 10 倍；或 distance_gated（远处不罚） |
-| bonus nonzero_rate < 2% | 换连续乘积形式；二值条件 → max(0,1-x/D) |
-| progress 正常但 episode 长，不完成 | 添加 low-speed+low-angle shaping；尝试 bounded_proximity |
-| generated_reward 高但 external 差 | 奖励黑客：检查哪个组件可被 exploit |
-| 同一骨架 ≥2 轮无改善 | 调用工具查技法；如果还是没有新思路 → rebuild |
-
 # 约束
 
 - 禁止 terminal_success_reward、terminal_failure_penalty、original_reward。
