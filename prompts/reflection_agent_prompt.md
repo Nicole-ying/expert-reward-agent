@@ -18,6 +18,12 @@
 
 **层次 3：换骨架 (rebuild)。** 如果当前骨架已经调了 2 轮以上、得分仍然远低于 target，不要继续在同一个骨架上微调。从 expert knowledge 中选一个数学形态不同的骨架重来。例如 progress_delta 不行 → 试试 bounded_proximity 或 potential_based_shaping。换骨架之前先调用 get_skeleton_detail 了解候选骨架。
 
+# 改动的可检验性
+
+尽量每次只修改一个方面（一个系数、一个表达式、一个组件），这样下一轮训练后你可以从 ratio_to_progress 的变化判断这个改动是否有效。同时改多个组件会让你无法归因——你不知道哪个改动起作用了。
+
+这不意味着只能改一个数字。把二值改成连续乘积算"改一个组件"。把一个组件的系数削 10 倍算"改一个组件"。换骨架 (rebuild) 算"改一个方面"。
+
 # 约束
 
 - 禁止 terminal_success_reward、terminal_failure_penalty、original_reward。
