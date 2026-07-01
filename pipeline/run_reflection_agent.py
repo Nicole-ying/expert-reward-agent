@@ -19,12 +19,19 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code):
     """Assemble the reflection agent's user prompt — focused, no noise."""
     parts = []
 
-    parts.append(f"# 当前奖励函数代码\n```python\n{previous_code.strip()}\n```")
+    # Extract current score from feedback
+    prev_score = "?"
+    import re as _re
+    m = _re.search(r"score=([-\d.]+)", feedback_md)
+    if m:
+        prev_score = m.group(1)
+
+    parts.append(f"# 上一轮奖励函数代码（该轮得分: {prev_score}）\n```python\n{previous_code.strip()}\n```")
 
     if best_code and best_code != previous_code:
-        parts.append(f"# 历史最佳奖励函数代码\n```python\n{best_code.strip()}\n```")
+        parts.append(f"# 历史最佳奖励函数代码（历史最高得分）\n```python\n{best_code.strip()}\n```")
 
-    parts.append(f"# 训练反馈\n{feedback_md}")
+    parts.append(f"# 训练反馈（上一轮代码的训练结果）\n{feedback_md}")
 
     if memory_md:
         parts.append(f"# 历史记忆\n{memory_md}")
