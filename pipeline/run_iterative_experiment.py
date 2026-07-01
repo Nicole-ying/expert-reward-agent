@@ -330,7 +330,11 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             check_reward_valid(cfg, paths["gen_run_name"], version, stop_on_invalid)
         except (RuntimeError, FileNotFoundError) as e:
             print(f"Reward validation failed: {e}")
-            print("Skipping this iteration due to invalid generated code.")
+            print("Skipping this iteration due to invalid generated code. Using previous reward for next iteration.")
+            # Don't update previous_reward — keep the last valid one
+            force_fresh_restart = True  # Force a fresh generation next iteration
+            restart_count += 1
+            no_improve_count += 1
             continue
 
         run_cmd([
