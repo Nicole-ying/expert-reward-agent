@@ -1,22 +1,22 @@
 # Training Feedback
 
 ## Training outcome
-score=-110.683396, len=72.000000, errors=0
+score=-108.814423, len=72.000000, errors=0
 
 ## Component evidence
 
 | component | mean | abs_mean | nonzero_rate | ratio_to_progress |
 |-----------|------|----------|-------------|------------------|
-| energy_penalty | -0.008435 | 0.008435 | 0.168709 | -0.052693 |
-| progress_delta_reward | 0.160088 | 0.169472 | 0.999990 | 1.000000 |
-| soft_landing_bonus | 0.011517 | 0.011517 | 0.005759 | 0.071945 |
-| stability_penalty | -0.242176 | 0.242176 | 1.000000 | -1.512771 |
-| total_reward | -0.079006 | 0.105815 | 1.000000 | -0.493519 |
-| generated_reward | -0.079006 | 0.105815 | 1.000000 | -0.493519 |
-| original_env_reward | -1.545106 | 2.316389 | 1.000000 | -9.651624 |
+| energy_penalty | -0.006799 | 0.006799 | 0.135972 | -0.042126 |
+| landing_bonus | 0.012915 | 0.012915 | 0.006457 | 0.080021 |
+| progress_reward | 0.161388 | 0.170750 | 0.999990 | 1.000000 |
+| stability_penalty | -0.129303 | 0.129303 | 1.000000 | -0.801193 |
+| total_reward | 0.038201 | 0.109547 | 1.000000 | 0.236702 |
+| generated_reward | 0.038201 | 0.109547 | 1.000000 | 0.236702 |
+| original_env_reward | -1.577753 | 2.299391 | 1.000000 | -9.776124 |
 
 ## Distribution
-- score: mean=-110.683396, min=-130.746612, max=-95.059093
+- score: mean=-108.814423, min=-121.458652, max=-95.059093
 - episode_length: mean=72.000000
 - early_terminal (<150 steps + score<-50): 10/10 (100%)
 - errors: 0

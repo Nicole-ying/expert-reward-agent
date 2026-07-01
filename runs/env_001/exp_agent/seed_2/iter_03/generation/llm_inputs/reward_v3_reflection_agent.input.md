@@ -1,143 +1,106 @@
-# 环境契约
-- function_signature: def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-- allowed: obs[0..7], next_obs[0..7], action (0=noop,1=left,2=main,3=right), info (no reliable fields)
-- forbidden: original_reward, official_reward, terminal_success_reward, terminal_failure_penalty
-
-
 # 当前奖励函数代码
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # Extract observations
-    x_pos = obs[0]
-    y_pos = obs[1]
-    x_vel = obs[2]
-    y_vel = obs[3]
-    body_angle = obs[4]
-    angular_vel = obs[5]
-    left_contact = obs[6]
-    right_contact = obs[7]
+    # ============================================================
+    # 诊断 1：stability_penalty 的 ratio_to_progress = -0.80，严重主导信号
+    # 修复：整体系数降低 10 倍，从 0.5/0.2/0.1 降到 0.05/0.02/0.01
+    # 目标：让 penalty 均值降到 progress 均值的 10% 以下
+    # ============================================================
     
-    next_x_pos = next_obs[0]
-    next_y_pos = next_obs[1]
-    next_x_vel = next_obs[2]
-    next_y_vel = next_obs[3]
-    next_body_angle = next_obs[4]
-    next_angular_vel = next_obs[5]
-    next_left_contact = next_obs[6]
-    next_right_contact = next_obs[7]
-    
-    # 1. Main learning signal: progress_delta_reward
-    current_dist = (x_pos ** 2 + y_pos ** 2) ** 0.5
-    next_dist = (next_x_pos ** 2 + next_y_pos ** 2) ** 0.5
+    # 主学习信号：progress_delta_reward（保持不变）
+    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
+    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
     progress_delta = current_dist - next_dist
-    progress_delta_reward = 10.0 * progress_delta
+    progress_reward = 10.0 * progress_delta
+
+    # 稳定约束：stability_penalty（系数降低 10 倍）
+    speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
+    angle_penalty = 0.05 * abs(next_obs[4])      # 原 0.5 → 0.05
+    angular_vel_penalty = 0.02 * abs(next_obs[5]) # 原 0.2 → 0.02
+    speed_penalty = 0.01 * speed                  # 原 0.1 → 0.01
+    stability_penalty = -(angle_penalty + angular_vel_penalty + speed_penalty)
+
+    # ============================================================
+    # 诊断 2：landing_bonus 的 nonzero_rate = 0.6%，几乎从不触发
+    # 修复：二值 if 条件 → 连续乘积形式
+    # 每个因子用 max(0, 1 - x/threshold)，值域 [0,1]
+    # 这样 agent 每靠近一步都能感受到梯度
+    # ============================================================
     
-    # 2. Stability penalty - reduced by 20x and distance-gated
-    # Only penalize instability when near the target (dist < 3.0)
-    # Far from target, let the agent move freely
-    speed = (next_x_vel ** 2 + next_y_vel ** 2) ** 0.5
-    angle_penalty = -0.025 * abs(next_body_angle)
-    angular_vel_penalty = -0.015 * abs(next_angular_vel)
-    speed_penalty = -0.01 * speed
+    # 连续因子：距离因子（距离 < 0.5 时为正，越近越大）
+    dist_factor = max(0.0, 1.0 - next_dist / 0.5)
+    # 速度因子（速度 < 0.5 时为正，越慢越大）
+    speed_factor = max(0.0, 1.0 - speed / 0.5)
+    # 姿态角因子（角度 < 0.3 时为正，越小越大）
+    angle_factor = max(0.0, 1.0 - abs(next_obs[4]) / 0.3)
+    # 接触因子：两个接触传感器都 > 0.5 时为 1，否则为 0（这个保持二值，因为接触是离散事件）
+    contact_factor = 1.0 if (next_obs[6] > 0.5) and (next_obs[7] > 0.5) else 0.0
     
-    # Distance gate: only apply stability penalty when near target
-    gate = 1.0 / (1.0 + 2.0 * next_dist)  # ~1 when dist=0, ~0.2 when dist=2, ~0.09 when dist=5
-    stability_penalty = gate * (angle_penalty + angular_vel_penalty + speed_penalty)
-    
-    # 3. Soft landing proxy: continuous product of bounded factors
-    # Each factor is in [0,1], product gives smooth gradient
-    proximity_factor = 1.0 / (1.0 + 5.0 * next_dist)  # bounded [0,1], high when near target
-    speed_factor = 1.0 / (1.0 + 5.0 * speed)  # bounded [0,1], high when slow
-    angle_factor = 1.0 / (1.0 + 10.0 * abs(next_body_angle))  # bounded [0,1], high when upright
-    angular_vel_factor = 1.0 / (1.0 + 5.0 * abs(next_angular_vel))  # bounded [0,1], low angular vel
-    
-    # Contact factor: both feet on ground
-    contact_factor = (next_left_contact > 0.5) and (next_right_contact > 0.5)
-    contact_factor = float(contact_factor)  # 0 or 1, but that's okay as a gate
-    
-    soft_landing_bonus = 5.0 * proximity_factor * speed_factor * angle_factor * angular_vel_factor * contact_factor
-    
-    # 4. Small energy penalty for using engines (action != 0)
-    energy_penalty = 0.0
-    if action != 0:
-        energy_penalty = -0.05
-    
-    # Combine rewards
-    total_reward = progress_delta_reward + stability_penalty + soft_landing_bonus + energy_penalty
-    
+    # 连续乘积：每个因子都在 [0,1]，乘积也在 [0,1]
+    # 系数从 2.0 提高到 5.0，因为连续乘积天然小于 1，需要补偿
+    landing_bonus = 5.0 * dist_factor * speed_factor * angle_factor * contact_factor
+
+    # 动作代价：energy_penalty（保持不变，ratio 很小没问题）
+    engine_use = 1.0 if action != 0 else 0.0
+    energy_penalty = -0.05 * engine_use
+
+    # 组合总奖励
+    total_reward = progress_reward + stability_penalty + landing_bonus + energy_penalty
+
     components = {
-        "progress_delta_reward": progress_delta_reward,
+        "progress_reward": progress_reward,
         "stability_penalty": stability_penalty,
-        "soft_landing_bonus": soft_landing_bonus,
+        "landing_bonus": landing_bonus,
         "energy_penalty": energy_penalty,
         "total_reward": total_reward
     }
-    
+
     return float(total_reward), components
 ```
 
 # 历史最佳奖励函数代码
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # Extract observations
-    x_pos = obs[0]
-    y_pos = obs[1]
-    x_vel = obs[2]
-    y_vel = obs[3]
-    body_angle = obs[4]
-    angular_vel = obs[5]
-    left_contact = obs[6]
-    right_contact = obs[7]
-    
-    next_x_pos = next_obs[0]
-    next_y_pos = next_obs[1]
-    next_x_vel = next_obs[2]
-    next_y_vel = next_obs[3]
-    next_body_angle = next_obs[4]
-    next_angular_vel = next_obs[5]
-    next_left_contact = next_obs[6]
-    next_right_contact = next_obs[7]
-    
-    # 1. Main learning signal: progress_delta_reward
-    # Reward for moving closer to the target (origin in relative coordinates)
-    current_dist = (x_pos ** 2 + y_pos ** 2) ** 0.5
-    next_dist = (next_x_pos ** 2 + next_y_pos ** 2) ** 0.5
+    # 主学习信号：progress_delta_reward
+    # 计算当前位置到目标（0,0）的距离
+    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
+    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
     progress_delta = current_dist - next_dist
-    progress_delta_reward = 10.0 * progress_delta
-    
-    # 2. Stability penalty: encourage low velocity, upright angle, low angular velocity
-    speed = (next_x_vel ** 2 + next_y_vel ** 2) ** 0.5
-    angle_penalty = -0.5 * abs(next_body_angle)
-    angular_vel_penalty = -0.3 * abs(next_angular_vel)
-    speed_penalty = -0.2 * speed
-    stability_penalty = angle_penalty + angular_vel_penalty + speed_penalty
-    
-    # 3. Soft landing proxy: small bonus when near target, stable, and both supports contact
+    progress_reward = 10.0 * progress_delta  # 正奖励表示更接近目标
+
+    # 稳定约束：stability_penalty
+    # 惩罚高速、大姿态角和大角速度
+    speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
+    angle_penalty = 0.5 * abs(next_obs[4])  # 姿态角惩罚
+    angular_vel_penalty = 0.2 * abs(next_obs[5])  # 角速度惩罚
+    speed_penalty = 0.1 * speed  # 速度惩罚
+    stability_penalty = -(angle_penalty + angular_vel_penalty + speed_penalty)
+
+    # 任务完成 proxy：soft_landing_proxy
+    # 当接近目标、低速、小姿态角且双接触时给予小奖励
     near_target = next_dist < 0.5
-    low_speed = speed < 0.3
-    stable_angle = abs(next_body_angle) < 0.2
-    both_contact = (next_left_contact > 0.5) and (next_right_contact > 0.5)
-    
-    soft_landing_bonus = 0.0
-    if near_target and low_speed and stable_angle and both_contact:
-        soft_landing_bonus = 2.0
-    
-    # 4. Small energy penalty for using engines (action != 0)
-    energy_penalty = 0.0
-    if action != 0:
-        energy_penalty = -0.05
-    
-    # Combine rewards
-    total_reward = progress_delta_reward + stability_penalty + soft_landing_bonus + energy_penalty
-    
+    low_speed = speed < 0.5
+    stable_angle = abs(next_obs[4]) < 0.3
+    both_contact = (next_obs[6] > 0.5) and (next_obs[7] > 0.5)
+    landing_bonus = 2.0 if (near_target and low_speed and stable_angle and both_contact) else 0.0
+
+    # 动作代价：energy_penalty（小权重）
+    # 惩罚使用引擎的动作（action 1,2,3）
+    engine_use = 1.0 if action != 0 else 0.0
+    energy_penalty = -0.05 * engine_use
+
+    # 组合总奖励
+    total_reward = progress_reward + stability_penalty + landing_bonus + energy_penalty
+
+    # 构建组件字典
     components = {
-        "progress_delta_reward": progress_delta_reward,
+        "progress_reward": progress_reward,
         "stability_penalty": stability_penalty,
-        "soft_landing_bonus": soft_landing_bonus,
+        "landing_bonus": landing_bonus,
         "energy_penalty": energy_penalty,
         "total_reward": total_reward
     }
-    
+
     return float(total_reward), components
 ```
 
@@ -145,23 +108,23 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 # Training Feedback
 
 ## Training outcome
-score=-118.437388, len=71.900000, errors=0
+score=-110.337746, len=72.000000, errors=0
 
 ## Component evidence
 
 | component | mean | abs_mean | nonzero_rate | ratio_to_progress |
 |-----------|------|----------|-------------|------------------|
-| energy_penalty | -0.004933 | 0.004933 | 0.098654 | -0.030456 |
-| progress_delta_reward | 0.161961 | 0.171098 | 0.999998 | 1.000000 |
-| soft_landing_bonus | 0.013810 | 0.013810 | 0.015705 | 0.085266 |
-| stability_penalty | -0.006025 | 0.006025 | 1.000000 | -0.037200 |
-| total_reward | 0.164814 | 0.176646 | 1.000000 | 1.017610 |
-| generated_reward | 0.164814 | 0.176646 | 1.000000 | 1.017610 |
-| original_env_reward | -1.722980 | 2.425202 | 1.000000 | -10.638209 |
+| energy_penalty | -0.005890 | 0.005890 | 0.117793 | -0.036612 |
+| landing_bonus | 0.017613 | 0.017613 | 0.006125 | 0.109489 |
+| progress_reward | 0.160869 | 0.170178 | 0.999995 | 1.000000 |
+| stability_penalty | -0.014270 | 0.014270 | 1.000000 | -0.088703 |
+| total_reward | 0.158323 | 0.173897 | 1.000000 | 0.984174 |
+| generated_reward | 0.158323 | 0.173897 | 1.000000 | 0.984174 |
+| original_env_reward | -1.613310 | 2.329773 | 1.000000 | -10.028747 |
 
 ## Distribution
-- score: mean=-118.437388, min=-140.549214, max=-105.349835
-- episode_length: mean=71.900000
+- score: mean=-110.337746, min=-124.079149, max=-95.059093
+- episode_length: mean=72.000000
 - early_terminal (<150 steps + score<-50): 10/10 (100%)
 - errors: 0
 
@@ -171,5 +134,5 @@ score=-118.437388, len=71.900000, errors=0
 
 | iter | skeleton | score | best | delta | len | key_signal | action |
 |---:|---|---:|---:|---:|---:|---|---|
-| 1 | energy_penalty + progress_delta_reward + soft_landing_bonus + stability_penalty | -110.68 | -110.68 | 0.00 | 72.00 | energy_penalty=-0.008 progress_delta_reward=0.160 soft_landing_bonus=0.012 stability_penalty=-0.242 | new_best |
-| 2 | energy_penalty + progress_delta_reward + soft_landing_bonus + stability_penalty | -118.44 | -110.68 | -7.75 | 71.90 | energy_penalty=-0.005 progress_delta_reward=0.162 soft_landing_bonus=0.014 stability_penalty=-0.006 | no_meaningful_improvement |
+| 1 | energy_penalty + landing_bonus + progress_reward + stability_penalty | -108.81 | -108.81 | 0.00 | 72.00 | energy_penalty=-0.007 landing_bonus=0.013 progress_reward=0.161 stability_penalty=-0.129 | new_best |
+| 2 | energy_penalty + landing_bonus + progress_reward + stability_penalty | -110.34 | -108.81 | -1.52 | 72.00 | energy_penalty=-0.006 landing_bonus=0.018 progress_reward=0.161 stability_penalty=-0.014 | no_meaningful_improvement |

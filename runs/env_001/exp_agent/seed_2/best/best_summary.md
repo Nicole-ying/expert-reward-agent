@@ -1,7 +1,7 @@
 # Best Reward Summary
 
 - best_iter: 1
-- best_score: -110.683
+- best_score: -108.814
 - target_score: 200.000
 - solved: False
 - reward_path: runs\env_001\exp_agent\seed_2\iter_01\generation\reward_v1.py

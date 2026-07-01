@@ -19,7 +19,11 @@
 - 线性惩罚 → bounded 饱和（1/(1+kx)、tanh、exp(-x)）
 - 全程生效 → 距离门控（只在靠近目标时生效）
 
-**层次 3：换骨架 (rebuild)。** 如果当前骨架已经调了 2 轮以上、得分仍然远低于 target，不要继续在同一个骨架上微调。从 expert knowledge 中选一个数学形态不同的骨架重来。例如 progress_delta 不行 → 试试 bounded_proximity 或 potential_based_shaping。换骨架之前先调用 get_skeleton_detail 了解候选骨架。
+**层次 3：换骨架 (rebuild)。** 以下情况必须 rebuild，不要继续在层次 1/2 上打转：
+- 同一骨架家族已迭代 2 轮以上，且当前最佳得分仍未超过 target 的 25%（如 target=200，最佳仍在 -100 以下）。
+- 或者你已经在这个骨架上改过表达式（层次 2）至少一次，但得分没有实质性改善。
+
+rebuild 不是"换个 landing 的写法"——是换整个主信号框架。例如 progress_delta 换成 potential_based_shaping 或 bounded_proximity。数学形态完全不同。
 
 # 奖励函数迭代的通用原则
 

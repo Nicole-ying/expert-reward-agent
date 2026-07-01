@@ -1,62 +1,56 @@
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # Extract observations
-    x_pos = obs[0]
-    y_pos = obs[1]
-    x_vel = obs[2]
-    y_vel = obs[3]
-    body_angle = obs[4]
-    angular_vel = obs[5]
-    left_contact = obs[6]
-    right_contact = obs[7]
+    # ============================================================
+    # 诊断 1：stability_penalty 的 ratio_to_progress = -0.089，已正常 ✅
+    # 诊断 2：landing_bonus 的 nonzero_rate = 0.6%，仍然几乎不触发
+    #   原因：contact_factor 是二进制门控，只要未接触地面乘积就为 0
+    #   修复：去掉 contact_factor，只保留距离、速度、姿态角的连续乘积
+    #   这样 agent 在靠近目标的过程中每一步都能感受到梯度
+    # ============================================================
     
-    next_x_pos = next_obs[0]
-    next_y_pos = next_obs[1]
-    next_x_vel = next_obs[2]
-    next_y_vel = next_obs[3]
-    next_body_angle = next_obs[4]
-    next_angular_vel = next_obs[5]
-    next_left_contact = next_obs[6]
-    next_right_contact = next_obs[7]
-    
-    # 1. Main learning signal: progress_delta_reward
-    current_dist = (x_pos ** 2 + y_pos ** 2) ** 0.5
-    next_dist = (next_x_pos ** 2 + next_y_pos ** 2) ** 0.5
+    # 主学习信号：progress_delta_reward（保持不变）
+    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
+    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
     progress_delta = current_dist - next_dist
-    progress_delta_reward = 10.0 * progress_delta
+    progress_reward = 10.0 * progress_delta
+
+    # 稳定约束：stability_penalty（系数已降低 10 倍，保持）
+    speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
+    angle_penalty = 0.05 * abs(next_obs[4])
+    angular_vel_penalty = 0.02 * abs(next_obs[5])
+    speed_penalty = 0.01 * speed
+    stability_penalty = -(angle_penalty + angular_vel_penalty + speed_penalty)
+
+    # ============================================================
+    # 修复：去掉 contact_factor 的二进制门控
+    # 连续乘积只基于距离、速度、姿态角，每个因子用 max(0, 1-x/threshold)
+    # 这样 agent 在靠近目标、减速、摆正姿态时都能获得梯度
+    # 系数从 5.0 提高到 10.0，因为去掉 contact 后信号更纯粹
+    # ============================================================
     
-    # 2. Stability penalty - moderate strength, no distance gate
-    # The agent dies early because it falls over while moving toward target
-    # Need enough penalty to teach upright posture
-    speed = (next_x_vel ** 2 + next_y_vel ** 2) ** 0.5
-    angle_penalty = -0.1 * abs(next_body_angle)
-    angular_vel_penalty = -0.05 * abs(next_angular_vel)
-    speed_penalty = -0.03 * speed
-    stability_penalty = angle_penalty + angular_vel_penalty + speed_penalty
+    # 距离因子：距离 < 0.5 时为正，越近越大
+    dist_factor = max(0.0, 1.0 - next_dist / 0.5)
+    # 速度因子：速度 < 0.5 时为正，越慢越大
+    speed_factor = max(0.0, 1.0 - speed / 0.5)
+    # 姿态角因子：角度 < 0.3 时为正，越小越大
+    angle_factor = max(0.0, 1.0 - abs(next_obs[4]) / 0.3)
     
-    # 3. Soft landing proxy: continuous product of bounded factors
-    # Make contact_factor continuous too (use raw contact values)
-    proximity_factor = 1.0 / (1.0 + 5.0 * next_dist)
-    speed_factor = 1.0 / (1.0 + 5.0 * speed)
-    angle_factor = 1.0 / (1.0 + 10.0 * abs(next_body_angle))
-    angular_vel_factor = 1.0 / (1.0 + 5.0 * abs(next_angular_vel))
-    # Continuous contact factor - use raw values as probabilities
-    contact_factor = next_left_contact * next_right_contact  # continuous in [0,1]
-    
-    soft_landing_bonus = 10.0 * proximity_factor * speed_factor * angle_factor * angular_vel_factor * contact_factor
-    
-    # 4. Small energy penalty for using engines
-    energy_penalty = 0.0
-    if action != 0:
-        energy_penalty = -0.05
-    
-    total_reward = progress_delta_reward + stability_penalty + soft_landing_bonus + energy_penalty
-    
+    # 连续乘积：每个因子都在 [0,1]，乘积也在 [0,1]
+    # 去掉 contact_factor，让梯度在每一步都能传递
+    landing_bonus = 10.0 * dist_factor * speed_factor * angle_factor
+
+    # 动作代价：energy_penalty（保持不变）
+    engine_use = 1.0 if action != 0 else 0.0
+    energy_penalty = -0.05 * engine_use
+
+    # 组合总奖励
+    total_reward = progress_reward + stability_penalty + landing_bonus + energy_penalty
+
     components = {
-        "progress_delta_reward": progress_delta_reward,
+        "progress_reward": progress_reward,
         "stability_penalty": stability_penalty,
-        "soft_landing_bonus": soft_landing_bonus,
+        "landing_bonus": landing_bonus,
         "energy_penalty": energy_penalty,
         "total_reward": total_reward
     }
-    
+
     return float(total_reward), components
