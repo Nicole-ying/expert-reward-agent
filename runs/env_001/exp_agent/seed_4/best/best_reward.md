@@ -1,37 +1,41 @@
 ## 诊断
 
 ### 1. Agent 发生了什么？
-Episode 长度 76（远低于 150），60% 提前终止，得分 -54。**Agent 在 crash**——它根本没学会飞行，直接坠毁。
+
+得分 242 → **新最佳**，episode 长度 624.5 → agent 没有 crash（非短 episode），但也没有跑满 1000 步。它在中等长度内完成了任务（可能是着陆）。从 iter 5（-54, crash）到 iter 6（242）的跳跃说明恢复 w_landing=0.03 是正确方向。
 
 ### 2. 哪个组件是主要原因？
-看 ratio_to_progress：
-- `stability_penalty`: **-0.874** — 惩罚几乎和 progress 奖励一样大！
-- `soft_landing_proxy`: 0.171 — 太小，几乎没作用。
-- `total_reward`: 0.297 — 每步净信号接近零，agent 没有有效的学习梯度。
 
-**根因：w_landing 从 0.03 降到 0.01 是致命错误。** 对比历史记忆：
-- iter 2-3（w_landing=0.03）：得分 150~165，episode 1000 步，landing proxy ratio 高达 100x+ — 它是实际的主学习信号。
-- iter 5（w_landing=0.01）：landing proxy 萎缩到 ratio 0.17，progress 和 stability 几乎互相抵消，agent 失去引导→ crash。
+核心问题：**stability_penalty 的量级几乎等于 progress 信号**。
 
-**高 ratio 不是 bug，是 feature。** landing proxy 作为事件型奖励天然 ratio 偏高，但它是引导 agent 学会软着陆的核心信号。削弱它就等于关掉了导航。
+| 组件 | ratio_to_progress |
+|------|------------------|
+| progress_delta_reward | 1.00 |
+| stability_penalty | **-0.85** |
+| soft_landing_proxy | 11.02 |
+
+`stability_penalty` 绝对值 ratio 为 0.85，远超原则 1 的 0.50 阈值。这意味着 agent 每向目标前进一步获得的 progress 奖励（~0.002），几乎被稳定性惩罚（~-0.0019）完全抵消。agent 被迫在"前进"和"保持稳定"之间做艰难权衡，导致动作保守、episode 偏长（624 步而非更高效）。
+
+landing proxy ratio=11 是 bonus 类信号的正常表现（nonzero_rate 99%，密集梯度），不是问题。
 
 ### 3. 我之前改了什么？
-上轮把 w_landing 从 0.03 降到 0.01，理由是"缓解 landing proxy 对 progress 的碾压"。但这是误判——那个"碾压"恰恰是成功的关键。本轮必须恢复。
 
-### 修复策略
+上轮（iter 6）：w_landing 从 0.01 → 0.03，恢复到 iter 3 的配置。效果：从 crash（-54）恢复到新最佳（242）。landing proxy 是目前的主要驱动力，**不要动它**。
 
-恢复 w_landing 到 0.03（历史最佳），同时做一个关键改进：**给 stability penalty 加距离门控**。当前 stability penalty 是全局生效的——agent 在高空下降时也被惩罚速度/角度，这会抑制必要的机动。距离门控让 penalty 只在接近地面（需要精细控制时）才生效，高空允许自由机动。
+### 修改决策
 
-这是层次 2 改动（改数学形式）：只改 stability_penalty 一个组件。
+**层次 1：改系数。** 将 stability penalty 的三个权重各降低约 3 倍，使 penalty ratio 从 -0.85 降到 ~0.28，远低于 0.50 阈值。让 progress 信号成为真正的正向主力，不再被惩罚抵消。保持 distance gate 不变（它已经在起作用），保持 landing proxy 不变（它是当前成功的关键）。
+
+唯一改动：`w_vel: 0.01→0.003`, `w_angle: 0.01→0.003`, `w_angvel: 0.005→0.002`。
 
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
     # ---------- HYPERPARAMETERS ----------
     w_progress = 1.0        # 主学习信号：每步接近目标给予奖励
-    w_vel     = 0.01        # 速度惩罚权重（水平+垂直）
-    w_angle   = 0.01        # 倾斜角度惩罚权重
-    w_angvel  = 0.005       # 角速度惩罚权重
-    w_landing = 0.03        # 【恢复】0.01→0.03，回到历史最佳配置
+    w_vel     = 0.003       # 【降低 3.3x】0.01→0.003，减轻速度惩罚对 progress 的抵消
+    w_angle   = 0.003       # 【降低 3.3x】0.01→0.003，同上
+    w_angvel  = 0.002       # 【降低 2.5x】0.005→0.002，同上
+    w_landing = 0.03        # 保持不变：iter 5 降低后 crash，当前值已验证有效
 
     # 连续 landing proxy 的阈值（bounded 因子归零点）
     D_max = 2.0             # 距离阈值：超过此距离 proximity 归零
@@ -50,7 +54,6 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 
     # --- Stability penalty (DISTANCE-GATED) ---
     # 门控因子：距离远 → 0（自由机动），距离近 → 1（精细控制）
-    # 这样 agent 在高空下降时不会被速度/角度惩罚束缚
     vx, vy = next_obs[2], next_obs[3]
     angle  = next_obs[4]
     angvel = next_obs[5]
@@ -84,12 +87,3 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 
     return float(total_reward), components
 ```
-
-### 改动说明
-
-| 改动 | 旧值 | 新值 | 理由 |
-|------|------|------|------|
-| `w_landing` | 0.01 | **0.03** | 恢复历史最佳配置。0.01 导致 landing proxy 失效，agent 失去导航信号→ crash |
-| `stability_penalty` 形式 | 全局 `-raw` | **`-raw × gate`** | 新增距离门控。`gate = max(0, 1 - dist/D_gate)`，高空 gate≈0（自由机动），近地 gate→1（精细控制）。解决 iter 3-4 可能存在的"高空机动被过度惩罚→ plateau"问题 |
-
-**为什么不是层次 1（只改系数）：** 单纯恢复 w_landing=0.03 只是回到 iter 3 的状态（165 分 plateau）。距离门控是让 stability penalty 更聪明——只在需要它的区域生效，这是 iter 3-4 未曾尝试过的改进方向。

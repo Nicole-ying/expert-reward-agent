@@ -1,10 +1,10 @@
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
     # ---------- HYPERPARAMETERS ----------
     w_progress = 1.0        # 主学习信号：每步接近目标给予奖励
-    w_vel     = 0.01        # 速度惩罚权重（水平+垂直）
-    w_angle   = 0.01        # 倾斜角度惩罚权重
-    w_angvel  = 0.005       # 角速度惩罚权重
-    w_landing = 0.03        # 【恢复】0.01→0.03，回到历史最佳配置
+    w_vel     = 0.003       # 【降低 3.3x】0.01→0.003，减轻速度惩罚对 progress 的抵消
+    w_angle   = 0.003       # 【降低 3.3x】0.01→0.003，同上
+    w_angvel  = 0.002       # 【降低 2.5x】0.005→0.002，同上
+    w_landing = 0.03        # 保持不变：iter 5 降低后 crash，当前值已验证有效
 
     # 连续 landing proxy 的阈值（bounded 因子归零点）
     D_max = 2.0             # 距离阈值：超过此距离 proximity 归零
@@ -23,7 +23,6 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 
     # --- Stability penalty (DISTANCE-GATED) ---
     # 门控因子：距离远 → 0（自由机动），距离近 → 1（精细控制）
-    # 这样 agent 在高空下降时不会被速度/角度惩罚束缚
     vx, vy = next_obs[2], next_obs[3]
     angle  = next_obs[4]
     angvel = next_obs[5]
