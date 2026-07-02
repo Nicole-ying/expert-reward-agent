@@ -2,10 +2,11 @@
 
 | iter | skeleton | score | best | delta | len | key_signal | action |
 |---:|---|---:|---:|---:|---:|---|---|
-| 1 | energy_penalty + landing_bonus + progress_reward + stability_penalty | -108.81 | -108.81 | 0.00 | 72.00 | energy_penalty=-0.007 landing_bonus=0.013 progress_reward=0.161 stability_penalty=-0.129 | new_best |
-| 2 | energy_penalty + landing_bonus + progress_reward + stability_penalty | -110.34 | -108.81 | -1.52 | 72.00 | energy_penalty=-0.006 landing_bonus=0.018 progress_reward=0.161 stability_penalty=-0.014 | no_meaningful_improvement |
-| 3 | energy_penalty + landing_bonus + progress_reward + stability_penalty | -115.02 | -108.81 | -6.21 | 71.90 | energy_penalty=-0.006 landing_bonus=0.043 progress_reward=0.161 stability_penalty=-0.014 | no_meaningful_improvement |
-| 4 | energy_penalty + landing_bonus + progress_reward + stability_penalty | -227.71 | -108.81 | -118.89 | 697.20 | energy_penalty=-0.044 landing_bonus=2.333 progress_reward=0.009 stability_penalty=-0.007 | unsolved_stagnation_fresh_restart |
-| 5 | energy_penalty + progress_delta_reward + soft_landing_bonus + stability_penalty | -111.68 | -108.81 | -2.86 | 71.90 | energy_penalty=-0.008 progress_delta_reward=0.161 soft_landing_bonus=0.011 stability_penalty=-0.556 | no_meaningful_improvement |
-| 6 | energy_penalty + progress_delta_reward + soft_landing_bonus + stability_penalty | -116.95 | -108.81 | -8.14 | 71.80 | energy_penalty=-0.005 progress_delta_reward=0.162 soft_landing_bonus=0.011 stability_penalty=-0.033 | no_meaningful_improvement |
-| 7 | energy_penalty + proximity_reward + shaping_reward + soft_landing_bonus + stability_penalty | -37.74 | -37.74 | 0.00 | 1000.00 | energy_penalty=-0.030 proximity_reward=3.684 shaping_reward=0.051 soft_landing_bonus=0.327 stability_penalty=-0.005 | new_best |
+| 1 | progress + soft_landing_proxy + stability_penalty | -105.90 | -105.90 | 0.00 | 72.00 | progress=0.016 soft_landing_proxy=0.002 stability_penalty=-0.014 | new_best |
+| 2 | progress + soft_landing_proxy + stability_penalty | 187.93 | 187.93 | 0.00 | 694.50 | progress=0.003 soft_landing_proxy=0.257 stability_penalty=-0.001 | new_best |
+| 3 | progress + soft_landing_continuous + stability_penalty | 143.84 | 187.93 | -44.08 | 1000.00 | progress=0.003 soft_landing_continuous=0.237 stability_penalty=-0.001 | no_meaningful_improvement |
+| 4 | progress + soft_landing_continuous + stability_penalty | 137.07 | 187.93 | -50.85 | 921.60 | progress=0.003 soft_landing_continuous=0.042 stability_penalty=-0.001 | no_meaningful_improvement |
+| 5 | progress + soft_landing_proxy + stability_penalty | 144.59 | 187.93 | -43.34 | 1000.00 | progress=0.003 soft_landing_proxy=0.244 stability_penalty=-0.001 | unsolved_stagnation_fresh_restart |
+| 6 | dist_reward + landing_proxy + stability_penalty | -113.31 | -113.31 | 0.00 | 71.90 | dist_reward=-0.972 landing_proxy=0.002 stability_penalty=-0.145 | new_best |
+| 7 | landing_quality + progress + stability_penalty | 234.80 | 234.80 | 0.00 | 503.60 | landing_quality=0.485 progress=0.002 stability_penalty=-0.003 | target_solved_new_best |
+| 8 | landing_quality + progress + stability_penalty + w_landing + w_progress | 181.99 | 234.80 | -52.81 | 916.10 | landing_quality=0.573 progress=0.002 stability_penalty=-0.003 w_landing=0.300 w_progress=0.900 | stop_after_solved_drop_keep_best |

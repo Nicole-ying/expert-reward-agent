@@ -3,28 +3,33 @@
 ## System Prompt
 
 ```text
-你是奖励函数诊断与修订 Agent。你可以调用工具来搜索技法、查看骨架细节。
+你是奖励函数诊断与修订 Agent。你的任务是先理解为什么当前的奖励函数失败了，再决定怎么修改。
+
+# 先诊断，再行动
+
+拿到训练反馈后，先回答三个问题：
+1. 这个 agent 发生了什么？episode 很短（<150）→ 在 crash。episode 很长但得分差 → 在徘徊。得分已经好但某组件 ratio 异常 → 可能在 exploit。
+2. 哪个组件是主要原因？不要只看 ratio，结合 nonzero_rate 和 episode_length 一起判断。
+3. 我之前改了什么？从 Agent Memory 看上一轮的动作和效果。如果上次改了 A 但得分没变，这次不要再改 A。
+
+如果你不确定根因，用 search_reward_design_knowledge 查类似的失败模式。比如搜索 "episode short crash stability penalty weak" 或 "proxy dominates total reward hacking"。
 
 # 工具
 
-- search_reward_design_knowledge(query)：搜索设计技法库。当你对某个症状不确定怎么修时，用自然语言搜索。如 "reward sparse trigger rate low"、"penalty dominating progress"、"oscillation near goal"。
-- get_skeleton_detail(skeleton_name)：查看一个骨架的数学形态、原理和陷阱。当你想尝试不同的骨架时，先查看它的细节再决定。
+- search_reward_design_knowledge(query)：搜索设计技法库和失败模式库。当你对某个症状不确定原因或不知道怎么修时调用。
+- get_skeleton_detail(skeleton_name)：查看某个骨架的数学形态、原理和陷阱。
 
 # 怎么修订
 
-你的工具箱里有三种层次的操作：
+三种层次，从轻到重：
 
-**层次 1：改系数。** ratio_to_progress 帮助你判断组件间的相对量级，但判断前先看外部得分。
-- 惩罚项（stability、energy）ratio 绝对值 > 0.5，且外部得分差 → 考虑削弱或距离门控。
-- bonus/proxy（soft_landing）的 ratio 天然偏高——它只在特定条件触发，均值对比的是全时段 progress。只要 nonzero_rate > 10% 且外部得分不差，即使 ratio 很大也不需要修。
-- nonzero_rate < 2% 的正向组件 → 增大权重或放宽条件。
+**层次 1：改系数。** ratio_to_progress 判断组件间量级。惩罚项 ratio 绝对值 > 0.5 且外部得分差 → 考虑削弱。bonus 类 ratio 天然偏高，只要 nonzero_rate 正常且得分不差就不用修。nonzero_rate < 2% → 增大权重或放宽条件。
 
-**层次 2：改表达式。** 如果系数调了几轮还是不行，考虑改变数学形式。例如：
-- 二值 if 条件 → 连续乘积（每项用 max(0, 1-x/threshold)）
-- 线性惩罚 → bounded 饱和（1/(1+kx)、tanh、exp(-x)）
-- 全程生效 → 距离门控（只在靠近目标时生效）
+**层次 2：改数学形式。** 同一个系数反复调还是不行，说明当前数学形式本身有问题。考虑改变信号的计算方式——但每次只改一个组件的形式，下一轮看效果。
 
-**层次 3：换骨架 (rebuild)。** 如果当前骨架已经调了 2 轮以上、得分仍然远低于 target，不要继续在同一个骨架上微调。从 expert knowledge 中选一个数学形态不同的骨架重来。例如 progress_delta 不行 → 试试 bounded_proximity 或 potential_based_shaping。换骨架之前先调用 get_skeleton_detail 了解候选骨架。
+**层次 3：换骨架。** 以下情况停止在层次 1/2 上打转，直接换主信号框架：
+- 同一骨架家族已迭代 2 轮以上，且最佳得分仍未超过 target 的 25%。
+- 或者已经改过数学形式（层次 2）但得分没有实质性改善。
 
 # 奖励函数迭代的通用原则
 
@@ -75,72 +80,71 @@
 ## User Prompt
 
 ```markdown
-# 当前奖励函数代码
+# 上一轮奖励函数代码（该轮得分: -105.897031）
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # 主学习信号：progress_delta_reward
-    # 计算当前位置到目标（0,0）的距离
-    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
-    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
-    progress_delta = current_dist - next_dist
-    progress_reward = 10.0 * progress_delta  # 正奖励表示更接近目标
+    # ── 1. 提取观察量 ──
+    x, y = obs[0], obs[1]
+    next_x, next_y = next_obs[0], next_obs[1]
 
-    # 稳定约束：stability_penalty
-    # 惩罚高速、大姿态角和大角速度
-    speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
-    angle_penalty = 0.5 * abs(next_obs[4])  # 姿态角惩罚
-    angular_vel_penalty = 0.2 * abs(next_obs[5])  # 角速度惩罚
-    speed_penalty = 0.1 * speed  # 速度惩罚
-    stability_penalty = -(angle_penalty + angular_vel_penalty + speed_penalty)
+    vel_x, vel_y = next_obs[2], next_obs[3]
+    angle = next_obs[4]
+    angular_vel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
 
-    # 任务完成 proxy：soft_landing_proxy
-    # 当接近目标、低速、小姿态角且双接触时给予小奖励
-    near_target = next_dist < 0.5
-    low_speed = speed < 0.5
-    stable_angle = abs(next_obs[4]) < 0.3
-    both_contact = (next_obs[6] > 0.5) and (next_obs[7] > 0.5)
-    landing_bonus = 2.0 if (near_target and low_speed and stable_angle and both_contact) else 0.0
+    # ── 2. 主学习信号：进度差奖励 ──
+    dist_old = (x ** 2 + y ** 2) ** 0.5
+    dist_new = (next_x ** 2 + next_y ** 2) ** 0.5
+    progress = dist_old - dist_new
 
-    # 动作代价：energy_penalty（小权重）
-    # 惩罚使用引擎的动作（action 1,2,3）
-    engine_use = 1.0 if action != 0 else 0.0
-    energy_penalty = -0.05 * engine_use
+    # ── 3. 轻量稳定约束 ──
+    stability_penalty = -0.01 * (abs(vel_x) + abs(vel_y)) \
+                        -0.01 * abs(angle) \
+                        -0.01 * abs(angular_vel)
 
-    # 组合总奖励
-    total_reward = progress_reward + stability_penalty + landing_bonus + energy_penalty
+    # ── 4. 软着陆近似信号 ──
+    # 当飞行器满足“靠近目标、低速、姿态竖直、双腿接触”时给予小额奖励
+    near_target = dist_new < 0.15
+    low_speed = (vel_x ** 2 + vel_y ** 2) ** 0.5 < 0.2
+    upright = abs(angle) < 0.1
+    both_legs_down = (left_contact > 0.5) and (right_contact > 0.5)
 
-    # 构建组件字典
+    soft_landing_proxy = 0.5 if (near_target and low_speed and upright and both_legs_down) else 0.0
+
+    # ── 组合总奖励 ──
+    total_reward = progress + stability_penalty + soft_landing_proxy
+
+    # ── 组件字典 ──
     components = {
-        "progress_reward": progress_reward,
+        "progress": progress,
         "stability_penalty": stability_penalty,
-        "landing_bonus": landing_bonus,
-        "energy_penalty": energy_penalty,
+        "soft_landing_proxy": soft_landing_proxy,
         "total_reward": total_reward
     }
 
     return float(total_reward), components
 ```
 
-# 训练反馈
+# 训练反馈（上一轮代码的训练结果）
 # Training Feedback
 
 ## Training outcome
-score=-108.814423, len=72.000000, errors=0
+score=-105.897031, len=72.000000, errors=0
 
 ## Component evidence
 
 | component | mean | abs_mean | nonzero_rate | ratio_to_progress |
 |-----------|------|----------|-------------|------------------|
-| energy_penalty | -0.006799 | 0.006799 | 0.135972 | -0.042126 |
-| landing_bonus | 0.012915 | 0.012915 | 0.006457 | 0.080021 |
-| progress_reward | 0.161388 | 0.170750 | 0.999990 | 1.000000 |
-| stability_penalty | -0.129303 | 0.129303 | 1.000000 | -0.801193 |
-| total_reward | 0.038201 | 0.109547 | 1.000000 | 0.236702 |
-| generated_reward | 0.038201 | 0.109547 | 1.000000 | 0.236702 |
-| original_env_reward | -1.577753 | 2.299391 | 1.000000 | -9.776124 |
+| progress | 0.015973 | 0.016913 | 0.999995 | 0.015973 |
+| soft_landing_proxy | 0.001721 | 0.001721 | 0.003442 | 0.001721 |
+| stability_penalty | -0.014131 | 0.014131 | 1.000000 | -0.014131 |
+| total_reward | 0.003563 | 0.009544 | 1.000000 | 0.003563 |
+| generated_reward | 0.003563 | 0.009544 | 1.000000 | 0.003563 |
+| original_env_reward | -1.521290 | 2.439374 | 1.000000 | -1.521290 |
 
 ## Distribution
-- score: mean=-108.814423, min=-121.458652, max=-95.059093
+- score: mean=-105.897031, min=-122.962817, max=-96.298785
 - episode_length: mean=72.000000
 - early_terminal (<150 steps + score<-50): 10/10 (100%)
 - errors: 0
@@ -151,6 +155,6 @@ score=-108.814423, len=72.000000, errors=0
 
 | iter | skeleton | score | best | delta | len | key_signal | action |
 |---:|---|---:|---:|---:|---:|---|---|
-| 1 | energy_penalty + landing_bonus + progress_reward + stability_penalty | -108.81 | -108.81 | 0.00 | 72.00 | energy_penalty=-0.007 landing_bonus=0.013 progress_reward=0.161 stability_penalty=-0.129 | new_best |
+| 1 | progress + soft_landing_proxy + stability_penalty | -105.90 | -105.90 | 0.00 | 72.00 | progress=0.016 soft_landing_proxy=0.002 stability_penalty=-0.014 | new_best |
 
 ```

@@ -2,82 +2,65 @@
 
 ## 诊断
 
-从反馈数据可以清晰看到两个问题：
+### 1. Agent 发生了什么？
+**Crash**。episode 长度仅 72 步，100% 早停（<150 步且 score < -50）。agent 在 72 步内就坠毁了。
 
-### 问题 1：stability_penalty 主导了学习信号
-- `stability_penalty` 的 ratio_to_progress = **-0.80**（绝对值 0.80 > 0.5）
-- 均值 -0.129 vs progress_reward 均值 0.161 → 惩罚吃掉 80% 的进步信号
-- 100% 的步数都在受惩罚（nonzero_rate=1.0），agent 每走一步都在被惩罚
-- 结果：agent 选择"不动"来避免惩罚 → 所有 episode 都在 72 步内提前终止（score < -50）
+### 2. 哪个组件是主要原因？
 
-**修复**：将 stability_penalty 的系数整体降低 10 倍，使其 ratio 降到 0.1 以下。
+| 组件 | ratio_to_progress | 解读 |
+|------|:--:|------|
+| stability_penalty | **-0.88** | 惩罚达到主信号的 88%，严重越界 |
 
-### 问题 2：landing_bonus 几乎从不触发
-- `landing_bonus` 的 nonzero_rate = **0.6%**（< 2%）
-- 二值条件（4 个条件同时满足才给奖励）导致几乎无梯度引导
-- agent 无法通过试错学会如何触发这个奖励
+**原则 1 红线**：惩罚项的绝对值不应超过主信号的 50%。当前 stability_penalty 是 progress 的 88%，agent 面临一个困境——每前进 1 单位得到的奖励，几乎被"动一下就要罚"完全抵消。结果就是 agent 不敢做大幅度机动，推力不足 → 被重力拉向地面 → 坠毁。
 
-**修复**：将二值 if 条件改为连续乘积形式，每个因子用 bounded 函数（max(0, 1 - x/threshold)），让 agent 每靠近一步都能感受到梯度。
+soft_landing_proxy 触发率 0.34%（约每 300 步一次，而 episode 只有 72 步），几乎是死代码，但它 ratio 小（11%），不是本轮主要矛盾。
 
-### 其他观察
-- `energy_penalty` 的 ratio = -0.04，很小，没问题
-- `progress_reward` 本身工作正常，但被 penalty 压制
+### 3. 上一轮做了什么？
+这是第一轮，没有历史包袱。
 
-根据**原则 3：每次改一个信号**——但这里两个问题是独立的（一个在惩罚项，一个在奖励项），且 landing_bonus 的改动是形态变化（二值→连续），stability_penalty 是系数变化，互不干扰，可以同时改。
+### 修改方案
+
+**层次 1：削系数。** stability_penalty 的三个系数从 0.01 降到 0.002（降低 5 倍）。预期 penalty 从 -0.014 降到约 -0.003，ratio 从 88% 降到约 18%，远低于 50% 安全线。其他组件不动。
 
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # ============================================================
-    # 诊断 1：stability_penalty 的 ratio_to_progress = -0.80，严重主导信号
-    # 修复：整体系数降低 10 倍，从 0.5/0.2/0.1 降到 0.05/0.02/0.01
-    # 目标：让 penalty 均值降到 progress 均值的 10% 以下
-    # ============================================================
-    
-    # 主学习信号：progress_delta_reward（保持不变）
-    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
-    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
-    progress_delta = current_dist - next_dist
-    progress_reward = 10.0 * progress_delta
+    # ── 1. 提取观察量 ──
+    x, y = obs[0], obs[1]
+    next_x, next_y = next_obs[0], next_obs[1]
 
-    # 稳定约束：stability_penalty（系数降低 10 倍）
-    speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
-    angle_penalty = 0.05 * abs(next_obs[4])      # 原 0.5 → 0.05
-    angular_vel_penalty = 0.02 * abs(next_obs[5]) # 原 0.2 → 0.02
-    speed_penalty = 0.01 * speed                  # 原 0.1 → 0.01
-    stability_penalty = -(angle_penalty + angular_vel_penalty + speed_penalty)
+    vel_x, vel_y = next_obs[2], next_obs[3]
+    angle = next_obs[4]
+    angular_vel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
 
-    # ============================================================
-    # 诊断 2：landing_bonus 的 nonzero_rate = 0.6%，几乎从不触发
-    # 修复：二值 if 条件 → 连续乘积形式
-    # 每个因子用 max(0, 1 - x/threshold)，值域 [0,1]
-    # 这样 agent 每靠近一步都能感受到梯度
-    # ============================================================
-    
-    # 连续因子：距离因子（距离 < 0.5 时为正，越近越大）
-    dist_factor = max(0.0, 1.0 - next_dist / 0.5)
-    # 速度因子（速度 < 0.5 时为正，越慢越大）
-    speed_factor = max(0.0, 1.0 - speed / 0.5)
-    # 姿态角因子（角度 < 0.3 时为正，越小越大）
-    angle_factor = max(0.0, 1.0 - abs(next_obs[4]) / 0.3)
-    # 接触因子：两个接触传感器都 > 0.5 时为 1，否则为 0（这个保持二值，因为接触是离散事件）
-    contact_factor = 1.0 if (next_obs[6] > 0.5) and (next_obs[7] > 0.5) else 0.0
-    
-    # 连续乘积：每个因子都在 [0,1]，乘积也在 [0,1]
-    # 系数从 2.0 提高到 5.0，因为连续乘积天然小于 1，需要补偿
-    landing_bonus = 5.0 * dist_factor * speed_factor * angle_factor * contact_factor
+    # ── 2. 主学习信号：进度差奖励 ──
+    dist_old = (x ** 2 + y ** 2) ** 0.5
+    dist_new = (next_x ** 2 + next_y ** 2) ** 0.5
+    progress = dist_old - dist_new
 
-    # 动作代价：energy_penalty（保持不变，ratio 很小没问题）
-    engine_use = 1.0 if action != 0 else 0.0
-    energy_penalty = -0.05 * engine_use
+    # ── 3. 轻量稳定约束（系数从 0.01 → 0.002，降低 5 倍）──
+    # 上一轮：penalty ratio = -0.88，严重压制 progress 信号
+    # 本轮目标：ratio ≈ -0.18，让 agent 敢于机动
+    stability_penalty = -0.002 * (abs(vel_x) + abs(vel_y)) \
+                        -0.002 * abs(angle) \
+                        -0.002 * abs(angular_vel)
 
-    # 组合总奖励
-    total_reward = progress_reward + stability_penalty + landing_bonus + energy_penalty
+    # ── 4. 软着陆近似信号（本轮不动）──
+    near_target = dist_new < 0.15
+    low_speed = (vel_x ** 2 + vel_y ** 2) ** 0.5 < 0.2
+    upright = abs(angle) < 0.1
+    both_legs_down = (left_contact > 0.5) and (right_contact > 0.5)
+
+    soft_landing_proxy = 0.5 if (near_target and low_speed and upright and both_legs_down) else 0.0
+
+    # ── 组合总奖励 ──
+    total_reward = progress + stability_penalty + soft_landing_proxy
 
     components = {
-        "progress_reward": progress_reward,
+        "progress": progress,
         "stability_penalty": stability_penalty,
-        "landing_bonus": landing_bonus,
-        "energy_penalty": energy_penalty,
+        "soft_landing_proxy": soft_landing_proxy,
         "total_reward": total_reward
     }
 

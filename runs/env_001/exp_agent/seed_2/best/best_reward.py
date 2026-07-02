@@ -1,102 +1,61 @@
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # ========== 诊断与修改说明 ==========
-    # 问题：6轮迭代，最佳得分-108.81，当前-116.95，所有episode提前终止。
-    # 核心问题：progress_delta 信号不足以引导agent到达目标区域。
-    # 
-    # 修改1（换骨架）：用 bounded_proximity_reward 替代 progress_delta_reward
-    #   - 数学形态：1/(1+k*dist)，自动 bounded 在 [0,1]
-    #   - 靠近目标时信号饱和，不会因距离变化剧烈而震荡
-    #   - k=5 使初始距离(~5)处 reward≈0.17，与当前 progress_delta 均值相当
-    #
-    # 修改2（换骨架）：用 potential_based_shaping 补充梯度
-    #   - Φ = -distance - 0.3*speed - 0.2*abs(angle)
-    #   - 势能差 F = γ*Φ(next) - Φ(current)，γ=0.99
-    #   - 同时引导接近、减速、稳定，且保持最优策略不变
-    #
-    # 修改3（层次2）：soft_landing_bonus 从二值改为连续乘积
-    #   - 每个条件用 max(0, 1-dim/threshold) 形式
-    #   - 提供密集梯度，不再依赖<1%的触发率
-    #
-    # 修改4（层次1）：stability_penalty 进一步削弱并改为 bounded 形式
-    #   - 用 1/(1+k*x) 形式使惩罚有上界
-    #   - 系数从 0.05/0.03/0.02 降到 0.02/0.01/0.01
-    #   - 保持距离门控
-    
-    # ========== 公共计算 ==========
-    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
-    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
-    current_speed = (obs[2] ** 2 + obs[3] ** 2) ** 0.5
-    next_speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
-    next_angle = abs(next_obs[4])
-    next_angular_vel = abs(next_obs[5])
-    
-    # ========== 主信号1：bounded_proximity_reward ==========
-    # 1/(1+k*dist)，自动 bounded 在 [0,1]，k=5
-    k_proximity = 5.0
-    proximity_reward = 1.0 / (1.0 + k_proximity * next_dist)
-    # 放大到与 progress_delta 相当的尺度
-    proximity_reward_scaled = 10.0 * proximity_reward
-    
-    # ========== 主信号2：potential_based_shaping ==========
-    # Φ = -distance - 0.3*speed - 0.2*abs(angle)
-    # F = γ*Φ(next) - Φ(current)
-    gamma = 0.99
-    phi_current = -(current_dist + 0.3 * current_speed + 0.2 * abs(obs[4]))
-    phi_next = -(next_dist + 0.3 * next_speed + 0.2 * next_angle)
-    shaping_reward = gamma * phi_next - phi_current
-    # 放大到合理尺度
-    shaping_reward_scaled = 5.0 * shaping_reward
-    
-    # ========== 稳定约束：bounded_stability_penalty ==========
-    # 用 1/(1+k*x) 形式使惩罚 bounded，避免数值爆炸
-    # 系数大幅降低，保持距离门控
-    gate_radius = 2.0
-    distance_gate = max(0.0, 1.0 - next_dist / gate_radius)
-    
-    # bounded 形式的惩罚项，每项在 [0,1) 范围内
-    speed_penalty = 1.0 / (1.0 + 1.0 / (next_speed + 0.01))  # 约等于 1 - exp(-speed)
-    # 简化：直接用 bounded 线性形式
-    speed_penalty_bounded = next_speed / (next_speed + 1.0)  # bounded in [0,1)
-    angle_penalty_bounded = next_angle / (next_angle + 0.5)  # bounded in [0,1)
-    angular_vel_bounded = next_angular_vel / (next_angular_vel + 1.0)  # bounded in [0,1)
-    
-    stability_penalty = -distance_gate * (
-        0.02 * speed_penalty_bounded + 
-        0.01 * angle_penalty_bounded + 
-        0.01 * angular_vel_bounded
-    )
-    
-    # ========== 连续 soft_landing_proxy ==========
-    # 用连续乘积替代二值 if 条件
-    # 每个因子用 max(0, 1-dim/threshold) 形式
-    near_factor = max(0.0, 1.0 - next_dist / 0.5)  # dist<0.5 时>0
-    low_speed_factor = max(0.0, 1.0 - next_speed / 0.3)  # speed<0.3 时>0
-    stable_angle_factor = max(0.0, 1.0 - next_angle / 0.2)  # angle<0.2 时>0
-    # contact 用连续值（obs[6], obs[7] 是接触传感器，假设在 [0,1]）
-    contact_factor = next_obs[6] * next_obs[7]  # 两个支撑都接触时接近1
-    
-    # 连续乘积：所有因子相乘，提供密集梯度
-    soft_landing_bonus = 3.0 * near_factor * low_speed_factor * stable_angle_factor * contact_factor
-    
-    # ========== 动作代价：energy_penalty（小权重） ==========
-    engine_use = 0.0
-    if action == 1 or action == 3:
-        engine_use = 0.5
-    elif action == 2:
-        engine_use = 1.0
-    energy_penalty = -0.05 * engine_use
-    
-    # ========== 总奖励 ==========
-    total_reward = proximity_reward_scaled + shaping_reward_scaled + stability_penalty + soft_landing_bonus + energy_penalty
-    
-    # ========== 组件字典 ==========
+    # 从 next_obs 读取当前状态
+    x = next_obs[0]
+    y = next_obs[1]
+    vx = next_obs[2]
+    vy = next_obs[3]
+    angle = next_obs[4]
+    angular_vel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
+
+    # 从 obs 读取上一步位置，计算距离变化
+    px = obs[0]
+    py = obs[1]
+
+    prev_dist = (px**2 + py**2) ** 0.5
+    curr_dist = (x**2 + y**2) ** 0.5
+
+    # === 1. 主学习信号：进度增量（向目标靠近为正） ===
+    # 这是 potential-based shaping 的特例：Φ = -distance, γ = 1
+    # 正奖励 = 距离减小，天然零均值，提供清晰的梯度方向
+    progress = prev_dist - curr_dist
+
+    # === 2. 连续着陆质量信号（始终激活，峰值在着陆条件） ===
+    # 三个 bounded 因子：proximity, speed, upright，都是 1/(1+kx) 形式
+    # 自动 bounded 在 [0,1]，无需手动调尺度
+
+    # 接近度：距离越近越高，k=5 使 distance=1 时约为 0.17
+    proximity = 1.0 / (1.0 + 5.0 * curr_dist)
+
+    # 速度因子：越慢越高，k=3 使 speed=1 时约为 0.25
+    speed_val = (vx**2 + vy**2) ** 0.5
+    speed_factor = 1.0 / (1.0 + 3.0 * speed_val)
+
+    # 姿态因子：越正越高，k=3 使 angle=0.3rad 时约为 0.53
+    upright_factor = 1.0 / (1.0 + 3.0 * abs(angle))
+
+    # 接触加成：有腿部接触时额外奖励（0.5 到 1.0 之间）
+    contact_bonus = 0.5 + 0.5 * (left_contact + right_contact) / 2.0
+
+    # 连续乘积：每个因子 ∈ (0,1]，乘积提供密集梯度
+    landing_quality = proximity * speed_factor * upright_factor * contact_bonus
+
+    # === 3. 稳定性惩罚：距离门控，远处不罚 ===
+    # 只在目标附近（<2 单位）施加弱稳定性约束
+    gate = max(0.0, 1.0 - curr_dist / 2.0)
+    stability_penalty = -gate * 0.02 * (abs(vx) + abs(vy) + abs(angular_vel))
+
+    # === 组合 ===
+    # progress: 方向性梯度，均值接近 0
+    # landing_quality: 密集正信号，引导精细着陆行为
+    # stability_penalty: 弱背景约束，仅在近端生效
+    total_reward = progress + 1.0 * landing_quality + stability_penalty
+
     components = {
-        "proximity_reward": proximity_reward_scaled,
-        "shaping_reward": shaping_reward_scaled,
+        "progress": progress,
+        "landing_quality": landing_quality,
         "stability_penalty": stability_penalty,
-        "soft_landing_bonus": soft_landing_bonus,
-        "energy_penalty": energy_penalty,
         "total_reward": total_reward
     }
-    
     return float(total_reward), components

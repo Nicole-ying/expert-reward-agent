@@ -1,93 +1,67 @@
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # ============================================================
-    # 诊断与修改说明：
-    # 问题：score=-115，100% early terminal。agent 在 progress_delta 引导下
-    # 接近目标，但 crash 而非 soft landing。soft_landing_proxy 的 nonzero_rate=0.72%
-    # 仍然太稀疏（乘积形式导致任一因子为零则整体为零）。
-    #
-    # 修改方案：
-    # 1. 用 potential_based_shaping 替代 progress_delta_reward。
-    #    势能函数 Φ = -(dist + 0.8*speed + 0.5*|angle|)，同时引导接近、减速、稳定。
-    #    理论保证最优策略不变（Ng 1999），天然抗震荡。
-    # 2. soft_landing_proxy 改为加权和形式（非乘积），提高 nonzero_rate。
-    #    每个因子独立贡献梯度，不会因为某个条件不满足而完全消失。
-    # 3. stability_penalty 保留角速度惩罚（距离门控），速度和角度已由 shaping 覆盖。
-    # ============================================================
-    
-    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
-    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
-    
-    current_speed = (obs[2] ** 2 + obs[3] ** 2) ** 0.5
-    next_speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
-    
-    current_angle = abs(obs[4])
-    next_angle = abs(next_obs[4])
-    
-    # ============================================================
-    # 1. 主学习信号: potential_based_shaping
-    #    势能 Φ = -(dist + 0.8*speed + 0.5*|angle|)
-    #    shaping = γ * Φ(next) - Φ(obs), γ=0.99
-    #    同时引导：接近目标 ↓、减速 ↓、姿态稳定 ↓
-    # ============================================================
+    # ── 提取当前状态 ──
+    x, y = obs[0], obs[1]
+    curr_vx, curr_vy = obs[2], obs[3]
+    curr_angle = obs[4]
+
+    # ── 提取下一时刻状态（反映动作后果）──
+    next_x, next_y = next_obs[0], next_obs[1]
+    vx, vy = next_obs[2], next_obs[3]
+    angle = next_obs[4]
+    ang_vel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
+
+    # ── 距离 ──
+    dist = (x**2 + y**2) ** 0.5
+    next_dist = (next_x**2 + next_y**2) ** 0.5
+
+    # ── 速率标量 ──
+    speed = (vx**2 + vy**2) ** 0.5
+    curr_speed = (curr_vx**2 + curr_vy**2) ** 0.5
+
+    # ── 主学习信号：potential-based shaping ──
+    # Φ = -(distance + α*speed + β*|angle|)
+    # F = γ * Φ(next) - Φ(curr)，天然引导接近+减速+姿态稳定
+    alpha = 0.1
+    beta = 0.2
     gamma = 0.99
-    phi_obs = -(current_dist + 0.8 * current_speed + 0.5 * current_angle)
-    phi_next = -(next_dist + 0.8 * next_speed + 0.5 * next_angle)
-    
-    shaping_scale = 2.0
-    potential_shaping = shaping_scale * (gamma * phi_next - phi_obs)
 
-    # ============================================================
-    # 2. 稳定约束: angular_vel_penalty（距离门控）
-    #    速度和角度已由 shaping 覆盖，只保留角速度惩罚
-    # ============================================================
-    angular_vel = abs(next_obs[5])
-    gate_radius = 2.0
-    distance_gate = max(0.0, 1.0 - next_dist / gate_radius)
-    
-    angular_vel_penalty_weight = 0.02
-    angular_vel_penalty = -angular_vel_penalty_weight * angular_vel * distance_gate
+    phi_curr = -(dist + alpha * curr_speed + beta * abs(curr_angle))
+    phi_next = -(next_dist + alpha * speed + beta * abs(angle))
+    potential_shaping = gamma * phi_next - phi_curr
 
-    # ============================================================
-    # 3. 任务完成proxy: soft_landing_proxy（加权和形式）
-    #    用加权和替代乘积，每个因子独立贡献梯度
-    #    提高 nonzero_rate，让 agent 逐步学会各个条件
-    # ============================================================
-    # 距离因子：dist < 0.8 时开始贡献
-    dist_factor = max(0.0, 1.0 - next_dist / 0.8)
-    # 速度因子：speed < 0.5 时开始贡献
-    speed_factor = max(0.0, 1.0 - next_speed / 0.5)
-    # 姿态角因子：angle < 0.3 时开始贡献
-    angle_factor = max(0.0, 1.0 - next_angle / 0.3)
-    # 接触因子
-    contact_factor = min(1.0, (next_obs[6] + next_obs[7]) / 2.0)
-    
-    # 加权和（各因子权重不同，dist 最重要）
-    landing_bonus_weight = 1.5
-    soft_landing_proxy = landing_bonus_weight * (
-        0.4 * dist_factor + 
-        0.3 * speed_factor + 
-        0.2 * angle_factor + 
-        0.1 * contact_factor
+    # ── 软着陆 proxy（连续乘积，阈值放宽）──
+    # 用 bounded max(0, 1-x/threshold) 提供连续梯度
+    prox_factor = max(0.0, 1.0 - next_dist / 1.0)               # 距离 < 1.0
+    vel_factor = max(0.0, 1.0 - speed / 0.5)                    # 速率 < 0.5
+    angle_factor = max(0.0, 1.0 - abs(angle) / 0.3)             # 倾角 < 0.3
+    ang_vel_factor = max(0.0, 1.0 - abs(ang_vel) / 0.3)         # 角速度 < 0.3
+    contact_factor = min(left_contact, right_contact)            # 双脚触地
+
+    soft_landing_proxy = (
+        prox_factor * vel_factor * angle_factor * ang_vel_factor * contact_factor
     )
 
-    # ============================================================
-    # 4. 动作代价: energy_penalty（小权重）
-    # ============================================================
-    engine_use = 1.0 if action != 0 else 0.0
-    energy_penalty_weight = 0.01
-    energy_penalty = -energy_penalty_weight * engine_use
+    # ── 轻量辅助惩罚 ──
+    # 角速度惩罚：抑制剧烈旋转
+    angular_vel_penalty = -0.01 * abs(ang_vel)
+    # 能量惩罚：鼓励高效移动
+    energy_penalty = -0.01 * (abs(vx) + abs(vy))
 
-    # ============================================================
-    # 总奖励
-    # ============================================================
-    total_reward = potential_shaping + angular_vel_penalty + soft_landing_proxy + energy_penalty
+    # ── 总奖励 ──
+    total_reward = (
+        1.0 * potential_shaping +
+        2.0 * soft_landing_proxy +
+        1.0 * angular_vel_penalty +
+        1.0 * energy_penalty
+    )
 
     components = {
         "potential_shaping": potential_shaping,
-        "angular_vel_penalty": angular_vel_penalty,
         "soft_landing_proxy": soft_landing_proxy,
+        "angular_vel_penalty": angular_vel_penalty,
         "energy_penalty": energy_penalty,
-        "total_reward": total_reward
     }
 
     return float(total_reward), components

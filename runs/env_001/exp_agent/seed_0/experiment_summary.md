@@ -2,10 +2,10 @@
 
 - prefix: exp_agent
 - seed: 0
-- rounds_completed: 4
+- rounds_completed: 5
 - target_score: 200.000
-- best_iter: 3
-- best_score: 242.087
+- best_iter: 4
+- best_score: 261.780
 - solved: True
 - stopped_reason: stop_after_solved_drop_keep_best
 

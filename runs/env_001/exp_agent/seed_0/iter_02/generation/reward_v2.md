@@ -1,105 +1,82 @@
 ## 诊断
 
-从训练反馈看，问题非常清晰：
+**症状链：**
+1. `stability_penalty` 的 `ratio_to_progress = -8.8`，远超 0.5 警戒线 → 惩罚信号强度是主学习信号的 8.8 倍
+2. 每步 `total_reward ≈ -0.057`（净负）→ agent 学到"不动比动好"
+3. `episode_length = 74`，100% 提前终止 → agent 快速 crash
+4. `soft_landing_proxy` nonzero_rate = 0.46% → 几乎不触发，无梯度引导
 
-1. **stability_penalty 主导**：ratio_to_progress = -3.37，绝对值远大于 0.5。惩罚信号完全压倒了正向信号，agent 被吓到不敢动，episode 短（74步），score 差（-115）。
+**根因：** 稳定性惩罚对所有位置一视同仁，agent 在远处靠近目标时就被速度/姿态惩罚压垮，无法探索。
 
-2. **soft_landing_proxy 几乎不触发**：nonzero_rate = 0.5%，二值条件太苛刻，无法提供学习引导。
-
-3. **progress_delta_reward 正常**：nonzero_rate ≈ 100%，但被惩罚淹没。
-
-**修改方案：**
-
-**层次 1：改系数 + 改表达式**
-
-- **stability_penalty**：系数削 10 倍（speed_penalty_weight 0.1→0.01，angle_penalty_weight 0.05→0.005，angular_vel_penalty_weight 0.02→0.002），并添加距离门控（远处不罚，只在靠近目标时约束）。
-- **soft_landing_proxy**：从二值条件改为连续乘积形式，每个因子用 max(0, 1 - x/threshold)，提供密集梯度。
-- **progress_delta_reward**：保持，但 scale 从 2.0 降到 1.0 避免与 bounded 信号冲突。
+**修改方案（层次 2 — 改数学形态）：**
+- **距离门控 stability_penalty**：乘 `max(0, 1 - dist/D)`，远处不惩罚，只有靠近目标时才要求稳定
+- **soft_landing_proxy 二值→连续乘积**：5 个 bounded 因子相乘，提供密集梯度（修复 0.46% 触发率）
+- **移除 components 中的 `"total_reward"`**（这是 validation 失败的直接原因：components 只能包含公式中直接出现的变量，不能包含结果本身）
 
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # ============================================================
-    # 诊断与修改说明：
-    # 1. stability_penalty 的 ratio_to_progress = -3.37，完全主导训练，
-    #    导致 agent 不敢动。系数削 10 倍 + 距离门控（远处不罚）。
-    # 2. soft_landing_proxy 的 nonzero_rate = 0.5%，二值条件无梯度，
-    #    改为连续乘积形式 max(0, 1-x/threshold) 提供密集信号。
-    # 3. progress_delta_reward 正常但 scale 略降，避免与 bounded 信号冲突。
-    # ============================================================
-    
-    # 当前距离
-    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
-    # 下一步距离
-    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
-    
-    # ============================================================
-    # 1. 主学习信号: progress_delta_reward
-    #    基于距离变化引导接近目标
-    # ============================================================
-    progress_delta = current_dist - next_dist
-    progress_scale = 1.0  # 略降，避免与 bounded 信号冲突
-    progress_delta_reward = progress_delta * progress_scale
+    # 提取当前和下一时刻的位置
+    x, y = obs[0], obs[1]
+    next_x, next_y = next_obs[0], next_obs[1]
 
-    # ============================================================
-    # 2. 稳定/安全约束: stability_penalty（距离门控 + 系数削10倍）
-    #    远处允许大动作探索，只在靠近目标时约束稳定性
-    # ============================================================
-    speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
-    angle = abs(next_obs[4])
-    angular_vel = abs(next_obs[5])
-    
-    # 距离门控因子：远处不罚，靠近时逐渐生效
-    # gate_radius = 2.0（初始距离约 3-4，取 50% 左右）
-    gate_radius = 2.0
-    distance_gate = max(0.0, 1.0 - next_dist / gate_radius)
-    
-    # 系数削 10 倍
-    speed_penalty_weight = 0.01
-    angle_penalty_weight = 0.005
-    angular_vel_penalty_weight = 0.002
-    
-    speed_penalty = -speed_penalty_weight * speed * distance_gate
-    angle_penalty = -angle_penalty_weight * angle * distance_gate
-    angular_vel_penalty = -angular_vel_penalty_weight * angular_vel * distance_gate
-    
-    stability_penalty = speed_penalty + angle_penalty + angular_vel_penalty
+    # 速度、姿态、接触信息（使用 next_obs 反映动作后果）
+    vx = next_obs[2]
+    vy = next_obs[3]
+    angle = next_obs[4]
+    ang_vel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
 
-    # ============================================================
-    # 3. 任务完成proxy: soft_landing_proxy（连续乘积形式）
-    #    用 max(0, 1-x/threshold) 替代二值条件，提供密集梯度
-    # ============================================================
-    # 距离因子：距离 < 0.5 时接近 1，> 1.0 时接近 0
-    dist_factor = max(0.0, 1.0 - next_dist / 1.0)
-    # 速度因子：速度 < 0.3 时接近 1，> 0.6 时接近 0
-    speed_factor = max(0.0, 1.0 - speed / 0.6)
-    # 姿态角因子：角度 < 0.2 时接近 1，> 0.4 时接近 0
-    angle_factor = max(0.0, 1.0 - angle / 0.4)
-    # 接触因子：双支撑接触的连续版本（>0.5 视为接触）
-    contact_factor = min(1.0, (next_obs[6] + next_obs[7]) / 2.0)
-    
-    # 连续乘积，自动 bounded 在 [0,1]
-    landing_bonus_weight = 2.0
-    soft_landing_proxy = landing_bonus_weight * dist_factor * speed_factor * angle_factor * contact_factor
+    # ---------- 主学习信号：进度增量奖励 ----------
+    dist = (x**2 + y**2) ** 0.5
+    next_dist = (next_x**2 + next_y**2) ** 0.5
+    progress_delta = dist - next_dist
+    # 裁剪防止目标附近震荡主导信号
+    progress_delta = max(-0.5, min(0.5, progress_delta))
 
-    # ============================================================
-    # 4. 动作代价: energy_penalty（小权重）
-    # ============================================================
-    engine_use = 1.0 if action != 0 else 0.0
-    energy_penalty_weight = 0.01
-    energy_penalty = -energy_penalty_weight * engine_use
+    # ---------- 距离门控因子 ----------
+    # agent 距离目标 > D_threshold 时，gate≈0，不需要稳定
+    # agent 靠近目标时 gate→1，稳定性要求逐渐生效
+    D_threshold = 4.0
+    proximity_gate = max(0.0, 1.0 - next_dist / D_threshold)
 
-    # ============================================================
-    # 总奖励
-    # ============================================================
-    total_reward = progress_delta_reward + stability_penalty + soft_landing_proxy + energy_penalty
+    # ---------- 稳定/安全惩罚（距离门控版） ----------
+    # 仅在靠近目标时生效：远处自由移动，近处精细控制
+    stability_penalty = -proximity_gate * (
+        0.05 * abs(vx) +
+        0.05 * abs(vy) +
+        0.10 * abs(angle) +
+        0.05 * abs(ang_vel)
+    )
 
-    # 组件字典
+    # ---------- 软着陆 proxy（连续乘积版，取代二值条件） ----------
+    # 每个因子用 bounded max(0, 1 - x/threshold) 提供连续梯度
+    prox_factor   = max(0.0, 1.0 - next_dist / 0.5)               # 距离 < 0.5 有信号
+    vel_factor    = max(0.0, 1.0 - (abs(vx) + abs(vy)) / 0.4)     # 总速度 < 0.4
+    angle_factor  = max(0.0, 1.0 - abs(angle) / 0.2)              # 角度 < 0.2
+    ang_vel_factor = max(0.0, 1.0 - abs(ang_vel) / 0.2)           # 角速度 < 0.2
+    contact_factor = min(left_contact, right_contact)              # 双脚均接触
+
+    soft_landing_proxy = (
+        prox_factor * vel_factor * angle_factor * ang_vel_factor * contact_factor
+    )
+
+    # ---------- 总奖励 ----------
+    w_progress = 5.0
+    w_stab     = 0.5    # 大幅降低（原 1.0）+ 距离门控，确保不压制 progress
+    w_soft     = 2.0    # 连续乘积整体偏弱，需略大权重补偿
+
+    total_reward = (
+        w_progress * progress_delta +
+        w_stab * stability_penalty +
+        w_soft * soft_landing_proxy
+    )
+
+    # 注意：components 只放公式中直接出现的变量，不放 total_reward
     components = {
-        "progress_delta_reward": progress_delta_reward,
+        "progress_delta_reward": progress_delta,
         "stability_penalty": stability_penalty,
         "soft_landing_proxy": soft_landing_proxy,
-        "energy_penalty": energy_penalty,
-        "total_reward": total_reward
     }
 
     return float(total_reward), components

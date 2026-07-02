@@ -1,75 +1,63 @@
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # ============================================================
-    # 1. 主学习信号: progress_delta_reward
-    #    基于当前位置到目标(0,0)的距离变化，引导飞行器接近目标
-    # ============================================================
-    # 当前距离
-    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
-    # 下一步距离
-    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
-    # 距离减少为正奖励，增加为负奖励
-    progress_delta = current_dist - next_dist
-    # 缩放因子，使奖励值在合理范围
-    progress_scale = 2.0
-    progress_delta_reward = progress_delta * progress_scale
+    # 提取当前和下一时刻的位置
+    x, y = obs[0], obs[1]
+    next_x, next_y = next_obs[0], next_obs[1]
 
-    # ============================================================
-    # 2. 稳定/安全约束: stability_penalty
-    #    惩罚高速、大姿态角和大角速度，鼓励稳定接近
-    # ============================================================
-    # 速度惩罚（使用next_obs，因为动作执行后的状态）
-    speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
-    speed_penalty_weight = 0.1
-    speed_penalty = -speed_penalty_weight * speed
+    # 速度、姿态、接触信息（使用 next_obs 更合理，反映动作导致的后果）
+    vx = next_obs[2]
+    vy = next_obs[3]
+    angle = next_obs[4]
+    ang_vel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
 
-    # 姿态角惩罚（角度偏离0度）
-    angle_penalty_weight = 0.05
-    angle_penalty = -angle_penalty_weight * abs(next_obs[4])
+    # ---------- 主学习信号：进度增量奖励 ----------
+    # 每一步奖励“当前到目标的距离”与“下一步到目标的距离”之差
+    dist = (x**2 + y**2) ** 0.5
+    next_dist = (next_x**2 + next_y**2) ** 0.5
+    progress_delta = dist - next_dist   # 正值表示更靠近目标
 
-    # 角速度惩罚
-    angular_vel_penalty_weight = 0.02
-    angular_vel_penalty = -angular_vel_penalty_weight * abs(next_obs[5])
+    # ---------- 稳定/安全惩罚 ----------
+    # 惩罚水平、垂直速度，以及姿态角和角速度，鼓励稳定接近
+    stability_penalty = -(
+        0.1 * abs(vx) +
+        0.1 * abs(vy) +
+        0.2 * abs(angle) +
+        0.1 * abs(ang_vel)
+    )
 
-    stability_penalty = speed_penalty + angle_penalty + angular_vel_penalty
+    # ---------- 任务完成近似信号（软着陆 proxy） ----------
+    # 同时满足：靠近中心、低速、姿态稳定、双支撑脚接触，则给予小奖励
+    dist_thresh = 0.5
+    vel_thresh = 0.2
+    angle_thresh = 0.1
+    ang_vel_thresh = 0.1
 
-    # ============================================================
-    # 3. 任务完成proxy: soft_landing_proxy
-    #    当飞行器接近目标、速度低、姿态稳定且双支撑接触时给予小奖励
-    # ============================================================
-    # 条件：距离目标很近（<0.5）
-    near_target = 1.0 if next_dist < 0.5 else 0.0
-    # 条件：速度很低（<0.3）
-    low_speed = 1.0 if speed < 0.3 else 0.0
-    # 条件：姿态角很小（<0.2弧度）
-    stable_angle = 1.0 if abs(next_obs[4]) < 0.2 else 0.0
-    # 条件：双支撑接触
-    both_contact = 1.0 if (next_obs[6] > 0.5 and next_obs[7] > 0.5) else 0.0
+    if (next_dist < dist_thresh and
+        abs(vx) < vel_thresh and
+        abs(vy) < vel_thresh and
+        abs(angle) < angle_thresh and
+        abs(ang_vel) < ang_vel_thresh and
+        left_contact > 0.5 and right_contact > 0.5):
+        soft_landing_proxy = 1.0
+    else:
+        soft_landing_proxy = 0.0
 
-    # 所有条件满足时给予小奖励
-    landing_bonus_weight = 1.0
-    soft_landing_proxy = landing_bonus_weight * near_target * low_speed * stable_angle * both_contact
+    # ---------- 总奖励 ----------
+    w_progress = 5.0
+    w_stab = 1.0      # stability_penalty 内部已含负号，直接加
+    w_soft = 1.0
 
-    # ============================================================
-    # 4. 动作代价: energy_penalty（小权重）
-    #    轻微惩罚使用引擎，鼓励节能
-    # ============================================================
-    # action 0: no_engine -> 无惩罚
-    # action 1,2,3: 使用引擎 -> 小惩罚
-    engine_use = 1.0 if action != 0 else 0.0
-    energy_penalty_weight = 0.01
-    energy_penalty = -energy_penalty_weight * engine_use
+    total_reward = (
+        w_progress * progress_delta +
+        w_stab * stability_penalty +
+        w_soft * soft_landing_proxy
+    )
 
-    # ============================================================
-    # 总奖励
-    # ============================================================
-    total_reward = progress_delta_reward + stability_penalty + soft_landing_proxy + energy_penalty
-
-    # 组件字典
     components = {
-        "progress_delta_reward": progress_delta_reward,
+        "progress_delta_reward": progress_delta,
         "stability_penalty": stability_penalty,
         "soft_landing_proxy": soft_landing_proxy,
-        "energy_penalty": energy_penalty,
         "total_reward": total_reward
     }
 

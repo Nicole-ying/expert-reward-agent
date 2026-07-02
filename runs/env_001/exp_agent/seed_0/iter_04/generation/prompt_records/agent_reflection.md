@@ -3,35 +3,66 @@
 ## System Prompt
 
 ```text
-你是奖励函数诊断与修订 Agent。你可以调用工具来搜索技法、查看骨架细节。
+你是奖励函数诊断与修订 Agent。你的任务是先理解为什么当前的奖励函数失败了，再决定怎么修改。
+
+# 先诊断，再行动
+
+拿到训练反馈后，先回答三个问题：
+1. 这个 agent 发生了什么？episode 很短（<150）→ 在 crash。episode 很长但得分差 → 在徘徊。得分已经好但某组件 ratio 异常 → 可能在 exploit。
+2. 哪个组件是主要原因？不要只看 ratio，结合 nonzero_rate 和 episode_length 一起判断。
+3. 我之前改了什么？从 Agent Memory 看上一轮的动作和效果。如果上次改了 A 但得分没变，这次不要再改 A。
+
+如果你不确定根因，用 search_reward_design_knowledge 查类似的失败模式。比如搜索 "episode short crash stability penalty weak" 或 "proxy dominates total reward hacking"。
 
 # 工具
 
-- search_reward_design_knowledge(query)：搜索设计技法库。当你对某个症状不确定怎么修时，用自然语言搜索。如 "reward sparse trigger rate low"、"penalty dominating progress"、"oscillation near goal"。
-- get_skeleton_detail(skeleton_name)：查看一个骨架的数学形态、原理和陷阱。当你想尝试不同的骨架时，先查看它的细节再决定。
+- search_reward_design_knowledge(query)：搜索设计技法库和失败模式库。当你对某个症状不确定原因或不知道怎么修时调用。
+- get_skeleton_detail(skeleton_name)：查看某个骨架的数学形态、原理和陷阱。
 
 # 怎么修订
 
-你的工具箱里有三种层次的操作：
+三种层次，从轻到重：
 
-**层次 1：改系数。** 如果问题是量级不对（如惩罚太强），调系数。用 ratio_to_progress 判断：绝对值 > 0.5 且外部得分差 → 削 10 倍或改为距离门控。nonzero_rate < 2% 的正向组件 → 增大权重或放宽条件。
+**层次 1：改系数。** ratio_to_progress 判断组件间量级。惩罚项 ratio 绝对值 > 0.5 且外部得分差 → 考虑削弱。bonus 类 ratio 天然偏高，只要 nonzero_rate 正常且得分不差就不用修。nonzero_rate < 2% → 增大权重或放宽条件。
 
-**层次 2：改表达式。** 如果系数调了几轮还是不行，考虑改变数学形式。例如：
-- 二值 if 条件 → 连续乘积（每项用 max(0, 1-x/threshold)）
-- 线性惩罚 → bounded 饱和（1/(1+kx)、tanh、exp(-x)）
-- 全程生效 → 距离门控（只在靠近目标时生效）
+**层次 2：改数学形式。** 同一个系数反复调还是不行，说明当前数学形式本身有问题。考虑改变信号的计算方式——但每次只改一个组件的形式，下一轮看效果。
 
-**层次 3：换骨架 (rebuild)。** 如果当前骨架已经调了 2 轮以上、得分仍然远低于 target，不要继续在同一个骨架上微调。从 expert knowledge 中选一个数学形态不同的骨架重来。例如 progress_delta 不行 → 试试 bounded_proximity 或 potential_based_shaping。换骨架之前先调用 get_skeleton_detail 了解候选骨架。
+**层次 3：换骨架。** 以下情况停止在层次 1/2 上打转，直接换主信号框架：
+- 同一骨架家族已迭代 2 轮以上，且最佳得分仍未超过 target 的 25%。
+- 或者已经改过数学形式（层次 2）但得分没有实质性改善。
 
-# 常用技法速查
+# 奖励函数迭代的通用原则
 
-| 症状 | 可能解法 |
-|------|---------|
-| penalty 的 ratio_to_progress > 0.5，episode 短 | 削 10 倍；或 distance_gated（远处不罚） |
-| bonus nonzero_rate < 2% | 换连续乘积形式；二值条件 → max(0,1-x/D) |
-| progress 正常但 episode 长，不完成 | 添加 low-speed+low-angle shaping；尝试 bounded_proximity |
-| generated_reward 高但 external 差 | 奖励黑客：检查哪个组件可被 exploit |
-| 同一骨架 ≥2 轮无改善 | 调用工具查技法；如果还是没有新思路 → rebuild |
+以下原则来自大量实验，与环境无关。
+
+## 原则 1：比率是通用语言
+
+不关心组件系数的绝对值。关心组件之间的相对大小：
+- 主学习信号应该是最强的正向力。
+- 约束/惩罚应该是弱背景信号——如果它的均值超过主信号的 50%，agent 会选择"不动"来避免惩罚，而非"行动"来获取奖励。
+- 终端/事件型奖励（偶尔触发）的比率天然偏大，这不代表它有问题。只要触发率正常、外部得分不差，高比率不是 bug。
+
+你从 feedback 的 ratio_to_progress 列能直接读到这些比率。
+
+## 原则 2：数学形态决定梯度质量
+
+- 二值条件 → 无梯度，触发率极低时等于摆设。
+- 连续乘积 → 有梯度，但多个因子相乘会使整体信号很弱（每个因子 < 1）。
+- 连续加权和 → 每个因子独立贡献梯度，但各因子之间没有"同时满足"的约束。
+- bounded 函数（1/(1+kx)、max(0,1-x/D)、tanh）→ 自动限制值域，不受环境尺度影响。
+- 距离门控 → 让约束只在相关区域内生效，避免远处干扰探索。
+
+改变一个组件的数学形态时，它的理想系数范围也会随之改变——这是预期的，不需要同时调整其他组件来"平衡"。
+
+## 原则 3：每次改一个信号，让下一轮反馈可归因
+
+如果你同时改了三个组件的系数，下一轮分数变了，你不知道是哪个改动造成的。如果一个改动有用、一个有害、一个无关，它们互相掩盖，你需要多轮才能拆开——每一轮都很昂贵。
+
+建议：每次迭代聚焦一个信号（一个组件的系数，或一个表达式的形式）。换骨架 (rebuild) 是例外——它天然是一次大的方向调整。
+
+## 原则 4：信号之间有天然的耦合，但不要主动同时调
+
+如果你把一个组件的数学形态改了（如二值→连续），它的系数自然需要相应调整——这不叫"同时改两个地方"，叫"改一个组件"。但不要乘机顺手也调其他组件的系数。让下一轮反馈单独告诉你这个形态改动是否有效。
 
 # 约束
 
@@ -49,131 +80,171 @@
 ## User Prompt
 
 ```markdown
-# 环境契约
-- function_signature: def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-- allowed: obs[0..7], next_obs[0..7], action (0=noop,1=left,2=main,3=right), info (no reliable fields)
-- forbidden: original_reward, official_reward, terminal_success_reward, terminal_failure_penalty
+# ⚠️ 上一版代码验证失败
+错误信息：Reward v4 failed validation: runs\env_001\exp_agent\seed_0\iter_04\generation\validations\reward_v4.validation.json
+请修复以上错误，重新生成完整的奖励函数代码。
 
-
-# 当前奖励函数代码
+# 上一轮奖励函数代码（该轮得分: -1771.110673）
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # ============================================================
-    # 诊断与修改说明：
-    # 问题：score=-115，100% early terminal。agent 在 progress_delta 引导下
-    # 接近目标，但 crash 而非 soft landing。soft_landing_proxy 的 nonzero_rate=0.72%
-    # 仍然太稀疏（乘积形式导致任一因子为零则整体为零）。
-    #
-    # 修改方案：
-    # 1. 用 potential_based_shaping 替代 progress_delta_reward。
-    #    势能函数 Φ = -(dist + 0.8*speed + 0.5*|angle|)，同时引导接近、减速、稳定。
-    #    理论保证最优策略不变（Ng 1999），天然抗震荡。
-    # 2. soft_landing_proxy 改为加权和形式（非乘积），提高 nonzero_rate。
-    #    每个因子独立贡献梯度，不会因为某个条件不满足而完全消失。
-    # 3. stability_penalty 保留角速度惩罚（距离门控），速度和角度已由 shaping 覆盖。
-    # ============================================================
-    
-    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
-    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
-    
-    current_speed = (obs[2] ** 2 + obs[3] ** 2) ** 0.5
-    next_speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
-    
-    current_angle = abs(obs[4])
-    next_angle = abs(next_obs[4])
-    
-    # ============================================================
-    # 1. 主学习信号: potential_based_shaping
-    #    势能 Φ = -(dist + 0.8*speed + 0.5*|angle|)
-    #    shaping = γ * Φ(next) - Φ(obs), γ=0.99
-    #    同时引导：接近目标 ↓、减速 ↓、姿态稳定 ↓
-    # ============================================================
+    # ── 提取当前状态 ──
+    x, y = obs[0], obs[1]
+    curr_vx, curr_vy = obs[2], obs[3]
+    curr_angle = obs[4]
+
+    # ── 提取下一时刻状态（反映动作后果）──
+    next_x, next_y = next_obs[0], next_obs[1]
+    vx, vy = next_obs[2], next_obs[3]
+    angle = next_obs[4]
+    ang_vel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
+
+    # ── 距离 ──
+    dist = (x**2 + y**2) ** 0.5
+    next_dist = (next_x**2 + next_y**2) ** 0.5
+
+    # ── 速率标量 ──
+    speed = (vx**2 + vy**2) ** 0.5
+    curr_speed = (curr_vx**2 + curr_vy**2) ** 0.5
+
+    # ── 主学习信号：potential-based shaping ──
+    # Φ = -(distance + α*speed + β*|angle|)
+    # F = γ * Φ(next) - Φ(curr)，天然引导接近+减速+姿态稳定
+    alpha = 0.1
+    beta = 0.2
     gamma = 0.99
-    phi_obs = -(current_dist + 0.8 * current_speed + 0.5 * current_angle)
-    phi_next = -(next_dist + 0.8 * next_speed + 0.5 * next_angle)
-    
-    shaping_scale = 2.0
-    potential_shaping = shaping_scale * (gamma * phi_next - phi_obs)
 
-    # ============================================================
-    # 2. 稳定约束: angular_vel_penalty（距离门控）
-    #    速度和角度已由 shaping 覆盖，只保留角速度惩罚
-    # ============================================================
-    angular_vel = abs(next_obs[5])
-    gate_radius = 2.0
-    distance_gate = max(0.0, 1.0 - next_dist / gate_radius)
-    
-    angular_vel_penalty_weight = 0.02
-    angular_vel_penalty = -angular_vel_penalty_weight * angular_vel * distance_gate
+    phi_curr = -(dist + alpha * curr_speed + beta * abs(curr_angle))
+    phi_next = -(next_dist + alpha * speed + beta * abs(angle))
+    potential_shaping = gamma * phi_next - phi_curr
 
-    # ============================================================
-    # 3. 任务完成proxy: soft_landing_proxy（加权和形式）
-    #    用加权和替代乘积，每个因子独立贡献梯度
-    #    提高 nonzero_rate，让 agent 逐步学会各个条件
-    # ============================================================
-    # 距离因子：dist < 0.8 时开始贡献
-    dist_factor = max(0.0, 1.0 - next_dist / 0.8)
-    # 速度因子：speed < 0.5 时开始贡献
-    speed_factor = max(0.0, 1.0 - next_speed / 0.5)
-    # 姿态角因子：angle < 0.3 时开始贡献
-    angle_factor = max(0.0, 1.0 - next_angle / 0.3)
-    # 接触因子
-    contact_factor = min(1.0, (next_obs[6] + next_obs[7]) / 2.0)
-    
-    # 加权和（各因子权重不同，dist 最重要）
-    landing_bonus_weight = 1.5
-    soft_landing_proxy = landing_bonus_weight * (
-        0.4 * dist_factor + 
-        0.3 * speed_factor + 
-        0.2 * angle_factor + 
-        0.1 * contact_factor
+    # ── 软着陆 proxy（连续乘积，阈值放宽）──
+    # 用 bounded max(0, 1-x/threshold) 提供连续梯度
+    prox_factor = max(0.0, 1.0 - next_dist / 1.0)               # 距离 < 1.0
+    vel_factor = max(0.0, 1.0 - speed / 0.5)                    # 速率 < 0.5
+    angle_factor = max(0.0, 1.0 - abs(angle) / 0.3)             # 倾角 < 0.3
+    ang_vel_factor = max(0.0, 1.0 - abs(ang_vel) / 0.3)         # 角速度 < 0.3
+    contact_factor = min(left_contact, right_contact)            # 双脚触地
+
+    soft_landing_proxy = (
+        prox_factor * vel_factor * angle_factor * ang_vel_factor * contact_factor
     )
 
-    # ============================================================
-    # 4. 动作代价: energy_penalty（小权重）
-    # ============================================================
-    engine_use = 1.0 if action != 0 else 0.0
-    energy_penalty_weight = 0.01
-    energy_penalty = -energy_penalty_weight * engine_use
+    # ── 轻量辅助惩罚 ──
+    # 角速度惩罚：抑制剧烈旋转
+    angular_vel_penalty = -0.01 * abs(ang_vel)
+    # 能量惩罚：鼓励高效移动
+    energy_penalty = -0.01 * (abs(vx) + abs(vy))
 
-    # ============================================================
-    # 总奖励
-    # ============================================================
-    total_reward = potential_shaping + angular_vel_penalty + soft_landing_proxy + energy_penalty
+    # ── 总奖励 ──
+    total_reward = (
+        1.0 * potential_shaping +
+        2.0 * soft_landing_proxy +
+        1.0 * angular_vel_penalty +
+        1.0 * energy_penalty
+    )
 
     components = {
         "potential_shaping": potential_shaping,
-        "angular_vel_penalty": angular_vel_penalty,
         "soft_landing_proxy": soft_landing_proxy,
+        "angular_vel_penalty": angular_vel_penalty,
         "energy_penalty": energy_penalty,
+    }
+
+    return float(total_reward), components
+```
+
+# 历史最佳奖励函数代码（历史最高得分）
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    # 提取当前和下一时刻的位置
+    x, y = obs[0], obs[1]
+    next_x, next_y = next_obs[0], next_obs[1]
+
+    # 速度、姿态、接触信息（使用 next_obs 更合理，反映动作导致的后果）
+    vx = next_obs[2]
+    vy = next_obs[3]
+    angle = next_obs[4]
+    ang_vel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
+
+    # ---------- 主学习信号：进度增量奖励 ----------
+    # 每一步奖励“当前到目标的距离”与“下一步到目标的距离”之差
+    dist = (x**2 + y**2) ** 0.5
+    next_dist = (next_x**2 + next_y**2) ** 0.5
+    progress_delta = dist - next_dist   # 正值表示更靠近目标
+
+    # ---------- 稳定/安全惩罚 ----------
+    # 惩罚水平、垂直速度，以及姿态角和角速度，鼓励稳定接近
+    stability_penalty = -(
+        0.1 * abs(vx) +
+        0.1 * abs(vy) +
+        0.2 * abs(angle) +
+        0.1 * abs(ang_vel)
+    )
+
+    # ---------- 任务完成近似信号（软着陆 proxy） ----------
+    # 同时满足：靠近中心、低速、姿态稳定、双支撑脚接触，则给予小奖励
+    dist_thresh = 0.5
+    vel_thresh = 0.2
+    angle_thresh = 0.1
+    ang_vel_thresh = 0.1
+
+    if (next_dist < dist_thresh and
+        abs(vx) < vel_thresh and
+        abs(vy) < vel_thresh and
+        abs(angle) < angle_thresh and
+        abs(ang_vel) < ang_vel_thresh and
+        left_contact > 0.5 and right_contact > 0.5):
+        soft_landing_proxy = 1.0
+    else:
+        soft_landing_proxy = 0.0
+
+    # ---------- 总奖励 ----------
+    w_progress = 5.0
+    w_stab = 1.0      # stability_penalty 内部已含负号，直接加
+    w_soft = 1.0
+
+    total_reward = (
+        w_progress * progress_delta +
+        w_stab * stability_penalty +
+        w_soft * soft_landing_proxy
+    )
+
+    components = {
+        "progress_delta_reward": progress_delta,
+        "stability_penalty": stability_penalty,
+        "soft_landing_proxy": soft_landing_proxy,
         "total_reward": total_reward
     }
 
     return float(total_reward), components
 ```
 
-# 训练反馈
+# 训练反馈（上一轮代码的训练结果）
 # Training Feedback
 
 ## Training outcome
-score=242.086713, len=441.300000, errors=0
+score=-1771.110673, len=213.500000, errors=0
 
 ## Component evidence
 
 | component | mean | abs_mean | nonzero_rate | ratio_to_progress |
 |-----------|------|----------|-------------|------------------|
-| angular_vel_penalty | -0.000592 | 0.000592 | 0.962926 | -0.000592 |
-| energy_penalty | -0.007546 | 0.007546 | 0.754637 | -0.007546 |
-| potential_shaping | 0.021351 | 0.030130 | 0.999998 | 0.021351 |
-| soft_landing_proxy | 0.829484 | 0.829484 | 0.982930 | 0.829484 |
-| total_reward | 0.842697 | 0.842805 | 1.000000 | 0.842697 |
-| generated_reward | 0.842697 | 0.842805 | 1.000000 | 0.842697 |
-| original_env_reward | -0.117375 | 1.916126 | 1.000000 | -0.117375 |
+| angular_vel_penalty | -0.001080 | 0.001080 | 0.999997 | -0.001080 |
+| energy_penalty | -0.020271 | 0.020271 | 0.999996 | -0.020271 |
+| potential_shaping | 0.130193 | 0.130394 | 0.999998 | 0.130193 |
+| soft_landing_proxy | 0.000705 | 0.000705 | 0.001510 | 0.000705 |
+| total_reward | 0.110252 | 0.113534 | 1.000000 | 0.110252 |
+| generated_reward | 0.110252 | 0.113534 | 1.000000 | 0.110252 |
+| original_env_reward | -4.382563 | 4.911105 | 1.000000 | -4.382563 |
 
 ## Distribution
-- score: mean=242.086713, min=216.675382, max=277.852200
-- episode_length: mean=441.300000
-- early_terminal (<150 steps + score<-50): 0/10 (0%)
+- score: mean=-1771.110673, min=-5945.060097, max=-574.418700
+- episode_length: mean=213.500000
+- early_terminal (<150 steps + score<-50): 6/10 (60%)
 - errors: 0
 
 
@@ -182,8 +253,9 @@ score=242.086713, len=441.300000, errors=0
 
 | iter | skeleton | score | best | delta | len | key_signal | action |
 |---:|---|---:|---:|---:|---:|---|---|
-| 1 | energy_penalty + progress_delta_reward + soft_landing_proxy + stability_penalty | -115.52 | -115.52 | 0.00 | 74.10 | energy_penalty=-0.002 progress_delta_reward=0.032 soft_landing_proxy=0.005 stability_penalty=-0.109 | new_best |
-| 2 | energy_penalty + progress_delta_reward + soft_landing_proxy + stability_penalty | -114.99 | -115.52 | 0.53 | 74.10 | energy_penalty=-0.001 progress_delta_reward=0.016 soft_landing_proxy=0.009 stability_penalty=-0.007 | no_meaningful_improvement |
-| 3 | angular_vel_penalty + energy_penalty + potential_shaping + soft_landing_proxy | 242.09 | 242.09 | 0.00 | 441.30 | angular_vel_penalty=-0.001 energy_penalty=-0.008 potential_shaping=0.021 soft_landing_proxy=0.829 | target_solved_new_best |
+| 1 | progress_delta_reward + soft_landing_proxy + stability_penalty | -107.10 | -107.10 | 0.00 | 74.20 | progress_delta_reward=0.016 soft_landing_proxy=0.005 stability_penalty=-0.142 | new_best |
+| 2 | progress_delta_reward + soft_landing_proxy + stability_penalty | -111.45 | -107.10 | -4.35 | 74.10 | progress_delta_reward=0.016 soft_landing_proxy=0.003 stability_penalty=-0.058 | no_meaningful_improvement |
+| 3 | angular_vel_penalty + energy_penalty + potential_shaping + soft_landing_proxy | -1771.11 | -107.10 | -1664.01 | 213.50 | angular_vel_penalty=-0.001 energy_penalty=-0.020 potential_shaping=0.130 soft_landing_proxy=0.001 | no_meaningful_improvement |
+| 4 | angular_vel_penalty + energy_penalty + potential_shaping + soft_landing_proxy | 179.44 | 242.09 | -62.64 | 812.60 | angular_vel_penalty=-0.001 energy_penalty=-0.007 potential_shaping=0.045 soft_landing_proxy=0.336 | stop_after_solved_drop_keep_best |
 
 ```

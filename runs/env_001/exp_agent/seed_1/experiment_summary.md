@@ -2,12 +2,12 @@
 
 - prefix: exp_agent
 - seed: 1
-- rounds_completed: 2
+- rounds_completed: 5
 - target_score: 200.000
-- best_iter: 1
-- best_score: 206.102
+- best_iter: 3
+- best_score: 251.935
 - solved: True
-- stopped_reason: stop_after_solved_drop_keep_best
+- stopped_reason: stop_solved_no_improvement_keep_best
 
 ## Best Artifact
 

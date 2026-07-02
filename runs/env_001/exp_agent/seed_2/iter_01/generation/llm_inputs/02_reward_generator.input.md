@@ -3,81 +3,91 @@
 # Env_001 环境理解卡片
 
 ## 1. 任务目标
-这是一个2D飞行器轨迹优化任务。一个飞行器从视口顶部中央附近开始，受到初始随机力。目标是尽快到达并稳定在中央目标着陆平台上，同时尽可能少地使用引擎推力。智能体需要学会接近目标、减速、保持稳定姿态并安全接触。
+控制一个 2D 飞行器从一个随机初始状态尽快飞到中央的目标着陆垫，并稳定停留在其上。  
+目标包括三个子要求：  
+- 尽可能短的时间到达目标上方并降落；  
+- 着陆时速度与姿态尽量平稳（接触安全）；  
+- 整个飞行过程中尽量少用引擎推力（节省能量）。  
 
 ## 2. 任务类型选择
-selected_route_id: navigation_goal_reaching
-confidence: high
-reason: 任务描述明确要求"到达并稳定在中央目标平台"，核心目标是导航到目标位置并保持稳定，同时优化燃料消耗。这符合导航到达任务的定义。
+selected_route_id: navigation_goal_reaching  
+confidence: high  
+reason: 核心目标是使飞行器到达并停靠在空间中的一个目标位置（着陆垫），属于典型的导航目标到达任务；能量消耗是次要优化指标，不改变任务本质。
 
 ## 3. 观察空间 observation_space
-- type: Box
-- shape: [8]
-- dtype: float32 (推断)
-- obs[0]: x_position - 相对于目标平台的水平坐标
-- obs[1]: y_position - 相对于平台高度的垂直坐标
-- obs[2]: x_velocity - 水平线速度
-- obs[3]: y_velocity - 垂直线速度
-- obs[4]: body_angle - 机体姿态角
-- obs[5]: angular_velocity - 角速度
-- obs[6]: left_support_contact - 左侧支撑接触标志 (0.0 或 1.0)
-- obs[7]: right_support_contact - 右侧支撑接触标志 (0.0 或 1.0)
+- type: Box  
+- shape: (8,)  
+- dtype: 推断为 float64 或 float32（连续值，接触标志为 0.0/1.0）  
+- 维度含义：  
+  - obs[0] (x_position): 飞行器相对于目标着陆垫中心的水平坐标  
+  - obs[1] (y_position): 飞行器相对于目标着陆垫高度的垂直坐标  
+  - obs[2] (x_velocity): 飞行器水平线速度  
+  - obs[3] (y_velocity): 飞行器垂直线速度  
+  - obs[4] (body_angle): 飞行器机体角度（orientation）  
+  - obs[5] (angular_velocity): 飞行器角速度  
+  - obs[6] (left_support_contact): 左支撑腿接触标志（1.0 接触，0.0 未接触）  
+  - obs[7] (right_support_contact): 右支撑腿接触标志（1.0 接触，0.0 未接触）
 
 ## 4. 动作空间 action_space
-- type: Discrete
-- action 0: no_engine - 不执行任何操作
-- action 1: left_orientation_engine - 启动左侧姿态引擎
-- action 2: main_engine - 启动主引擎
-- action 3: right_orientation_engine - 启动右侧姿态引擎
+- type: Discrete  
+- n: 4  
+- 动作含义：  
+  - action 0: no_engine —— 不点火，依靠惯性滑行  
+  - action 1: left_orientation_engine —— 点燃左侧姿态调整引擎（产生转动）  
+  - action 2: main_engine —— 点燃主引擎（产生向上的推力）  
+  - action 3: right_orientation_engine —— 点燃右侧姿态调整引擎（产生反向转动）
 
 ## 5. step 与终止条件分析
 ### 5.1 终止模式
-- success-like termination: body_not_awake_or_settled - 机体停止运动或稳定在平台上，可能是成功到达目标
-- failure-like termination: crash_or_body_contact - 坠毁或非预期机体接触；horizontal_position_outside_viewport - 水平位置超出视口边界
-- ambiguous termination: 无
-- truncation: 无 (truncated 始终为 False)
+- success-like termination:  
+  - body_not_awake_or_settled（飞行器静止/稳定，可能表示成功着陆并稳定在垫子上）  
+- failure-like termination:  
+  - crash_or_body_contact（飞行器与地面或其他物体异常碰撞）  
+  - horizontal_position_outside_viewport（水平方向飞出有效区域）  
+- ambiguous termination:  
+  - body_not_awake_or_settled 本身不携带位置信息，需结合 obs[0] 和 obs[1] 是否接近目标来判断真正的成功。  
+- truncation:  
+  - 始终为 False（无时间截断）
 
 ### 5.2 success/failure 信号可用性
-- explicit_success_flag_available: false (info 字典为空，无明确成功标志)
-- explicit_failure_flag_available: false (info 字典为空，无明确失败标志)
-- allowed_info_fields: 无 (info 为空字典 {})
-- forbidden_or_uncertain_info_fields: 所有 info 字段均不可用
+- explicit_success_flag_available: false  
+- explicit_failure_flag_available: false  
+- allowed_info_fields: [] （info 字典为空，无可信字段）  
+- forbidden_or_uncertain_info_fields: 全部 info 字段均禁止使用（不存在任何可信标志）
 
 ## 6. reward 函数接口契约
-函数签名：
+函数签名必须为：
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
 ```
 
 允许使用：
-- obs - 当前观测
-- action - 当前动作
-- next_obs - 下一步观测
-- info - 当前为空字典，无可用字段
-- training_progress - 仅当 prompt 明确允许时才使用
+- obs（当前观察向量）
+- action（当前执行的动作）
+- next_obs（下一时刻观察向量）
+- info 中明确允许的字段（当前允许列表为空）
+- training_progress（仅在 prompt 明确允许时使用）
 
 禁止使用：
-- original_reward - 官方奖励已屏蔽
-- official_reward - 任何形式的官方奖励
-- 未声明的 info 字段 - info 为空
-- 未声明的 obs 切片 - 仅使用已定义的 8 维观测
+- original_reward（来自环境的原始奖励）
+- official_reward（任何形式的环境内部奖励）
+- 未声明的 info 字段（即所有 info 键）
+- 未声明的 obs 切片（不得滥用未说明意义的维度）
 
 ## 7. 可用于奖励函数的信号
-- position: obs[0] (x_position), obs[1] (y_position) - 相对于目标的位置
-- velocity: obs[2] (x_velocity), obs[3] (y_velocity) - 线速度
-- orientation: obs[4] (body_angle), obs[5] (angular_velocity) - 姿态和角速度
-- contact: obs[6] (left_support_contact), obs[7] (right_support_contact) - 接触标志
-- action/engine: action (0-3) - 引擎使用情况
+- position: obs[0] (x_position), obs[1] (y_position)，可得到距离目标垫的距离  
+- velocity: obs[2] (x_velocity), obs[3] (y_velocity)，可用于惩罚硬着陆或大速度  
+- orientation: obs[4] (body_angle)，可鼓励保持在直立姿态  
+- angular_velocity: obs[5] (angular_velocity)，可惩罚剧烈旋转  
+- contact: obs[6] (left_contact), obs[7] (right_contact)，可检测着陆腿是否均已安全接触  
+- action/engine: 动作本身就是燃料消耗信号，可惩罚非零推力的动作以鼓励节能
 
 ## 8. 不确定或不可用的信号
-- 官方奖励函数: 完全屏蔽，不可使用
-- info 字典: 为空，无任何可用信号
-- 成功/失败标志: 无显式标志，需从终止条件推断
-- 燃料消耗量: 未在观测中提供
-- 目标平台精确位置: 仅提供相对位置，无绝对坐标
-- 时间步/步数: 未在观测或 info 中提供
-- 距离目标的绝对距离: 需从 x_position 和 y_position 计算
-- 训练进度: 仅当明确允许时才可使用 training_progress 参数
+- original_reward / official_reward —— 强制屏蔽，不可用  
+- info 内任何字段（如 success 标志） —— 不可用（info 为空）  
+- 目标垫是否被准确接触（需要结合位置与接触信号自行判断）  
+- 是否发生 crash 等事件的具体标志（只能通过观察变化和终止原因推断）  
+- 外部风扰等环境未知因素 —— 不可观测
 
 
 

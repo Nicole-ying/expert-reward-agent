@@ -291,9 +291,9 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                     skeletons_seen = set()
                     best_score = None
                     for line in mem.read_text(encoding="utf-8").splitlines():
-                        if line.startswith("|") and "|" in line[2:]:
+                        if line.startswith("|") and "|" in line[2:] and not line.startswith("|---") and "iter" not in line:
                             cols = [c.strip() for c in line.split("|")]
-                            if len(cols) >= 3 and cols[2]:
+                            if len(cols) >= 3 and cols[2] and cols[2] not in ("skeleton", ""):
                                 skeletons_seen.add(cols[2])
                     if skeletons_seen:
                         failed_info = "# ⚠️ Restart Context\n\n"

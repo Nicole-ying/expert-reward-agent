@@ -1,55 +1,45 @@
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # ============================================================
-    # 诊断 1：stability_penalty 的 ratio_to_progress = -0.089，已正常 ✅
-    # 诊断 2：landing_bonus 的 nonzero_rate = 0.6%，仍然几乎不触发
-    #   原因：contact_factor 是二进制门控，只要未接触地面乘积就为 0
-    #   修复：去掉 contact_factor，只保留距离、速度、姿态角的连续乘积
-    #   这样 agent 在靠近目标的过程中每一步都能感受到梯度
-    # ============================================================
-    
-    # 主学习信号：progress_delta_reward（保持不变）
-    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
-    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
-    progress_delta = current_dist - next_dist
-    progress_reward = 10.0 * progress_delta
+    # ── 1. 提取观察量 ──
+    x, y = obs[0], obs[1]
+    next_x, next_y = next_obs[0], next_obs[1]
 
-    # 稳定约束：stability_penalty（系数已降低 10 倍，保持）
-    speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
-    angle_penalty = 0.05 * abs(next_obs[4])
-    angular_vel_penalty = 0.02 * abs(next_obs[5])
-    speed_penalty = 0.01 * speed
-    stability_penalty = -(angle_penalty + angular_vel_penalty + speed_penalty)
+    vel_x, vel_y = next_obs[2], next_obs[3]
+    angle = next_obs[4]
+    angular_vel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
 
-    # ============================================================
-    # 修复：去掉 contact_factor 的二进制门控
-    # 连续乘积只基于距离、速度、姿态角，每个因子用 max(0, 1-x/threshold)
-    # 这样 agent 在靠近目标、减速、摆正姿态时都能获得梯度
-    # 系数从 5.0 提高到 10.0，因为去掉 contact 后信号更纯粹
-    # ============================================================
-    
-    # 距离因子：距离 < 0.5 时为正，越近越大
-    dist_factor = max(0.0, 1.0 - next_dist / 0.5)
-    # 速度因子：速度 < 0.5 时为正，越慢越大
-    speed_factor = max(0.0, 1.0 - speed / 0.5)
-    # 姿态角因子：角度 < 0.3 时为正，越小越大
-    angle_factor = max(0.0, 1.0 - abs(next_obs[4]) / 0.3)
-    
-    # 连续乘积：每个因子都在 [0,1]，乘积也在 [0,1]
-    # 去掉 contact_factor，让梯度在每一步都能传递
-    landing_bonus = 10.0 * dist_factor * speed_factor * angle_factor
+    # ── 2. 主学习信号：进度差奖励（本轮不动）──
+    dist_old = (x ** 2 + y ** 2) ** 0.5
+    dist_new = (next_x ** 2 + next_y ** 2) ** 0.5
+    progress = dist_old - dist_new
 
-    # 动作代价：energy_penalty（保持不变）
-    engine_use = 1.0 if action != 0 else 0.0
-    energy_penalty = -0.05 * engine_use
+    # ── 3. 轻量稳定约束（本轮不动）──
+    stability_penalty = -0.002 * (abs(vel_x) + abs(vel_y)) \
+                        -0.002 * abs(angle) \
+                        -0.002 * abs(angular_vel)
 
-    # 组合总奖励
-    total_reward = progress_reward + stability_penalty + landing_bonus + energy_penalty
+    # ── 4. 连续软着陆引导信号（形态改动：二值 → 连续乘积）──
+    # 原因：二值条件 "near and slow and upright and legs_down → 0.5"
+    # 导致 agent 在阈值边界无梯度、hovering exploit（nonzero_rate=51.5%，ratio=87x progress）
+    # 改为连续因子乘积，每个因子用 max(0, 1 - x/D) 形式提供稠密梯度
+    speed = (vel_x ** 2 + vel_y ** 2) ** 0.5
+
+    prox_factor = max(0.0, 1.0 - dist_new / 0.3)       # dist=0→1, dist≥0.3→0
+    speed_factor = max(0.0, 1.0 - speed / 0.5)          # speed=0→1, speed≥0.5→0
+    angle_factor = max(0.0, 1.0 - abs(angle) / 0.3)    # angle=0→1, |angle|≥0.3→0
+    leg_factor = 0.5 * (left_contact + right_contact)   # 两腿→1, 单腿→0.5, 无→0
+
+    # 乘积确保"同时满足"约束，系数 0.5 为完美姿态时的最大单步奖励
+    soft_landing_continuous = 0.5 * prox_factor * speed_factor * angle_factor * leg_factor
+
+    # ── 组合总奖励 ──
+    total_reward = progress + stability_penalty + soft_landing_continuous
 
     components = {
-        "progress_reward": progress_reward,
+        "progress": progress,
         "stability_penalty": stability_penalty,
-        "landing_bonus": landing_bonus,
-        "energy_penalty": energy_penalty,
+        "soft_landing_continuous": soft_landing_continuous,
         "total_reward": total_reward
     }
 

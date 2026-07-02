@@ -1,54 +1,42 @@
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # 势能塑形 (Potential-Based Shaping) - 替代 progress_delta + soft_landing_bonus
-    # Φ = -distance - 0.3*speed - 0.5*|angle|，引导接近+减速+稳定
-    # 理论保证最优策略不变 (Ng et al. 1999)
-    
-    # 当前状态势能
-    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
-    current_speed = (obs[2] ** 2 + obs[3] ** 2) ** 0.5
-    current_angle = abs(obs[4])
-    
-    # 下一状态势能
-    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
-    next_speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
-    next_angle = abs(next_obs[4])
-    
-    # 势能函数：负距离 + 负速度惩罚 + 负角度惩罚
-    gamma = 0.99
-    phi_current = -(current_dist + 0.3 * current_speed + 0.5 * current_angle)
-    phi_next = -(next_dist + 0.3 * next_speed + 0.5 * next_angle)
-    shaping_reward = gamma * phi_next - phi_current
-    
-    # 稳定约束：大幅降低系数，避免惩罚主导
-    x_vel = next_obs[2]
-    y_vel = next_obs[3]
+    # 主学习信号：progress delta（到目标垫中心的距离减少量）
+    x_prev, y_prev = obs[0], obs[1]
+    x_next, y_next = next_obs[0], next_obs[1]
+    d_prev = (x_prev**2 + y_prev**2) ** 0.5
+    d_next = (x_next**2 + y_next**2) ** 0.5
+    progress_delta = d_prev - d_next
+
+    # 稳定约束：大幅削弱权重，避免压制 progress 信号
+    # 原权重 (0.1, 0.5, 0.1) 使 penalty 均值 0.147 = progress 的 9x
+    # 削弱 ~25x → 目标 penalty 均值 ~0.006 = progress 的 ~40%
+    x_vel, y_vel = next_obs[2], next_obs[3]
     body_angle = next_obs[4]
-    angular_vel = next_obs[5]
-    
-    # 速度惩罚：降低10倍
-    speed_penalty = -0.05 * (x_vel ** 2 + y_vel ** 2)
-    # 姿态角惩罚：降低10倍
-    angle_penalty = -0.03 * (body_angle ** 2)
-    # 角速度惩罚：降低10倍
-    angular_penalty = -0.02 * (angular_vel ** 2)
-    
-    stability_penalty = speed_penalty + angle_penalty + angular_penalty
-    
-    # 动作代价：降低系数
-    if action == 0:
-        energy_penalty = 0.0
-    else:
-        energy_penalty = -0.01  # 降低10倍
-    
-    # 总奖励
-    total_reward = shaping_reward + stability_penalty + energy_penalty
-    
-    # 组件字典
+    ang_vel = next_obs[5]
+    w_vel = 0.004      # 原 0.1 → 削弱 25x
+    w_angle = 0.02     # 原 0.5 → 削弱 25x
+    w_angvel = 0.004   # 原 0.1 → 削弱 25x
+    stability_penalty = (
+        w_vel * (abs(x_vel) + abs(y_vel)) +
+        w_angle * abs(body_angle) +
+        w_angvel * abs(ang_vel)
+    )
+
+    # 任务完成软代理：接近中心 + 低速 + 水平 + 双脚着地
+    # 当前触发率极低（0.2%）是因 penalty 压制导致无法靠近目标，先不调整
+    near = (d_next < 0.1)
+    slow = (abs(x_vel) < 0.1 and abs(y_vel) < 0.1)
+    level = (abs(body_angle) < 0.1)
+    both_feet = (next_obs[6] > 0.5 and next_obs[7] > 0.5)
+    soft_landing_bonus_raw = 1.0 if (near and slow and level and both_feet) else 0.0
+    soft_landing_bonus = 0.5 * soft_landing_bonus_raw
+
+    total_reward = progress_delta - stability_penalty + soft_landing_bonus
+
     components = {
-        "shaping_reward": shaping_reward,
+        "progress_delta": progress_delta,
         "stability_penalty": stability_penalty,
-        "energy_penalty": energy_penalty,
+        "soft_landing_bonus": soft_landing_bonus,
         "total_reward": total_reward
     }
-    
+
     return float(total_reward), components

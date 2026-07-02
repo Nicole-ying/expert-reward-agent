@@ -1,58 +1,44 @@
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
-    # ============================================================
-    # 诊断：landing_bonus nonzero_rate = 0.74%，仍然几乎不触发
-    # 原因：连续乘积 dist_factor * speed_factor * angle_factor 仍然太严格
-    #       三个因子相乘，只要一个接近 0，整体就接近 0
-    #       本质上还是"同时满足"的逻辑，只是从二值变成了连续
-    # 修复：改用加权和代替乘积
-    #       每个因子独立贡献梯度，agent 可以分别学习靠近、减速、摆正姿态
-    #       不需要同时做到，nonzero_rate 会大幅提升
-    # 系数调整：加权和的总系数从 10.0 降到 5.0，因为三个因子独立贡献
-    #       每个因子权重：距离 2.0，速度 1.5，姿态角 1.5，总和 5.0
-    # ============================================================
-    
-    # 主学习信号：progress_delta_reward（保持不变）
-    current_dist = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
-    next_dist = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
-    progress_delta = current_dist - next_dist
-    progress_reward = 10.0 * progress_delta
+    # ── 1. 提取观察量 ──
+    x, y = obs[0], obs[1]
+    next_x, next_y = next_obs[0], next_obs[1]
 
-    # 稳定约束：stability_penalty（保持不变）
-    speed = (next_obs[2] ** 2 + next_obs[3] ** 2) ** 0.5
-    angle_penalty = 0.05 * abs(next_obs[4])
-    angular_vel_penalty = 0.02 * abs(next_obs[5])
-    speed_penalty = 0.01 * speed
-    stability_penalty = -(angle_penalty + angular_vel_penalty + speed_penalty)
+    vel_x, vel_y = next_obs[2], next_obs[3]
+    angle = next_obs[4]
+    angular_vel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
 
-    # ============================================================
-    # 修复：加权和代替乘积
-    # 每个因子用 max(0, 1-x/threshold) 保持 bounded
-    # 距离因子：距离 < 0.5 时为正，越近越大
-    # 速度因子：速度 < 0.5 时为正，越慢越大
-    # 姿态角因子：角度 < 0.3 时为正，越小越大
-    # 加权和：每个因子独立贡献，agent 不需要同时满足所有条件
-    # ============================================================
-    
-    dist_factor = max(0.0, 1.0 - next_dist / 0.5)
-    speed_factor = max(0.0, 1.0 - speed / 0.5)
-    angle_factor = max(0.0, 1.0 - abs(next_obs[4]) / 0.3)
-    
-    # 加权和：每个因子独立贡献梯度
-    # 距离权重 2.0（最重要），速度 1.5，姿态角 1.5
-    landing_bonus = 2.0 * dist_factor + 1.5 * speed_factor + 1.5 * angle_factor
+    # ── 2. 主学习信号：进度差奖励（不动）──
+    dist_old = (x ** 2 + y ** 2) ** 0.5
+    dist_new = (next_x ** 2 + next_y ** 2) ** 0.5
+    progress = dist_old - dist_new
 
-    # 动作代价：energy_penalty（保持不变）
-    engine_use = 1.0 if action != 0 else 0.0
-    energy_penalty = -0.05 * engine_use
+    # ── 3. 轻量稳定约束（不动）──
+    stability_penalty = -0.002 * (abs(vel_x) + abs(vel_y)) \
+                        -0.002 * abs(angle) \
+                        -0.002 * abs(angular_vel)
 
-    # 组合总奖励
-    total_reward = progress_reward + stability_penalty + landing_bonus + energy_penalty
+    # ── 4. 连续软着陆引导信号 ──
+    # 上一轮：coefficient=0.5, prox_threshold=0.3 → mean=0.237, ratio=83x progress
+    # 本轮：coefficient→0.08, prox_threshold→0.2，目标 ratio≈5-10x
+    speed = (vel_x ** 2 + vel_y ** 2) ** 0.5
+
+    prox_factor = max(0.0, 1.0 - dist_new / 0.2)       # dist=0→1, dist≥0.2→0（收紧）
+    speed_factor = max(0.0, 1.0 - speed / 0.5)          # speed=0→1, speed≥0.5→0
+    angle_factor = max(0.0, 1.0 - abs(angle) / 0.3)    # angle=0→1, |angle|≥0.3→0
+    leg_factor = 0.5 * (left_contact + right_contact)   # 两腿→1, 单腿→0.5, 无→0
+
+    # 系数从 0.5 降至 0.08，大幅削弱 landing 信号的主导地位
+    soft_landing_continuous = 0.08 * prox_factor * speed_factor * angle_factor * leg_factor
+
+    # ── 组合总奖励 ──
+    total_reward = progress + stability_penalty + soft_landing_continuous
 
     components = {
-        "progress_reward": progress_reward,
+        "progress": progress,
         "stability_penalty": stability_penalty,
-        "landing_bonus": landing_bonus,
-        "energy_penalty": energy_penalty,
+        "soft_landing_continuous": soft_landing_continuous,
         "total_reward": total_reward
     }
 
