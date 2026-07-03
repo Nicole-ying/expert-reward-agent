@@ -69,6 +69,12 @@ flowchart TD
     M --> T["满足停止条件后返回best reward与best policy"]
 ```
 
+### 0.3.1 论文框架示意图
+
+![DERES-Agent奖励函数自进化框架](../figures/paper/framework/fig00_deres_agent_framework_generated.png)
+
+该图将完整流程压缩为五个阶段：任务理解、奖励提议、强化学习训练与评估、诊断Agent和进化决策。生成奖励用于PPO策略训练，外部回报与组件证据用于评估和诊断；Agent根据反馈、历史记忆和best reward，在系数、数学形式与奖励骨架三个层级选择干预，形成从当前奖励 `r_t` 到下一版奖励 `r_{t+1}` 的连续自进化闭环。
+
 ### 0.4 各模块作用
 
 | 模块 | 作用 | 是否作为独立创新 |
