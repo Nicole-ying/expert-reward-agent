@@ -41,9 +41,9 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 
 # reward_v1 设计说明
 
-- 使用组件：progress_delta_reward + light stability_penalty。
-- progress_delta_reward 负责主学习信号：奖励智能体每一步更接近目标区域。
-- stability_penalty 负责轻量稳定约束：防止高速、姿态过大或角速度过大。
+- 使用组件：progress_delta_reward + light stability_penalty（示例，实际应由 LLM 根据环境接口和任务路由自主选择）。
+- progress_delta_reward 作为密集学习信号：奖励智能体每一步更接近目标区域。
+- stability_penalty 作为轻量运动约束：防止高速、姿态过大或角速度过大。
 - 没有使用 terminal_success_reward，因为环境卡片说明 explicit_success_flag_available=false。
 - 没有使用 terminal_failure_penalty，因为没有 explicit_failure_flag 或 termination_reason。
 - 后续迭代可以根据训练现象加入 derived soft landing proxy、energy_penalty、time_penalty 或 gated_reward。

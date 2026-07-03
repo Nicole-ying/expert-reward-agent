@@ -12,6 +12,18 @@ from stable_baselines3.common.utils import set_random_seed
 from training.reward_wrapper import RewardOverrideWrapper, load_reward_function
 
 
+def _parse_schedule_value(value):
+    """Convert RL Zoo's lin_<initial> notation to an SB3 schedule."""
+    if not isinstance(value, str) or not value.startswith("lin_"):
+        return value
+    initial_value = float(value.removeprefix("lin_"))
+
+    def linear_schedule(progress_remaining):
+        return progress_remaining * initial_value
+
+    return linear_schedule
+
+
 class RewardComponentStatsCallback(BaseCallback):
     def __init__(self):
         super().__init__()
@@ -112,32 +124,61 @@ def build_env_fns(env_id, reward_fn, max_progress_steps, seed, n_envs, monitor_d
     return fns
 
 
-def evaluate_model_on_original_env(model, env_id, eval_episodes, seed):
+def evaluate_model_on_original_env(model, env_id, eval_episodes, seed, eval_seed_offset=10000):
+    """Evaluate using a fixed set of seeds for reproducibility and paired comparison.
+
+    All evaluations use the SAME set of seeds (seed_offset + 0, seed_offset + 1, ..., seed_offset + N-1).
+    This means parent and child evaluations with the same seed_offset are directly comparable
+    on an episode-by-episode basis (paired comparison).
+
+    Parameters
+    ----------
+    model : PPO model
+    env_id : str, gym environment id
+    eval_episodes : int, number of evaluation episodes
+    seed : int, training seed (used for reproducibility logging, not directly for eval seeds)
+    eval_seed_offset : int, base offset for eval seeds. The eval seeds used are:
+                       eval_seed_offset + 0, eval_seed_offset + 1, ..., eval_seed_offset + eval_episodes - 1.
+                       Parent and child should use the same eval_seed_offset for paired comparison.
+    """
     env = gym.make(env_id)
     episode_rewards = []
     episode_lengths = []
+    episode_terminated = []  # True = terminated (env-defined end), False = truncated (time limit)
     for episode_id in range(eval_episodes):
-        obs, _ = env.reset(seed=seed + episode_id)
+        eval_seed = eval_seed_offset + episode_id
+        obs, _ = env.reset(seed=eval_seed)
         done = False
         total_reward = 0.0
         length = 0
+        was_terminated = False
         while not done:
             action, _state = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, _info = env.step(action)
             total_reward += float(reward)
             length += 1
             done = bool(terminated or truncated)
+            if terminated:
+                was_terminated = True
         episode_rewards.append(total_reward)
         episode_lengths.append(length)
+        episode_terminated.append(was_terminated)
     env.close()
     return {
         "eval_episodes": eval_episodes,
+        "eval_seed_offset": eval_seed_offset,
+        "eval_seeds": [eval_seed_offset + i for i in range(eval_episodes)],
         "episode_rewards": episode_rewards,
         "episode_lengths": episode_lengths,
+        "episode_terminated": episode_terminated,
         "mean_eval_reward": mean(episode_rewards) if episode_rewards else 0.0,
         "mean_episode_length": mean(episode_lengths) if episode_lengths else 0.0,
         "min_eval_reward": min(episode_rewards) if episode_rewards else 0.0,
         "max_eval_reward": max(episode_rewards) if episode_rewards else 0.0,
+        "termination_breakdown": {
+            "terminated": sum(1 for t in episode_terminated if t),
+            "truncated": sum(1 for t in episode_terminated if not t),
+        },
     }
 
 
@@ -153,19 +194,27 @@ def write_eval_result_md(path, eval_result):
     lines.append("# External Evaluation Result")
     lines.append("")
     lines.append("Evaluation uses the original environment reward, not the generated training reward.")
+    lines.append("All evaluations use the same fixed seed set for reproducible paired comparison.")
     lines.append("")
     lines.append(f"- eval_episodes: {eval_result['eval_episodes']}")
+    lines.append(f"- eval_seed_offset: {eval_result.get('eval_seed_offset', 'N/A')}")
     lines.append(f"- mean_eval_reward: {_fmt_float(eval_result['mean_eval_reward'])}")
     lines.append(f"- mean_episode_length: {_fmt_float(eval_result['mean_episode_length'])}")
     lines.append(f"- min_eval_reward: {_fmt_float(eval_result['min_eval_reward'])}")
     lines.append(f"- max_eval_reward: {_fmt_float(eval_result['max_eval_reward'])}")
+    tb = eval_result.get("termination_breakdown", {})
+    if tb:
+        lines.append(f"- termination: {tb.get('terminated', '?')} terminated, {tb.get('truncated', '?')} truncated")
     lines.append("")
     lines.append("## Episodes")
     lines.append("")
-    lines.append("| episode | reward | length |")
-    lines.append("|---:|---:|---:|")
+    term_flags = eval_result.get("episode_terminated", [])
+    lines.append("| episode | eval_seed | reward | length | end |")
+    lines.append("|---:|---:|---:|---:|---|")
     for i, (reward, length) in enumerate(zip(eval_result["episode_rewards"], eval_result["episode_lengths"])):
-        lines.append(f"| {i} | {_fmt_float(reward)} | {length} |")
+        end_type = "terminated" if (i < len(term_flags) and term_flags[i]) else "truncated"
+        eval_seed = eval_result.get("eval_seeds", [])[i] if i < len(eval_result.get("eval_seeds", [])) else "?"
+        lines.append(f"| {i} | {eval_seed} | {_fmt_float(reward)} | {length} | {end_type} |")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -193,29 +242,58 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
     lines.append("")
     lines.append("## Training outcome")
     lines.append(f"score={_fmt_float(eval_result['mean_eval_reward'])}, len={_fmt_float(eval_result['mean_episode_length'])}, errors={component_summary['reward_error_count_max']}")
+    lines.append("`score` 是评估回合的外部环境累计奖励均值；下表组件的 `mean` 是按 step 统计的均值，两者不能直接按数值大小比较。")
     lines.append("")
-    # Calculate progress reference for ratio column
+    # Find progress reference: component whose short name starts with "progress"
+    # The LLM is instructed to name its main learning signal "progress_reward".
+    # Fallback: component with largest abs_mean (excluding summary/total/original).
     progress_ref = 1.0
+    progress_name = "progress_reward"
+    _skip_ref = {"generated_reward", "total_reward", "original_env_reward"}
     for name in sorted(stats.keys()):
         short = name.replace("component.", "", 1)
-        if short in ("progress_reward", "progress_delta_reward", "progress_delta"):
+        if short in _skip_ref:
+            continue
+        if short.startswith("progress"):
             progress_ref = max(abs(float(stats[name].get("mean", 1.0))), 0.001)
+            progress_name = short
             break
+    # Fallback: if no progress-named component, use the one with largest abs_mean
+    if progress_ref == 1.0:
+        best_abs = 0.0
+        for name in sorted(stats.keys()):
+            short = name.replace("component.", "", 1)
+            if short in _skip_ref:
+                continue
+            val = abs(float(stats[name].get("abs_mean", 0.0)))
+            if val > best_abs:
+                best_abs = val
+                progress_name = short
+        progress_ref = max(best_abs, 0.001)
 
     lines.append("## Component evidence")
     lines.append("")
-    lines.append("| component | mean | abs_mean | nonzero_rate | ratio_to_progress |")
-    lines.append("|-----------|------|----------|-------------|------------------|")
+    lines.append(f"`ratio_to_{progress_name}` = mean_of_component / abs_mean_of_{progress_name}. Signed ratio relative to the main learning signal. Positive = same direction, negative = opposite direction. All components are expressed in units of the main signal.")
+    lines.append("")
+    lines.append(f"| component | mean | abs_mean | nonzero_rate | ratio_to_{progress_name} |")
+    lines.append(f"|-----------|------|----------|-------------|--------------------------|")
     for name in sorted(stats.keys()):
         if name.startswith("component.original_env"):
             continue
         item = stats[name]
         short = name.replace("component.", "", 1)
-        ratio_val = float(item.get("mean", 0)) / progress_ref
+        ratio_val = float(item.get("mean", 0.0)) / progress_ref
         lines.append(
             f"| {short} | {_fmt_float(item.get('mean'))} | {_fmt_float(item.get('abs_mean'))} | "
             f"{_fmt_float(item.get('nonzero_rate'))} | {_fmt_float(ratio_val)} |"
         )
+    # Show original_env_reward for alignment reference
+    orig = stats.get("original_env_reward")
+    if orig:
+        orig_ratio = float(orig.get("mean", 0.0)) / progress_ref
+        lines.append(f"| original_env_reward | {_fmt_float(orig.get('mean'))} | {_fmt_float(orig.get('abs_mean'))} | {_fmt_float(orig.get('nonzero_rate'))} | {_fmt_float(orig_ratio)} |")
+    lines.append("")
+    lines.append(f"> `ratio_to_{progress_name}` 把所有组件归一化到主学习信号的尺度。正值=同向，负值=反向。`original_env_reward` 仅用于对齐参考——不参与训练。如果它的 ratio 符号与主信号相反，奖励函数可能 misaligned。")
 
     # Distribution summary
     mean_len = float(eval_result.get("mean_episode_length", 0))
@@ -242,6 +320,7 @@ def main():
     ap.add_argument("--run-name", default=None)
     ap.add_argument("--total-timesteps", type=float, default=None)
     ap.add_argument("--eval-episodes", type=int, default=None)
+    ap.add_argument("--eval-seed-offset", type=int, default=None)
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--save-dir", default=None)
     args = ap.parse_args()
@@ -291,7 +370,10 @@ def main():
     }
     for key in ["n_steps", "batch_size", "gae_lambda", "gamma", "n_epochs", "ent_coef", "learning_rate", "clip_range", "vf_coef", "max_grad_norm"]:
         if key in train_cfg:
-            ppo_args[key] = train_cfg[key]
+            value = train_cfg[key]
+            if key in {"learning_rate", "clip_range"}:
+                value = _parse_schedule_value(value)
+            ppo_args[key] = value
     if train_cfg.get("tensorboard_log"):
         ppo_args["tensorboard_log"] = train_cfg["tensorboard_log"]
 
@@ -301,12 +383,14 @@ def main():
     model.save(str(save_dir / "model.zip"))
     env.close()
 
-    eval_episodes = int(args.eval_episodes if args.eval_episodes is not None else train_cfg.get("eval_episodes", 10))
+    eval_episodes = int(args.eval_episodes if args.eval_episodes is not None else train_cfg.get("eval_episodes", 20))
+    eval_seed_offset = int(args.eval_seed_offset if args.eval_seed_offset is not None else train_cfg.get("eval_seed_offset", 10000))
     eval_result = evaluate_model_on_original_env(
         model,
         train_cfg["runner_env_id"],
         eval_episodes=eval_episodes,
-        seed=seed + 10000,
+        seed=seed,
+        eval_seed_offset=eval_seed_offset,
     )
     component_summary = component_callback.summary()
 

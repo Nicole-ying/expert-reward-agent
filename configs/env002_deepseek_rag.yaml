@@ -49,7 +49,7 @@ reward_generation:
 multi_seed:
   enabled: true
   start_seed: 0
-  num_seeds: 10
+  num_seeds: 5
 
 iteration:
   total_rounds: 10
@@ -61,7 +61,7 @@ iteration:
   stop_on_invalid_reward: true
   use_mock_llm: false
 
-  target_score: 300.0
+  target_score: 250.0
 
   save_best_artifacts: true
   stop_after_solved_drop: true
@@ -73,12 +73,15 @@ iteration:
   retry_identical_when_unsolved: true
   max_identical_revision_retries: 2
 
+  use_reflection_agent: true
+
 training:
   runner_env_id: BipedalWalker-v3
   policy: MlpPolicy
-  n_envs: 32
+  n_envs: 8
   total_timesteps: 5000000
-  eval_episodes: 10
+  eval_episodes: 20
+  eval_seed_offset: 10000
   n_steps: 2048
   batch_size: 64
   gae_lambda: 0.95

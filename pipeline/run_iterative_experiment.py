@@ -289,7 +289,6 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 mem = Path(memory_path)
                 if mem.exists():
                     skeletons_seen = set()
-                    best_score = None
                     for line in mem.read_text(encoding="utf-8").splitlines():
                         if line.startswith("|") and "|" in line[2:] and not line.startswith("|---") and "iter" not in line:
                             cols = [c.strip() for c in line.split("|")]
@@ -300,7 +299,11 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                         failed_info += "以下骨架在前序迭代中已尝试但未成功：\n"
                         for sk in sorted(skeletons_seen):
                             failed_info += f"- {sk}\n"
-                        failed_info += "\n请选择一个**完全不同的主信号骨架**。例如如果上述列表都是 progress_delta 系列，请尝试 potential_based_shaping 或 bounded_proximity。不要重复已失败的骨架。\n"
+                        failed_info += "\n上述骨架在前序迭代中已尝试但未取得突破。\n"
+                        failed_info += "请基于训练证据选择改进方向：\n"
+                        failed_info += "- 如果认为同一骨架仍有可修复空间（如系数调节、条件化约束），可以继续在当前骨架上修改。\n"
+                        failed_info += "- 如果诊断表明当前骨架存在结构性问题（如信号冲突、梯度消失），请从 expert_reward_context.md 中选择不同的数学形态。\n"
+                        failed_info += "- 不要机械重复已失败的骨架。\n"
                 # Write restart context where run_03 can read it
                 gen_dir = Path(cfg["experiment"]["run_root"]) / paths["gen_run_name"]
                 gen_dir.mkdir(parents=True, exist_ok=True)
@@ -409,6 +412,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                         "python", "-m", "pipeline.run_reflection_agent",
                         "--config", config_path,
                         "--previous-reward", str(previous_reward),
+                        "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
                         "--train-run-dir", str(prev_paths["train_dir"]),
                         "--memory", memory_path,
                         "--out-run-name", paths["gen_run_name"],
@@ -435,6 +439,30 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             print("Invalid code after 3 retries. Skipping iteration, forcing fresh restart next.")
             force_fresh_restart = True
             restart_count += 1
+            no_improve_count += 1
+            continue
+
+        # Check if current reward is identical to best (not just previous) — skip redundant training
+        if best_reward and is_identical_reward(best_reward, current_reward):
+            print(f"Current reward identical to best reward (iter {best_iter}). Skipping training.")
+            rounds_completed = iteration_index
+            decision = "identical_to_best_skipped"
+            # Copy best training results so downstream can read score
+            best_paths = build_paths(cfg, prefix, best_iter, seed)
+            best_train_dir = best_paths["train_dir"]
+            if Path(best_train_dir).exists():
+                shutil.copytree(str(best_train_dir), str(paths["train_dir"]), dirs_exist_ok=True)
+            run_cmd([
+                "python", "-m", "pipeline.run_06_update_reward_memory",
+                "--iter", str(iteration_index),
+                "--train-run-dir", str(paths["train_dir"]),
+                "--memory", memory_path,
+                "--target-score", str(target_score),
+                "--best-score", str(best_score),
+                "--best-iter", str(best_iter),
+                "--decision", decision,
+            ])
+            previous_reward = current_reward
             no_improve_count += 1
             continue
 

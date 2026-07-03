@@ -15,7 +15,21 @@ from .run_03_direct_reward_generator import extract_code, validate_code
 from llm_clients.deepseek_client import DeepSeekClient
 
 
-def build_user_prompt(feedback_md, memory_md, previous_code, best_code):
+def _environment_summary(environment_card_md):
+    """Keep task and interface facts needed to interpret reward code."""
+    if not environment_card_md:
+        return ""
+    wanted = {1, 2, 3, 4, 5, 7, 8}
+    sections = re.split(r"(?=^## \d+\.)", environment_card_md, flags=re.MULTILINE)
+    selected = []
+    for section in sections:
+        match = re.match(r"^## (\d+)\.", section)
+        if match and int(match.group(1)) in wanted:
+            selected.append(section.strip())
+    return "\n\n".join(selected)
+
+
+def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md=""):
     """Assemble the reflection agent's user prompt — focused, no noise."""
     parts = []
 
@@ -33,6 +47,10 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code):
 
     parts.append(f"# 训练反馈（上一轮代码的训练结果）\n{feedback_md}")
 
+    environment_summary = _environment_summary(environment_card_md)
+    if environment_summary:
+        parts.append(f"# 环境事实摘要（只据此理解任务和变量，不猜测环境名称）\n{environment_summary}")
+
     if memory_md:
         parts.append(f"# 历史记忆\n{memory_md}")
 
@@ -47,6 +65,7 @@ def run_reflection_agent(
     memory_path,
     out_run_name,
     reward_version,
+    environment_card_path=None,
     mock=False,
     validation_retry=None,
 ):
@@ -58,6 +77,9 @@ def run_reflection_agent(
     system_prompt = read_text("prompts/reflection_agent_prompt.md")
     previous_code = read_text(previous_reward_path)
     feedback_md = read_text(str(Path(train_run_dir) / "training_feedback.md"))
+    environment_card_md = ""
+    if environment_card_path and Path(environment_card_path).exists():
+        environment_card_md = read_text(environment_card_path)
     memory_md = ""
     if Path(memory_path).exists():
         memory_md = read_text(memory_path)
@@ -72,9 +94,9 @@ def run_reflection_agent(
             f"# ⚠️ 上一版代码验证失败\n"
             f"错误信息：{validation_retry}\n"
             f"请修复以上错误，重新生成完整的奖励函数代码。\n\n"
-        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code)
+        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md)
     else:
-        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code)
+        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md)
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_reflection_agent.input.md", user_prompt)
     record_prompt(run_dir, "agent_reflection", system_prompt, user_prompt)
@@ -189,6 +211,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/env001_deepseek_rag.yaml")
     ap.add_argument("--previous-reward", required=True)
+    ap.add_argument("--environment-card", default=None)
     ap.add_argument("--best-reward", default=None)
     ap.add_argument("--train-run-dir", required=True)
     ap.add_argument("--memory", default="runs/env_001/memory/reward_memory.md")
@@ -201,6 +224,7 @@ def main():
     run_reflection_agent(
         config_path=args.config,
         previous_reward_path=args.previous_reward,
+        environment_card_path=args.environment_card,
         best_reward_path=args.best_reward,
         train_run_dir=args.train_run_dir,
         memory_path=args.memory,

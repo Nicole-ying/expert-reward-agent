@@ -1,6 +1,6 @@
 experiment:
-  env_id: Env_001
-  run_root: runs/env_001
+  env_id: Env_003
+  run_root: runs/env_003
   run_name: null
   seed: 0
 
@@ -16,8 +16,8 @@ llm:
   max_tokens_reward: 4096
 
 inputs:
-  task_spec_path: envs/env_001/task_spec_anonymized.yaml
-  masked_step_path: envs/env_001/masked_step_source.py
+  task_spec_path: envs/env_003/task_spec_anonymized.yaml
+  masked_step_path: envs/env_003/masked_step_source.py
 
 prompts:
   environment_analyzer: prompts/01_environment_analyzer_prompt.md
@@ -49,52 +49,50 @@ reward_generation:
 multi_seed:
   enabled: true
   start_seed: 0
-  num_seeds: 10
+  num_seeds: 5
 
 iteration:
   total_rounds: 10
-  experiment_prefix: exp_fixed
-  experiment_root: runs/env_001/experiments
-  memory_path: runs/env_001/memory/reward_memory.md
+  experiment_prefix: exp_deres_cartpole_5seed
+  experiment_root: runs/env_003/experiments
+  memory_path: runs/env_003/memory/reward_memory.md
   reset_memory_at_start: true
   cards_top_k: 4
   stop_on_invalid_reward: true
   use_mock_llm: false
 
-  # Env_001 is considered solved when external evaluation mean score reaches 200.
-  target_score: 200.0
+  # The installed environment registers 475 as its solution threshold.
+  target_score: 475.0
 
-  # Best-retention and stopping policy.
   save_best_artifacts: true
   stop_after_solved_drop: true
   stop_when_solved_and_identical: true
   no_improvement_patience_after_solved: 2
   no_improvement_patience_unsolved: 3
-  min_meaningful_improvement: 5.0
+  min_meaningful_improvement: 10.0
 
-  # No-op protection. This is a safety guard, not the main search strategy.
   retry_identical_when_unsolved: true
   max_identical_revision_retries: 2
-
-  # Single-agent reflection mode (replaces run_04+05)
   use_reflection_agent: true
 
 training:
-  runner_env_id: LunarLander-v2
+  runner_env_id: CartPole-v1
   policy: MlpPolicy
-  n_envs: 4
-  total_timesteps: 1000000
+  n_envs: 8
+  total_timesteps: 100000
   eval_episodes: 20
   eval_seed_offset: 10000
-  n_steps: 1024
-  batch_size: 64
-  gae_lambda: 0.98
-  gamma: 0.999
-  n_epochs: 4
-  ent_coef: 0.01
+  n_steps: 32
+  batch_size: 256
+  gae_lambda: 0.8
+  gamma: 0.98
+  n_epochs: 20
+  ent_coef: 0.0
+  learning_rate: lin_0.001
+  clip_range: lin_0.2
   device: auto
   seed: 0
-  max_training_steps_for_progress: 1000000
-  save_dir: runs/env_001/training_runs
+  max_training_steps_for_progress: 100000
+  save_dir: runs/env_003/training_runs
   run_name: ppo_reward_v1_001
-  tensorboard_log: runs/env_001/tensorboard
+  tensorboard_log: runs/env_003/tensorboard

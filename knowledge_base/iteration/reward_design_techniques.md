@@ -41,7 +41,7 @@
 - 类型：设计技法
 - 症状：所有组件的 mean 值都在 0.001 量级或都在 100 量级，信号缺乏区分度。
 - 原理：不同组件需要不同量级来体现优先级。progress 应该是最强的正信号，惩罚应该是弱而常在的背景。
-- 修复：progress 信号的 abs_mean 应至少是任何惩罚项 abs_mean 的 10 倍以上。每次改系数时先检查 ratio_to_progress 列。
+- 修复：学习信号的 abs_mean 应至少是任何惩罚项 abs_mean 的 10 倍以上。每次改系数时先检查 ratio_to_progress 列。
 - 关键词：scale, magnitude, ratio, coefficient tuning, balance
 
 ## stability_penalty_dominance

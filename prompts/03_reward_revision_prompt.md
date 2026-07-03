@@ -32,7 +32,7 @@
 
 # 约束
 
-- 证据驱动，不堆砌。惩罚项主导 progress → 削弱或条件化。bonus 触发率 <1% → 改为连续 shaping。
+- 证据驱动，不堆砌。惩罚项 ratio_to_progress 绝对值 > 0.5 → 削弱或条件化。bonus 触发率 <1% → 改为连续 shaping。
 - 如果 Recommended Action 是 rebuild，必须选不同骨架，不能返回同骨架的系数变体。
 - 禁止 terminal_success_reward / terminal_failure_penalty（除非 contract 声明可用）。
 - 禁止 original_reward、未声明 info 字段、import/class/try/except/eval/exec/open。
@@ -46,4 +46,4 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
     ...
     return float(total_reward), components
 ```
-函数签名必须一致。components 含所有组件 + total_reward。不 import/class/try/except。
+函数签名必须一致。components 只含公式中的组件（不含 total_reward）。不 import/class/try/except。
