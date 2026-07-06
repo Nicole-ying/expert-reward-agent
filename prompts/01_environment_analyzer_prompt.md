@@ -23,26 +23,24 @@
 - 不要输出真实环境名或 Gym/Gymnasium ID；
 - 不要假设 info["success"]、info["failure"]、info["termination_reason"] 存在，除非 step/source 明确写出。
 
-7 类任务类型只能选一个：
-- survival_balance_task
-- navigation_goal_reaching
-- locomotion_continuous_control
-- manipulation_grasping
-- autonomous_driving_safety
-- sparse_exploration
-- multi_objective_task
+7 类任务类型只能选一个。选择原则：识别任务的核心目标，附属优化（省燃料、快点到、动作小等）不是多目标。——只有当多个目标权重相当、彼此冲突且无法明确区分主次时，才选 multi_objective_task。
+- survival_balance_task: 核心是保持存活/平衡/不倒塌，没有明确到达目标（如倒立摆、平衡杆）
+- navigation_goal_reaching: 核心是到达指定目标位置，附属可能有速度/姿态/能耗要求（如着陆、导航）
+- locomotion_continuous_control: 核心是持续前进通过地形，附属可能有能耗/平滑（如步行、驾驶）
+- manipulation_grasping: 核心是抓取/移动/操控物体到指定位姿
+- autonomous_driving_safety: 核心是在安全约束下完成驾驶进度（如车道保持、避障）
+- sparse_exploration: 核心目标是稀疏的，需要大量探索（如迷宫、稀疏奖励导航）
+- multi_objective_task: 多个核心目标权重相当且彼此冲突，无法区分主次
 
 输出格式必须是 Markdown，结构如下：
 
-# Env_001 环境理解卡片
+# 匿名环境理解卡片
 
 ## 1. 任务目标
 ...
 
 ## 2. 任务类型选择
-selected_route_id: xxx
-confidence: high/medium/low
-reason: ...
+selected_route_id: xxx   （此行不要用 Markdown 加粗格式，纯文本即可）
 
 ## 3. 观察空间 observation_space
 - type:

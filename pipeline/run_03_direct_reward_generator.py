@@ -116,6 +116,12 @@ def validate_code(code):
         "info.get(\"success\"", "info.get('success'", "info[\"success\"]", "info['success']",
         "info.get(\"failure\"", "info.get('failure'", "info[\"failure\"]", "info['failure']",
         "info.get(\"termination_reason\"", "info.get('termination_reason'",
+        "info.get(\"reward_forward\"", "info.get('reward_forward'",
+        "info.get(\"reward_ctrl\"", "info.get('reward_ctrl'",
+        "info.get(\"reward_survive\"", "info.get('reward_survive'",
+        "info[\"reward_forward\"]", "info['reward_forward']",
+        "info[\"reward_ctrl\"]", "info['reward_ctrl']",
+        "info[\"reward_survive\"]", "info['reward_survive']",
         "obs[0:3]", "next_obs[0:3]",
         "import ", "class ", "try:", "except ", "eval(", "exec(", "open("
     ]
@@ -149,7 +155,7 @@ def validate_code(code):
     return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
 
 
-def run(config_path, run_name, mock=False, seed=0):
+def run(config_path, run_name, mock=False, seed=0, validation_retry=None):
     cfg = load_config(config_path)
     run_dir = Path(cfg["experiment"]["run_root"]) / run_name
     system_prompt = read_text(cfg["prompts"]["reward_generator"])
@@ -169,6 +175,17 @@ def run(config_path, run_name, mock=False, seed=0):
     restart_ctx = run_dir / "restart_context.md"
     if restart_ctx.exists():
         user_parts += ["", read_text(str(restart_ctx))]
+    if validation_retry:
+        failed_draft_path = run_dir / "reward_v1.md"
+        failed_draft = read_text(failed_draft_path) if failed_draft_path.exists() else ""
+        user_parts += [
+            "",
+            "# Validation repair",
+            f"具体错误：{validation_retry}",
+            "只修复代码合规问题，不重新分析环境，不改变原定奖励设计。直接输出完整合规的compute_reward函数。",
+            "# Invalid previous draft",
+            failed_draft,
+        ]
     user_prompt = "\n\n".join(user_parts)
 
     write_text(run_dir / "llm_inputs/02_reward_generator.input.md", user_prompt)
@@ -214,6 +231,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/env001_deepseek_rag.yaml")
     ap.add_argument("--run-name", default="mock_run")
+    ap.add_argument("--validation-retry", default=None)
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
-    run(args.config, args.run_name, args.mock)
+    run(args.config, args.run_name, args.mock, validation_retry=args.validation_retry)

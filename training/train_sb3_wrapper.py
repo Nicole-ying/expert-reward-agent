@@ -7,7 +7,7 @@ import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from stable_baselines3.common.utils import set_random_seed
 from training.reward_wrapper import RewardOverrideWrapper, load_reward_function
 
@@ -30,6 +30,8 @@ class RewardComponentStatsCallback(BaseCallback):
         self.stats = {}
         self.reward_error_count_max = 0
         self.steps_seen = 0
+        self.episode_component_sums = []
+        self._active_episode_component_sums = []
 
     def _update_value(self, name, value):
         try:
@@ -41,6 +43,8 @@ class RewardComponentStatsCallback(BaseCallback):
             "sum": 0.0,
             "abs_sum": 0.0,
             "nonzero_count": 0,
+            "active_sum": 0.0,
+            "active_abs_sum": 0.0,
             "min": v,
             "max": v,
         })
@@ -49,13 +53,18 @@ class RewardComponentStatsCallback(BaseCallback):
         item["abs_sum"] += abs(v)
         if abs(v) > 1e-12:
             item["nonzero_count"] += 1
+            item["active_sum"] += v
+            item["active_abs_sum"] += abs(v)
         item["min"] = min(item["min"], v)
         item["max"] = max(item["max"], v)
 
     def _on_step(self):
         infos = self.locals.get("infos", [])
+        dones = self.locals.get("dones", [False] * len(infos))
+        while len(self._active_episode_component_sums) < len(infos):
+            self._active_episode_component_sums.append({})
         self.steps_seen += len(infos)
-        for info in infos:
+        for env_index, info in enumerate(infos):
             if not isinstance(info, dict):
                 continue
             if "generated_reward" in info:
@@ -71,24 +80,47 @@ class RewardComponentStatsCallback(BaseCallback):
             if isinstance(terms, dict):
                 for key, value in terms.items():
                     self._update_value(f"component.{key}", value)
+                    try:
+                        episode_sums = self._active_episode_component_sums[env_index]
+                        episode_sums[key] = episode_sums.get(key, 0.0) + float(value)
+                    except (TypeError, ValueError):
+                        pass
+            if env_index < len(dones) and dones[env_index]:
+                self.episode_component_sums.append(dict(self._active_episode_component_sums[env_index]))
+                self._active_episode_component_sums[env_index] = {}
         return True
 
     def summary(self):
         out = {}
         for name, item in sorted(self.stats.items()):
             count = max(1, item["count"])
+            active_count = max(1, item["nonzero_count"])
             out[name] = {
                 "count": item["count"],
                 "mean": item["sum"] / count,
                 "abs_mean": item["abs_sum"] / count,
                 "nonzero_rate": item["nonzero_count"] / count,
+                "mean_when_active": item["active_sum"] / active_count,
+                "abs_mean_when_active": item["active_abs_sum"] / active_count,
                 "min": item["min"],
                 "max": item["max"],
+            }
+        episode_component_sum_stats = {}
+        component_names = sorted({name for episode in self.episode_component_sums for name in episode})
+        for name in component_names:
+            values = [episode.get(name, 0.0) for episode in self.episode_component_sums]
+            episode_component_sum_stats[name] = {
+                "count": len(values),
+                "mean": sum(values) / max(1, len(values)),
+                "abs_mean": sum(abs(value) for value in values) / max(1, len(values)),
+                "min": min(values),
+                "max": max(values),
             }
         return {
             "steps_seen": self.steps_seen,
             "reward_error_count_max": self.reward_error_count_max,
             "component_stats": out,
+            "episode_component_sum_stats": episode_component_sum_stats,
         }
 
 
@@ -124,7 +156,15 @@ def build_env_fns(env_id, reward_fn, max_progress_steps, seed, n_envs, monitor_d
     return fns
 
 
-def evaluate_model_on_original_env(model, env_id, eval_episodes, seed, eval_seed_offset=10000):
+def evaluate_model_on_original_env(
+    model,
+    env_id,
+    eval_episodes,
+    seed,
+    eval_seed_offset=10000,
+    reward_fn=None,
+    observation_normalizer=None,
+):
     """Evaluate using a fixed set of seeds for reproducibility and paired comparison.
 
     All evaluations use the SAME set of seeds (seed_offset + 0, seed_offset + 1, ..., seed_offset + N-1).
@@ -145,6 +185,11 @@ def evaluate_model_on_original_env(model, env_id, eval_episodes, seed, eval_seed
     episode_rewards = []
     episode_lengths = []
     episode_terminated = []  # True = terminated (env-defined end), False = truncated (time limit)
+    component_episode_sums = {}
+    component_episode_abs_sums = {}
+    component_active_steps = {}
+    component_total_steps = 0
+    component_error_count = 0
     for episode_id in range(eval_episodes):
         eval_seed = eval_seed_offset + episode_id
         obs, _ = env.reset(seed=eval_seed)
@@ -152,18 +197,89 @@ def evaluate_model_on_original_env(model, env_id, eval_episodes, seed, eval_seed
         total_reward = 0.0
         length = 0
         was_terminated = False
+        episode_component_sums = {}
+        episode_component_abs_sums = {}
         while not done:
-            action, _state = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, _info = env.step(action)
+            policy_obs = obs
+            if observation_normalizer is not None:
+                # VecNormalize expects a batch even though this evaluator uses one raw env.
+                policy_obs = observation_normalizer.normalize_obs(obs[None, ...])[0]
+            action, _state = model.predict(policy_obs, deterministic=True)
+            previous_obs = obs
+            obs, reward, terminated, truncated, info = env.step(action)
             total_reward += float(reward)
             length += 1
             done = bool(terminated or truncated)
             if terminated:
                 was_terminated = True
+            if reward_fn is not None:
+                safe_info = dict(info or {})
+                safe_info["terminated"] = bool(terminated)
+                safe_info["truncated"] = bool(truncated)
+                safe_info["done"] = done
+                try:
+                    reward_out = reward_fn(
+                        previous_obs,
+                        action,
+                        obs,
+                        reward,
+                        safe_info,
+                        training_progress=1.0,
+                    )
+                    terms = reward_out[1] if isinstance(reward_out, (tuple, list)) and len(reward_out) == 2 else {}
+                    if not isinstance(terms, dict):
+                        terms = {}
+                except Exception:
+                    component_error_count += 1
+                    terms = {}
+                component_total_steps += 1
+                for name, value in terms.items():
+                    if name in {"total_reward", "generated_reward", "original_env_reward"}:
+                        continue
+                    try:
+                        numeric_value = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    episode_component_sums[name] = episode_component_sums.get(name, 0.0) + numeric_value
+                    episode_component_abs_sums[name] = episode_component_abs_sums.get(name, 0.0) + abs(numeric_value)
+                    if abs(numeric_value) > 1e-12:
+                        component_active_steps[name] = component_active_steps.get(name, 0) + 1
         episode_rewards.append(total_reward)
         episode_lengths.append(length)
         episode_terminated.append(was_terminated)
+        known_names = set(component_episode_sums) | set(episode_component_sums)
+        for name in known_names:
+            component_episode_sums.setdefault(name, [0.0] * episode_id).append(
+                episode_component_sums.get(name, 0.0)
+            )
+            component_episode_abs_sums.setdefault(name, [0.0] * episode_id).append(
+                episode_component_abs_sums.get(name, 0.0)
+            )
     env.close()
+    component_evaluation = {}
+    all_names = sorted(set(component_episode_sums) | set(component_episode_abs_sums))
+    total_abs_contribution = sum(
+        mean(component_episode_abs_sums[name]) for name in all_names
+    )
+    for name in all_names:
+        sums = component_episode_sums[name]
+        abs_sums = component_episode_abs_sums[name]
+        sum_mean = mean(sums)
+        abs_sum_mean = mean(abs_sums)
+        component_evaluation[name] = {
+            "episode_sum_mean": sum_mean,
+            "episode_abs_sum_mean": abs_sum_mean,
+            "signed_contribution_share": (
+                sum_mean / total_abs_contribution if total_abs_contribution > 1e-12 else 0.0
+            ),
+            "magnitude_share": (
+                abs_sum_mean / total_abs_contribution if total_abs_contribution > 1e-12 else 0.0
+            ),
+            "active_rate": (
+                component_active_steps.get(name, 0) / component_total_steps
+                if component_total_steps else 0.0
+            ),
+        }
     return {
         "eval_episodes": eval_episodes,
         "eval_seed_offset": eval_seed_offset,
@@ -179,6 +295,8 @@ def evaluate_model_on_original_env(model, env_id, eval_episodes, seed, eval_seed
             "terminated": sum(1 for t in episode_terminated if t),
             "truncated": sum(1 for t in episode_terminated if not t),
         },
+        "final_policy_component_evaluation": component_evaluation,
+        "final_policy_component_error_count": component_error_count,
     }
 
 
@@ -225,17 +343,27 @@ def write_component_stats_md(path, component_summary):
     lines.append(f"- steps_seen: {component_summary['steps_seen']}")
     lines.append(f"- reward_error_count_max: {component_summary['reward_error_count_max']}")
     lines.append("")
-    lines.append("| name | mean | abs_mean | nonzero_rate | min | max | count |")
-    lines.append("|---|---:|---:|---:|---:|---:|---:|")
+    lines.append("| name | mean | abs_mean | nonzero_rate | mean_when_active | abs_mean_when_active | min | max | count |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
     for name, item in component_summary["component_stats"].items():
         lines.append(
             f"| {name} | {_fmt_float(item['mean'])} | {_fmt_float(item['abs_mean'])} | "
-            f"{_fmt_float(item['nonzero_rate'])} | {_fmt_float(item['min'])} | {_fmt_float(item['max'])} | {item['count']} |"
+            f"{_fmt_float(item['nonzero_rate'])} | {_fmt_float(item['mean_when_active'])} | "
+            f"{_fmt_float(item['abs_mean_when_active'])} | {_fmt_float(item['min'])} | "
+            f"{_fmt_float(item['max'])} | {item['count']} |"
         )
+    episode_stats = component_summary.get("episode_component_sum_stats", {})
+    if episode_stats:
+        lines.extend(["", "## Per-episode component sums", "", "| component | mean | abs_mean | min | max | episodes |", "|---|---:|---:|---:|---:|---:|"])
+        for name, item in episode_stats.items():
+            lines.append(
+                f"| {name} | {_fmt_float(item['mean'])} | {_fmt_float(item['abs_mean'])} | "
+                f"{_fmt_float(item['min'])} | {_fmt_float(item['max'])} | {item['count']} |"
+            )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def write_training_feedback_md(path, summary, eval_result, component_summary):
+def write_training_feedback_legacy_md(path, summary, eval_result, component_summary):
     stats = component_summary.get("component_stats", {})
     lines = []
     lines.append("# Training Feedback")
@@ -249,17 +377,19 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
     # Fallback: component with largest abs_mean (excluding summary/total/original).
     progress_ref = 1.0
     progress_name = "progress_reward"
+    progress_found = False
     _skip_ref = {"generated_reward", "total_reward", "original_env_reward"}
     for name in sorted(stats.keys()):
         short = name.replace("component.", "", 1)
         if short in _skip_ref:
             continue
         if short.startswith("progress"):
-            progress_ref = max(abs(float(stats[name].get("mean", 1.0))), 0.001)
+            progress_ref = max(float(stats[name].get("abs_mean", 1.0)), 0.001)
             progress_name = short
+            progress_found = True
             break
     # Fallback: if no progress-named component, use the one with largest abs_mean
-    if progress_ref == 1.0:
+    if not progress_found:
         best_abs = 0.0
         for name in sorted(stats.keys()):
             short = name.replace("component.", "", 1)
@@ -275,25 +405,35 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
     lines.append("")
     lines.append(f"`ratio_to_{progress_name}` = mean_of_component / abs_mean_of_{progress_name}. Signed ratio relative to the main learning signal. Positive = same direction, negative = opposite direction. All components are expressed in units of the main signal.")
     lines.append("")
-    lines.append(f"| component | mean | abs_mean | nonzero_rate | ratio_to_{progress_name} |")
-    lines.append(f"|-----------|------|----------|-------------|--------------------------|")
+    lines.append(f"| component | mean | abs_mean | nonzero_rate | mean_when_active | ratio_to_{progress_name} |")
+    lines.append(f"|-----------|------|----------|-------------|------------------|--------------------------|")
     for name in sorted(stats.keys()):
-        if name.startswith("component.original_env"):
-            continue
         item = stats[name]
         short = name.replace("component.", "", 1)
+        if short in {"generated_reward", "original_env_reward"}:
+            continue
         ratio_val = float(item.get("mean", 0.0)) / progress_ref
         lines.append(
             f"| {short} | {_fmt_float(item.get('mean'))} | {_fmt_float(item.get('abs_mean'))} | "
-            f"{_fmt_float(item.get('nonzero_rate'))} | {_fmt_float(ratio_val)} |"
+            f"{_fmt_float(item.get('nonzero_rate'))} | {_fmt_float(item.get('mean_when_active'))} | "
+            f"{_fmt_float(ratio_val)} |"
         )
     # Show original_env_reward for alignment reference
-    orig = stats.get("original_env_reward")
+    orig = stats.get("original_env_reward") or stats.get("component.original_env_reward")
     if orig:
         orig_ratio = float(orig.get("mean", 0.0)) / progress_ref
-        lines.append(f"| original_env_reward | {_fmt_float(orig.get('mean'))} | {_fmt_float(orig.get('abs_mean'))} | {_fmt_float(orig.get('nonzero_rate'))} | {_fmt_float(orig_ratio)} |")
+        lines.append(f"| original_env_reward | {_fmt_float(orig.get('mean'))} | {_fmt_float(orig.get('abs_mean'))} | {_fmt_float(orig.get('nonzero_rate'))} | {_fmt_float(orig.get('mean_when_active'))} | {_fmt_float(orig_ratio)} |")
     lines.append("")
     lines.append(f"> `ratio_to_{progress_name}` 把所有组件归一化到主学习信号的尺度。正值=同向，负值=反向。`original_env_reward` 仅用于对齐参考——不参与训练。如果它的 ratio 符号与主信号相反，奖励函数可能 misaligned。")
+
+    episode_stats = component_summary.get("episode_component_sum_stats", {})
+    if episode_stats:
+        lines.extend(["", "## Per-episode component contribution", "", "| component | episode_sum_mean | episode_sum_abs_mean | min | max | episodes |", "|---|---:|---:|---:|---:|---:|"])
+        for name, item in episode_stats.items():
+            lines.append(
+                f"| {name} | {_fmt_float(item.get('mean'))} | {_fmt_float(item.get('abs_mean'))} | "
+                f"{_fmt_float(item.get('min'))} | {_fmt_float(item.get('max'))} | {item.get('count', 0)} |"
+            )
 
     # Distribution summary
     mean_len = float(eval_result.get("mean_episode_length", 0))
@@ -310,6 +450,69 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
     lines.append(f"- episode_length: mean={_fmt_float(mean_len)}")
     lines.append(f"- early_terminal (<150 steps + score<-50): {early_term}")
     lines.append(f"- errors: {component_summary['reward_error_count_max']}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_training_feedback_md(path, summary, eval_result, component_summary):
+    """Write the compact evidence view consumed by the reflection agent."""
+    lines = ["# Training Feedback", "", "## Final-policy outcome"]
+    termination = eval_result.get("termination_breakdown", {})
+    lines.append(
+        f"score={_fmt_float(eval_result.get('mean_eval_reward', 0.0))}, "
+        f"len={_fmt_float(eval_result.get('mean_episode_length', 0.0))}, "
+        f"terminated={termination.get('terminated', 0)}/{eval_result.get('eval_episodes', 0)}, "
+        f"truncated={termination.get('truncated', 0)}/{eval_result.get('eval_episodes', 0)}, "
+        f"reward_errors={eval_result.get('final_policy_component_error_count', 0)}"
+    )
+    lines.append(
+        f"score_range=[{_fmt_float(eval_result.get('min_eval_reward', 0.0))}, "
+        f"{_fmt_float(eval_result.get('max_eval_reward', 0.0))}]"
+    )
+
+    component_eval = eval_result.get("final_policy_component_evaluation", {})
+    visible_components = {
+        name: item for name, item in component_eval.items()
+        if name not in {"total_reward", "generated_reward", "original_env_reward"}
+    }
+    lines.extend([
+        "",
+        "## Final-policy reward composition",
+        "",
+        "These statistics come from the same fixed evaluation episodes as `score`. "
+        "Shares describe observed reward composition, not causal influence.",
+        "",
+        "| component | episode_sum_mean | signed_share | magnitude_share | active_rate |",
+        "|---|---:|---:|---:|---:|",
+    ])
+    for name, item in sorted(
+        visible_components.items(),
+        key=lambda pair: float(pair[1].get("magnitude_share", 0.0)),
+        reverse=True,
+    ):
+        lines.append(
+            f"| {name} | {_fmt_float(item.get('episode_sum_mean'))} | "
+            f"{100.0 * float(item.get('signed_contribution_share', 0.0)):.1f}% | "
+            f"{100.0 * float(item.get('magnitude_share', 0.0)):.1f}% | "
+            f"{100.0 * float(item.get('active_rate', 0.0)):.1f}% |"
+        )
+    if not visible_components:
+        lines.append("| (no component data) | 0 | 0% | 0% | 0% |")
+
+    episode_rewards = eval_result.get("episode_rewards", [])
+    episode_lengths = eval_result.get("episode_lengths", [])
+    early_count = sum(
+        1 for reward, length in zip(episode_rewards, episode_lengths)
+        if length < 150 and reward < -50
+    )
+    lines.extend([
+        "",
+        "## Evaluation distribution",
+        f"- fixed_eval_seeds: {eval_result.get('eval_seed_offset', 0)}.."
+        f"{eval_result.get('eval_seed_offset', 0) + max(0, eval_result.get('eval_episodes', 0) - 1)}",
+        f"- early_terminal (<150 steps and score<-50): {early_count}/{len(episode_rewards)}",
+        f"- training_reward_errors_max: {component_summary.get('reward_error_count_max', 0)}",
+        "- full_training_distribution_stats: component_stats.md / training_summary.json (not primary reflection evidence)",
+    ])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -360,6 +563,21 @@ def main():
         error_fallback,
     )
     env = SubprocVecEnv(env_fns)
+    normalize_obs = bool(train_cfg.get("normalize_obs", False))
+    normalize_reward = bool(train_cfg.get("normalize_reward", False))
+    vec_normalize = None
+    if normalize_obs or normalize_reward:
+        vec_normalize = VecNormalize(
+            env,
+            training=True,
+            norm_obs=normalize_obs,
+            norm_reward=normalize_reward,
+            clip_obs=float(train_cfg.get("clip_obs", 10.0)),
+            clip_reward=float(train_cfg.get("clip_normalized_reward", 10.0)),
+            gamma=float(train_cfg.get("gamma", 0.99)),
+            epsilon=float(train_cfg.get("normalize_epsilon", 1e-8)),
+        )
+        env = vec_normalize
 
     ppo_args = {
         "policy": train_cfg.get("policy", "MlpPolicy"),
@@ -379,9 +597,21 @@ def main():
 
     component_callback = RewardComponentStatsCallback()
     model = PPO(**ppo_args)
-    model.learn(total_timesteps=total_timesteps, tb_log_name=run_name, callback=component_callback)
+    # Use short, path-safe name for tensorboard (Windows can't handle long nested names)
+    tb_log_name = f"s{seed}_i{run_name.split('/')[-1].replace('training', 't')}"
+    # Ensure tensorboard dir exists before SB3 tries to write
+    if train_cfg.get("tensorboard_log"):
+        from pathlib import Path as _Path
+        _Path(train_cfg["tensorboard_log"]).mkdir(parents=True, exist_ok=True)
+    model.learn(total_timesteps=total_timesteps, tb_log_name=tb_log_name, callback=component_callback)
     model.save(str(save_dir / "model.zip"))
-    env.close()
+    vec_normalize_path = None
+    if vec_normalize is not None:
+        vec_normalize_path = save_dir / "vecnormalize.pkl"
+        vec_normalize.save(str(vec_normalize_path))
+        # Freeze running statistics. External evaluation still uses raw environment rewards.
+        vec_normalize.training = False
+        vec_normalize.norm_reward = False
 
     eval_episodes = int(args.eval_episodes if args.eval_episodes is not None else train_cfg.get("eval_episodes", 20))
     eval_seed_offset = int(args.eval_seed_offset if args.eval_seed_offset is not None else train_cfg.get("eval_seed_offset", 10000))
@@ -391,7 +621,10 @@ def main():
         eval_episodes=eval_episodes,
         seed=seed,
         eval_seed_offset=eval_seed_offset,
+        reward_fn=reward_fn,
+        observation_normalizer=vec_normalize if normalize_obs else None,
     )
+    env.close()
     component_summary = component_callback.summary()
 
     summary = {
@@ -406,6 +639,13 @@ def main():
         "model_path": str(save_dir / "model.zip"),
         "monitor_dir": str(monitor_dir),
         "tensorboard_log": train_cfg.get("tensorboard_log"),
+        "normalization": {
+            "normalize_obs": normalize_obs,
+            "normalize_reward": normalize_reward,
+            "clip_obs": float(train_cfg.get("clip_obs", 10.0)),
+            "clip_normalized_reward": float(train_cfg.get("clip_normalized_reward", 10.0)),
+            "vecnormalize_path": str(vec_normalize_path) if vec_normalize_path else None,
+        },
         "external_eval": eval_result,
         "component_summary": component_summary,
     }

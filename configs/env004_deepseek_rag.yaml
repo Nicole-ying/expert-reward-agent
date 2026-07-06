@@ -1,6 +1,6 @@
 experiment:
-  env_id: Env_002
-  run_root: runs/env_002
+  env_id: Env_004
+  run_root: runs/env_004
   run_name: null
   seed: 0
 
@@ -16,8 +16,8 @@ llm:
   max_tokens_reward: 8192
 
 inputs:
-  task_spec_path: envs/env_002/task_spec_anonymized.yaml
-  masked_step_path: envs/env_002/masked_step_source.py
+  task_spec_path: envs/env_004/task_spec_anonymized.yaml
+  masked_step_path: envs/env_004/masked_step_source.py
 
 prompts:
   environment_analyzer: prompts/01_environment_analyzer_prompt.md
@@ -40,6 +40,12 @@ reward_generation:
   forbidden_info_fields_for_reward:
     - original_reward
     - official_reward
+    - reward_forward
+    - reward_ctrl
+    - reward_survive
+    - x_position
+    - y_position
+    - z_distance_from_origin
     - fitness_score
     - individual_reward
     - success
@@ -53,49 +59,45 @@ multi_seed:
 
 iteration:
   total_rounds: 10
-  experiment_prefix: paper_bipedal_main_v1
-  experiment_root: runs/env_002/experiments
-  memory_path: runs/env_002/memory/reward_memory.md
+  experiment_prefix: paper_env004_main_v1
+  experiment_root: runs/env_004/experiments
+  memory_path: runs/env_004/memory/reward_memory.md
   reset_memory_at_start: true
   cards_top_k: 4
   stop_on_invalid_reward: true
   use_mock_llm: false
-
-  # The standard normal-task solution threshold is 300 points.
-  target_score: 300.0
-
+  target_score: 3800.0
   save_best_artifacts: true
   stop_after_solved_drop: true
   stop_when_solved_and_identical: true
   no_improvement_patience_after_solved: 2
   no_improvement_patience_unsolved: 3
-  min_meaningful_improvement: 10.0
-
+  min_meaningful_improvement: 100.0
   retry_identical_when_unsolved: true
   max_identical_revision_retries: 2
-
   use_reflection_agent: true
 
 training:
-  runner_env_id: BipedalWalker-v3
-  normalize_obs: false
+  runner_env_id: Hopper-v5
+  normalize_obs: true
   normalize_reward: false
+  clip_obs: 10.0
   policy: MlpPolicy
   n_envs: 8
-  total_timesteps: 5000000
+  total_timesteps: 1000000
   eval_episodes: 20
   eval_seed_offset: 10000
   n_steps: 2048
   batch_size: 64
   gae_lambda: 0.95
-  gamma: 0.999
+  gamma: 0.99
   n_epochs: 10
   ent_coef: 0.0
   learning_rate: 0.0003
-  clip_range: 0.18
+  clip_range: 0.2
   device: cpu
   seed: 0
-  max_training_steps_for_progress: 5000000
-  save_dir: runs/env_002/training_runs
-  run_name: ppo_reward_v1_001
-  tensorboard_log: runs/env_002/tensorboard
+  max_training_steps_for_progress: 1000000
+  save_dir: runs/env_004/training_runs
+  run_name: ppo_reward_v1_004
+  tensorboard_log: runs/env_004/tensorboard

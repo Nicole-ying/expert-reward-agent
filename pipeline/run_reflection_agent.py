@@ -10,7 +10,11 @@ import re
 from pathlib import Path
 
 from .common import load_config, read_text, write_text, write_json, record_prompt, record_response
-from .reflection_tools import search_reward_design_knowledge, get_skeleton_detail
+from .reflection_tools import (
+    get_reward_transformation,
+    get_skeleton_detail,
+    search_reward_design_knowledge,
+)
 from .run_03_direct_reward_generator import extract_code, validate_code
 from llm_clients.deepseek_client import DeepSeekClient
 
@@ -19,7 +23,8 @@ def _environment_summary(environment_card_md):
     """Keep task and interface facts needed to interpret reward code."""
     if not environment_card_md:
         return ""
-    wanted = {1, 2, 3, 4, 5, 7, 8}
+    # 反思 agent 不需要路由选择(2)和不确定信号(8)
+    wanted = {1, 3, 4, 5, 7}
     sections = re.split(r"(?=^## \d+\.)", environment_card_md, flags=re.MULTILINE)
     selected = []
     for section in sections:
@@ -68,6 +73,7 @@ def run_reflection_agent(
     environment_card_path=None,
     mock=False,
     validation_retry=None,
+    duplicate_retry=None,
 ):
     cfg = load_config(config_path)
     run_dir = Path(cfg["experiment"]["run_root"]) / out_run_name
@@ -89,17 +95,61 @@ def run_reflection_agent(
     if best_reward_path and Path(best_reward_path).exists():
         best_code = read_text(best_reward_path)
 
-    if validation_retry:
+    if duplicate_retry:
+        duplicate_draft_path = run_dir / f"reward_{reward_version}.py"
+        duplicate_draft = read_text(duplicate_draft_path) if duplicate_draft_path.exists() else ""
+        user_prompt = (
+            "# Duplicate reward retry\n"
+            f"{duplicate_retry}\n"
+            "The previous draft is semantically identical to the previous trained reward and is not a valid search intervention. "
+            "Re-analyze the full environment facts, training feedback, Agent Memory, previous reward, and best reward below. "
+            "Choose a different evidence-based modification plan, then implement one concrete tune/delete/add/mix change. "
+            "Return a complete reward function whose executable code is materially different from every historical reward. "
+            "Do not merely rename variables or comments.\n\n"
+            f"# Rejected duplicate draft\n```python\n{duplicate_draft}\n```\n\n"
+        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md)
+    elif validation_retry:
+        failed_draft_path = run_dir / f"reward_{reward_version}.md"
+        failed_draft = read_text(failed_draft_path) if failed_draft_path.exists() else ""
         user_prompt = (
             f"# ⚠️ 上一版代码验证失败\n"
             f"错误信息：{validation_retry}\n"
-            f"请修复以上错误，重新生成完整的奖励函数代码。\n\n"
-        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md)
+            "这是代码格式修复，不要重新诊断、不要调用工具、不要改变原定修改方向。"
+            "直接输出修复后的完整 Python 代码。\n\n"
+            f"# 被截断或无效的上一版草稿\n{failed_draft}\n\n"
+        ) + build_user_prompt(feedback_md, "", previous_code, best_code, environment_card_md)
     else:
         user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md)
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_reflection_agent.input.md", user_prompt)
     record_prompt(run_dir, "agent_reflection", system_prompt, user_prompt)
+
+    tool_trace = []
+    trace_path = run_dir / f"response_records/reward_{reward_version}_tool_trace.json"
+    previous_invocations = []
+    if trace_path.exists():
+        previous_trace = json.loads(read_text(trace_path))
+        previous_invocations = previous_trace.get("invocations", [])
+        if not previous_invocations and previous_trace.get("calls") is not None:
+            previous_invocations = [{
+                "validation_retry": None,
+                "status": "legacy_completed",
+                "calls": previous_trace.get("calls", []),
+            }]
+
+    def save_tool_trace(status):
+        invocations = previous_invocations + [{
+            "validation_retry": bool(validation_retry),
+            "duplicate_retry": bool(duplicate_retry),
+            "status": status,
+            "calls": tool_trace,
+        }]
+        write_json(trace_path, {
+            "call_count": sum(len(item.get("calls", [])) for item in invocations),
+            "invocation_count": len(invocations),
+            "invocations": invocations,
+            "calls": [call for item in invocations for call in item.get("calls", [])],
+        })
 
     if mock:
         from .run_05_reward_revision import MOCK_REVISION_MD
@@ -137,6 +187,23 @@ def run_reflection_agent(
                         "required": ["skeleton_name"]
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_reward_transformation",
+                    "description": "Retrieve general reward-structure transformations from diagnosis evidence, including rationale, risks, and next-round verification targets.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The diagnosed problem dimension or desired transformation, such as persistent proxy farming, sparse credit, product collapse, or global constraint interference."
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                }
             }
         ]
 
@@ -146,16 +213,23 @@ def run_reflection_agent(
             {"role": "user", "content": user_prompt}
         ]
 
-        max_tool_rounds = 4
-        for _ in range(max_tool_rounds):
-            resp = client.client.chat.completions.create(
+        # One retrieval round is enough: tools supplement the core prompt, they do not
+        # replace diagnosis. The final completion below runs without tools.
+        max_tool_rounds = 1
+        for tool_round in range(max_tool_rounds):
+            request = dict(
                 model=llm_cfg["model_reward"],
                 messages=messages,
                 temperature=llm_cfg["temperature_reward_generator"],
                 max_tokens=llm_cfg["max_tokens_reward"],
-                tools=tools,
-                tool_choice="auto",
             )
+            if not validation_retry:
+                request.update(tools=tools, tool_choice="auto")
+            try:
+                resp = client.completion(**request)
+            except Exception:
+                save_tool_trace("llm_error")
+                raise
             msg = resp.choices[0].message
 
             if msg.tool_calls:
@@ -169,23 +243,37 @@ def run_reflection_agent(
                         result = search_reward_design_knowledge(args.get("query", ""))
                     elif tc.function.name == "get_skeleton_detail":
                         result = get_skeleton_detail(args.get("skeleton_name", ""))
+                    elif tc.function.name == "get_reward_transformation":
+                        result = get_reward_transformation(args.get("query", ""))
                     else:
                         result = f"Unknown tool: {tc.function.name}"
+                    tool_trace.append({
+                        "round": tool_round + 1,
+                        "name": tc.function.name,
+                        "arguments": args,
+                        "result": result,
+                    })
+                    save_tool_trace("tools_returned")
                     messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
             else:
                 out_md = msg.content or ""
                 break
         else:
             # Max rounds reached, take last response
-            resp = client.client.chat.completions.create(
-                model=llm_cfg["model_reward"],
-                messages=messages,
-                temperature=llm_cfg["temperature_reward_generator"],
-                max_tokens=llm_cfg["max_tokens_reward"],
-            )
+            try:
+                resp = client.completion(
+                    model=llm_cfg["model_reward"],
+                    messages=messages,
+                    temperature=llm_cfg["temperature_reward_generator"],
+                    max_tokens=llm_cfg["max_tokens_reward"],
+                )
+            except Exception:
+                save_tool_trace("llm_error_after_tools")
+                raise
             out_md = resp.choices[0].message.content or ""
 
     record_response(run_dir, "agent_reflection", out_md)
+    save_tool_trace("completed")
 
     code = extract_code(out_md)
     validation = validate_code(code)
@@ -218,6 +306,7 @@ def main():
     ap.add_argument("--out-run-name", required=True)
     ap.add_argument("--reward-version", default="v2")
     ap.add_argument("--validation-retry", default=None)
+    ap.add_argument("--duplicate-retry", default=None)
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
 
@@ -232,6 +321,7 @@ def main():
         reward_version=args.reward_version,
         mock=args.mock,
         validation_retry=args.validation_retry,
+        duplicate_retry=args.duplicate_retry,
     )
 
 

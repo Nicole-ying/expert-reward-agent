@@ -6,6 +6,7 @@ from pathlib import Path
 
 _techniques_text = None
 _skeletons_data = None
+_transformations_data = None
 
 
 def _load_techniques():
@@ -22,6 +23,14 @@ def _load_skeletons():
         p = Path("knowledge_base/iteration/skeleton_details.json")
         _skeletons_data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
     return _skeletons_data
+
+
+def _load_transformations():
+    global _transformations_data
+    if _transformations_data is None:
+        path = Path("knowledge_base/iteration/reward_transformations.json")
+        _transformations_data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    return _transformations_data
 
 
 def _split_sections(md_text):
@@ -71,6 +80,39 @@ def search_reward_design_knowledge(query: str) -> str:
             if s.startswith("## ") or s.startswith("- 症状") or s.startswith("- 修复") or s.startswith("- 原理"):
                 compact.append(s)
         results.append("\n".join(compact) if compact else lines[0])
+    warning = (
+        "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or "
+        "threshold is a candidate starting point, not a universal decision rule. "
+        "Current final-policy evidence and transformation reasoning take priority.\n\n"
+    )
+    return warning + "\n---\n".join(results)
+
+
+def get_reward_transformation(query: str) -> str:
+    """Retrieve general reward-structure transformations by diagnosis or operator name."""
+    transformations = _load_transformations()
+    if not transformations:
+        return "(reward transformation library is empty)"
+    keywords = set(re.findall(r"[a-z_]{3,}", query.lower()))
+    scored = []
+    for name, card in transformations.items():
+        searchable = " ".join([name, *card.values()]).lower()
+        score = sum(2 if keyword in name else 1 for keyword in keywords if keyword in searchable)
+        if name.lower() in query.lower() or query.lower() in name.lower():
+            score += 5
+        scored.append((score, name, card))
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    selected = [item for item in scored if item[0] > 0][:3] or scored[:3]
+    results = []
+    for _, name, card in selected:
+        results.append(
+            f"## {name}\n"
+            f"- diagnosis: {card['diagnosis']}\n"
+            f"- transform: {card['transform']}\n"
+            f"- why: {card['why']}\n"
+            f"- risks: {card['risks']}\n"
+            f"- verify_next_round: {card['verify']}"
+        )
     return "\n---\n".join(results)
 
 
@@ -88,6 +130,7 @@ def get_skeleton_detail(skeleton_name: str) -> str:
     if not sk:
         return f"骨架 '{skeleton_name}' 未在 skeleton_details.json 中找到。"
     return (
+        "NOTE: Skeleton coefficients and ratio ranges are legacy starting points, not universal constraints.\n"
         f"## {skeleton_name}\n"
         f"- 数学形态: {sk['math_form']}\n"
         f"- 设计原理: {sk['design_rationale']}\n"

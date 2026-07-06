@@ -1,0 +1,43 @@
+env_id: Env_003
+env_name: null
+environment_name_policy:
+  hide_true_name: true
+  do_not_mention_known_benchmark_name: true
+  do_not_mention_gym_or_gymnasium_id: true
+
+task_description: |
+  This anonymous environment is a discrete control and balance task.
+  A controller applies a fixed-magnitude horizontal force to a moving base.
+  The objective is to keep an attached unactuated pole upright while keeping
+  the base inside the allowed track region for as long as possible.
+
+action_space:
+  type: Discrete
+  n: 2
+  actions:
+    0: {name: push_negative_direction, meaning: apply the fixed force toward the negative track direction}
+    1: {name: push_positive_direction, meaning: apply the fixed force toward the positive track direction}
+
+observation_space:
+  type: Box
+  shape: [4]
+  dtype: float32
+  fields:
+    - {index: 0, name: base_position, meaning: horizontal position of the moving base, observation_bounds: [-4.8, 4.8]}
+    - {index: 1, name: base_velocity, meaning: horizontal velocity of the moving base, observation_bounds: unbounded}
+    - {index: 2, name: pole_angle, meaning: pole angle relative to upright in radians, observation_bounds: [-0.41887903, 0.41887903]}
+    - {index: 3, name: pole_angular_velocity, meaning: angular velocity of the pole, observation_bounds: unbounded}
+
+termination_conditions:
+  - absolute base_position exceeds 2.4
+  - absolute pole_angle exceeds 0.20943951 radians
+
+truncation_conditions:
+  - episode reaches 500 steps
+
+interface_notes:
+  info_fields: []
+  explicit_success_flag_available: false
+  explicit_failure_flag_available: false
+  original_environment_reward_is_hidden: true
+

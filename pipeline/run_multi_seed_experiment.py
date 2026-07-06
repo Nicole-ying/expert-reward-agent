@@ -10,6 +10,8 @@ Config keys (all under multi_seed:):
 """
 
 import argparse
+import traceback
+from pathlib import Path
 from .common import load_config
 from .run_iterative_experiment import run_iterative_experiment
 
@@ -21,6 +23,8 @@ def main():
     ap.add_argument("--rounds", type=int, default=None)
     ap.add_argument("--total-timesteps", type=int, default=None)
     ap.add_argument("--eval-episodes", type=int, default=None)
+    ap.add_argument("--start-seed", type=int, default=None)
+    ap.add_argument("--num-seeds", type=int, default=None)
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
 
@@ -32,8 +36,8 @@ def main():
             "Use python -m pipeline.run_iterative_experiment for single-seed runs."
         )
 
-    start_seed = int(ms_cfg.get("start_seed", 0))
-    num_seeds = int(ms_cfg.get("num_seeds", 10))
+    start_seed = int(args.start_seed if args.start_seed is not None else ms_cfg.get("start_seed", 0))
+    num_seeds = int(args.num_seeds if args.num_seeds is not None else ms_cfg.get("num_seeds", 10))
     mock = True if args.mock else None
 
     print("=" * 60)
@@ -51,15 +55,27 @@ def main():
         print("\n" + "#" * 60)
         print(f" SEED {s}  ({s - start_seed + 1} / {num_seeds})")
         print("#" * 60)
-        run_iterative_experiment(
-            config_path=args.config,
-            prefix=args.prefix,
-            rounds=args.rounds,
-            total_timesteps=args.total_timesteps,
-            eval_episodes=args.eval_episodes,
-            mock=mock,
-            seed=s,
-        )
+        try:
+            run_iterative_experiment(
+                config_path=args.config,
+                prefix=args.prefix,
+                rounds=args.rounds,
+                total_timesteps=args.total_timesteps,
+                eval_episodes=args.eval_episodes,
+                mock=mock,
+                seed=s,
+            )
+        except Exception as exc:
+            prefix = args.prefix or cfg["iteration"]["experiment_prefix"]
+            failure_path = Path(cfg["experiment"]["run_root"]) / prefix / f"seed_{s}" / "seed_failure.txt"
+            failure_path.parent.mkdir(parents=True, exist_ok=True)
+            failure_path.write_text(
+                f"{type(exc).__name__}: {exc}\n\n{traceback.format_exc()}",
+                encoding="utf-8",
+            )
+            print(f"SEED {s} FAILED: {exc}")
+            print(f"Failure record: {failure_path}")
+            print("Continuing with the next seed.")
 
     print("\n" + "=" * 60)
     print("All seeds done.")

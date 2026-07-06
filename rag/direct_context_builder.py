@@ -2,9 +2,10 @@ import re
 
 
 def extract_selected_route_id(environment_card_md):
-    m = re.search(r"selected_route_id\s*:\s*([a-zA-Z0-9_]+)", environment_card_md)
+    m = re.search(r"\*{0,2}selected_route_id\*{0,2}\s*:\s*([a-zA-Z0-9_]+)", environment_card_md)
     if m:
         return m.group(1).strip()
+    print("WARNING: environment_card.md 中未找到 selected_route_id，回退到 navigation_goal_reaching")
     return "navigation_goal_reaching"
 
 
@@ -128,6 +129,10 @@ SKELETON_SUMMARY = {
 # These are derived from route_catalog_03.json; the full catalog is the authoritative source.
 # This mapping is used as a fallback when the catalog cannot be loaded at context-build time.
 _ROUTE_SKELETON_MAP = {
+    "survival_balance_task": [
+        "alive_bonus", "terminal_failure_penalty", "stability_penalty",
+        "energy_penalty", "action_smoothness_penalty",
+    ],
     "navigation_goal_reaching": [
         "progress_delta_reward", "distance_reward", "potential_based_shaping",
         "stability_penalty", "soft_landing_proxy",
@@ -135,53 +140,33 @@ _ROUTE_SKELETON_MAP = {
         "time_penalty", "energy_penalty", "gated_reward",
     ],
     "locomotion_continuous_control": [
-        "forward_progress_reward", "alive_bonus", "stability_penalty",
-        "energy_penalty", "action_smoothness_penalty",
-        "terminal_failure_penalty", "time_penalty",
-        "gated_reward", "potential_based_shaping",
+        "forward_progress_reward", "terminal_failure_penalty", "energy_penalty",
+        "alive_bonus", "action_smoothness_penalty", "stability_penalty",
     ],
-    "manipulation_precision": [
-        "distance_reward", "progress_delta_reward", "potential_based_shaping",
-        "stability_penalty", "event_reward",
-        "terminal_success_reward", "terminal_failure_penalty",
-        "time_penalty", "energy_penalty", "gated_reward",
+    "manipulation_grasping": [
+        "terminal_success_reward", "event_reward", "progress_delta_reward",
+        "distance_reward", "energy_penalty", "action_smoothness_penalty", "gated_reward",
     ],
-    "balance_stabilization": [
-        "stability_penalty", "alive_bonus", "distance_reward",
-        "potential_based_shaping", "action_smoothness_penalty",
-        "terminal_failure_penalty", "time_penalty",
-        "gated_reward", "energy_penalty",
+    "autonomous_driving_safety": [
+        "progress_delta_reward", "terminal_failure_penalty", "gated_reward",
+        "action_smoothness_penalty", "energy_penalty", "event_reward", "weighted_sum_reward",
     ],
-    "racing_time_trial": [
-        "forward_progress_reward", "time_penalty", "distance_reward",
-        "stability_penalty", "energy_penalty",
-        "terminal_success_reward", "terminal_failure_penalty",
-        "action_smoothness_penalty", "gated_reward",
+    "sparse_exploration": [
+        "terminal_success_reward", "event_reward", "progress_delta_reward",
+        "potential_based_shaping", "intrinsic_exploration_reward", "dynamic_curriculum_reward",
     ],
-    "resource_gathering": [
-        "event_reward", "distance_reward", "time_penalty",
-        "energy_penalty", "alive_bonus",
-        "terminal_success_reward", "terminal_failure_penalty",
-        "gated_reward", "potential_based_shaping",
-    ],
-    "evasion_avoidance": [
-        "distance_reward", "progress_delta_reward", "stability_penalty",
-        "alive_bonus", "time_penalty",
-        "terminal_success_reward", "terminal_failure_penalty",
-        "energy_penalty", "gated_reward", "potential_based_shaping",
+    "multi_objective_task": [
+        "weighted_sum_reward", "gated_reward", "dynamic_curriculum_reward",
+        "learned_preference_reward",
     ],
 }
 
-# Skeletons that are supplementary across all routes (not primary candidates)
-_SUPPLEMENTARY_SKELETONS = [
-    "intrinsic_exploration_reward",
-    "dynamic_curriculum_reward",
-    "learned_preference_reward",
-    "weighted_sum_reward",
-]
-
 # Task-agnostic route summary lines — one generic line + route-specific observation hints.
 _ROUTE_SUMMARIES = {
+    "survival_balance_task": (
+        "survival_balance_task：任务目标是维持存活、平衡或安全状态。"
+        "重点观察 over_conservative_policy / agent_afraid_to_move / early_failure。"
+    ),
     "navigation_goal_reaching": (
         "navigation_goal_reaching：任务目标是接近/到达指定位置。"
         "重点观察 goal_near_oscillation / high_reward_without_success / fast_crash_near_goal。"
@@ -190,25 +175,21 @@ _ROUTE_SUMMARIES = {
         "locomotion_continuous_control：任务目标是稳定前进通过地形。"
         "重点观察 fast_then_fail / hover_or_stand_still / over_conservative_policy。"
     ),
-    "balance_stabilization": (
-        "balance_stabilization：任务目标是维持平衡/姿态。"
-        "重点观察 over_conservative_policy / agent_afraid_to_move / exploration_without_completion。"
-    ),
-    "racing_time_trial": (
-        "racing_time_trial：任务目标是尽快到达终点。"
-        "重点观察 reckless_behavior / fast_then_fail / weight_domination。"
-    ),
-    "resource_gathering": (
-        "resource_gathering：任务目标是收集分散资源。"
-        "重点观察 event_reward_farming / goal_near_oscillation / exploration_without_completion。"
-    ),
-    "evasion_avoidance": (
-        "evasion_avoidance：任务目标是避开障碍/威胁到达安全区域。"
-        "重点观察 over_conservative_policy / fast_crash_near_goal / reckless_behavior。"
-    ),
-    "manipulation_precision": (
-        "manipulation_precision：任务目标是精确操控物体到目标位姿。"
+    "manipulation_grasping": (
+        "manipulation_grasping：任务目标是抓取、移动或精确操控物体。"
         "重点观察 goal_near_oscillation / weight_domination / sparse_reward_no_learning。"
+    ),
+    "autonomous_driving_safety": (
+        "autonomous_driving_safety：任务目标是在安全约束下完成驾驶进度。"
+        "重点观察 reckless_behavior / over_conservative_policy / safety_progress_conflict。"
+    ),
+    "sparse_exploration": (
+        "sparse_exploration：任务目标稀疏，需要在探索与目标引导之间平衡。"
+        "重点观察 sparse_reward_no_learning / reward_farming / premature_convergence。"
+    ),
+    "multi_objective_task": (
+        "multi_objective_task：多个核心目标需要联合权衡。"
+        "重点观察 weight_domination / objective_conflict / unstable_curriculum。"
     ),
 }
 
@@ -216,28 +197,15 @@ _ROUTE_SUMMARIES = {
 def build_expert_reward_context(environment_card_md, chunks_path=None, max_chars=6500):
     route_id = extract_selected_route_id(environment_card_md)
 
-    # Select skeletons based on route_id (task type), not hardcoded per environment.
-    related = list(_ROUTE_SKELETON_MAP.get(route_id, _ROUTE_SKELETON_MAP["navigation_goal_reaching"]))
-    # Append supplementary skeletons for all routes
-    for sk in _SUPPLEMENTARY_SKELETONS:
-        if sk not in related:
-            related.append(sk)
-
-    # Also check environment card for additional contextual keywords to include
-    # skeletons that might otherwise be missed by the route map alone.
-    text = environment_card_md.lower()
-    if "soft_landing_proxy" not in related and any(k in text for k in ["contact", "leg", "foot", "touch"]):
-        related.append("soft_landing_proxy")
-    if "stability_penalty" not in related and any(k in text for k in ["angle", "velocity", "姿态", "稳定"]):
-        related.append("stability_penalty")
-    if "event_reward" not in related and any(k in text for k in ["event", "事件", "trigger", "collect", "收集"]):
-        related.append("event_reward")
+    if route_id not in _ROUTE_SKELETON_MAP:
+        raise ValueError(f"未知 selected_route_id: {route_id}")
+    related = list(_ROUTE_SKELETON_MAP[route_id])
 
     lines = []
     lines.append("# 专家奖励知识上下文（RAG 压缩版）")
     lines.append("")
     lines.append("这份内容不是完整知识库原文，而是给 Reward Generator 直接使用的压缩决策摘要。")
-    lines.append("以下骨架由任务路由检索生成，不预设特定组合。具体选择由环境接口中可用信号决定。")
+    lines.append("以下骨架是任务相关的设计原语、风险提示和参考起点，不构成封闭候选集合。可直接采用、组合、变形，或基于环境事实提出新的数学结构。")
     lines.append("")
     lines.append("## 1. 任务路由摘要")
     lines.append(f"- {_ROUTE_SUMMARIES.get(route_id, f'{route_id}：按该任务类型选择信号，并先检查接口可用性。')}")
@@ -263,7 +231,7 @@ def build_expert_reward_context(environment_card_md, chunks_path=None, max_chars
     lines.append("## 3. reward_v1 生成要求")
     lines.append("- 直接生成 reward_v1.py，不再生成 reward_design_plan.json。")
     lines.append("- 使用 role-based component budget：每个组件必须有明确角色，不能为了显得完整而堆叠。")
-    lines.append("- 从上述任务路由推荐的骨架中选择，优先选择所需信号在环境接口中可用的骨架。")
+    lines.append("- 将上述骨架作为思考面而非允许列表；最终设计由任务目标、可用信号和预期策略行为决定，不要求组件对应已有 skeleton_id。")
     lines.append("- 如果 success/failure 显式信号不存在，不要使用 terminal_success_reward / terminal_failure_penalty。")
     lines.append("- 效率类骨架（energy_penalty、time_penalty）和复杂门控（gated_reward）默认后续迭代再加入。")
     lines.append("- 每个组件的设计要考虑可利用风险：agent 可能找到哪些捷径？条件信号是否容易被 exploit？")

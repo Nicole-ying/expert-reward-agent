@@ -3,7 +3,7 @@
     "math_form": "delta = d(current, goal) - d(next, goal); reward = delta * scale",
     "design_rationale": "每一步向目标靠近即奖励，天然有正有负。比 distance_reward 更直接反映动作效果，不会像 distance_reward 那样远距离数值爆炸。",
     "pitfalls": "目标附近易震荡（delta 正负交替）；若 scale 过大可能主导所有信号。",
-    "recommended_with": "配合 clip(delta, -0.5, 0.5) 或改用 proximity=1/(1+5*dist)。scale 通常 5~20。与 stability_penalty 配合时需保持 penalty 均值 < progress 均值的 10%。"
+    "recommended_with": "配合 clip(delta, -0.5, 0.5) 或改用 proximity=1/(1+5*dist)。scale 需要根据环境尺度和最终策略统计验证。对同为dense逐步信号的早期学习阶段，可用 penalty/progress 约0.1（主学习信号约为惩罚10倍）作为v6经验起点，再由外部行为验证；不适用于事件奖励或不同时间语义的组件。"
   },
   "distance_reward": {
     "math_form": "reward = -coeff * d(current, goal)",
@@ -14,7 +14,7 @@
   "stability_penalty": {
     "math_form": "penalty = -(λv·|v| + λa·|angle| + λω·|ω|)",
     "design_rationale": "抑制高速和大幅角速度，促进稳定接近。",
-    "pitfalls": "权重过大会让 agent 不敢动。需要远小于 progress 信号（ratio_to_progress < 0.1）。三个子项中 speed_penalty 最容易主导。",
+    "pitfalls": "权重过大会让 agent 不敢动。对可比的dense信号，|ratio_to_progress|超过约0.5是经验预警，约0.1可作为轻约束起点，但必须结合最终策略累计量、行为和跨轮结果验证；三个子项中 speed_penalty 最容易主导。",
     "recommended_with": "可距离门控：penalty *= max(0, 1-dist/gate_radius)。可用连续乘积形式代替线性。λv/λa/λω 通常在 0.01~0.1 范围。"
   },
   "soft_landing_proxy": {
