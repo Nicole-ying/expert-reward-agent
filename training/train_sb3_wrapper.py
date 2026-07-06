@@ -592,6 +592,21 @@ def main():
             if key in {"learning_rate", "clip_range"}:
                 value = _parse_schedule_value(value)
             ppo_args[key] = value
+    if train_cfg.get("policy_kwargs"):
+        import torch.nn as nn
+        policy_kwargs = dict(train_cfg["policy_kwargs"])
+        activation_name = policy_kwargs.get("activation_fn")
+        if isinstance(activation_name, str):
+            activation_types = {
+                "ReLU": nn.ReLU,
+                "Tanh": nn.Tanh,
+                "ELU": nn.ELU,
+                "GELU": nn.GELU,
+            }
+            if activation_name not in activation_types:
+                raise ValueError(f"Unsupported policy activation_fn: {activation_name}")
+            policy_kwargs["activation_fn"] = activation_types[activation_name]
+        ppo_args["policy_kwargs"] = policy_kwargs
     if train_cfg.get("tensorboard_log"):
         ppo_args["tensorboard_log"] = train_cfg["tensorboard_log"]
 
@@ -608,10 +623,10 @@ def main():
     vec_normalize_path = None
     if vec_normalize is not None:
         vec_normalize_path = save_dir / "vecnormalize.pkl"
-        vec_normalize.save(str(vec_normalize_path))
         # Freeze running statistics. External evaluation still uses raw environment rewards.
         vec_normalize.training = False
         vec_normalize.norm_reward = False
+        vec_normalize.save(str(vec_normalize_path))
 
     eval_episodes = int(args.eval_episodes if args.eval_episodes is not None else train_cfg.get("eval_episodes", 20))
     eval_seed_offset = int(args.eval_seed_offset if args.eval_seed_offset is not None else train_cfg.get("eval_seed_offset", 10000))
