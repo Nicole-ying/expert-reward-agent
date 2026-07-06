@@ -83,18 +83,28 @@ training:
   normalize_reward: false
   clip_obs: 10.0
   policy: MlpPolicy
-  n_envs: 8
+  # RL Zoo's tuned MuJoCo Hopper-v4 PPO setup, applied to Hopper-v5.
+  n_envs: 1
   total_timesteps: 1000000
   eval_episodes: 20
   eval_seed_offset: 10000
-  n_steps: 2048
-  batch_size: 64
-  gae_lambda: 0.95
-  gamma: 0.99
-  n_epochs: 10
-  ent_coef: 0.0
-  learning_rate: 0.0003
+  n_steps: 512
+  batch_size: 32
+  gae_lambda: 0.99
+  gamma: 0.999
+  n_epochs: 5
+  ent_coef: 0.00229519
+  learning_rate: 0.0000980828
   clip_range: 0.2
+  max_grad_norm: 0.7
+  vf_coef: 0.835671
+  policy_kwargs:
+    log_std_init: -2
+    ortho_init: false
+    activation_fn: ReLU
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
   device: cpu
   seed: 0
   max_training_steps_for_progress: 1000000
