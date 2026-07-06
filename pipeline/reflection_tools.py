@@ -67,8 +67,8 @@ def search_reward_design_knowledge(query: str) -> str:
         if score > 0:
             scored.append((score, sec))
     scored.sort(key=lambda x: x[0], reverse=True)
-    if not scored:
-        return "(未找到匹配的技法条目)"
+    if not scored or scored[0][0] < 2:
+        return "No sufficiently relevant knowledge card was found. Do not treat retrieval as support for the current hypothesis."
     # Return top 2, keep it compact
     results = []
     for _, sec in scored[:2]:

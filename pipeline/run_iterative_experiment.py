@@ -225,6 +225,16 @@ def code_signature(path):
     text = Path(path).read_text(encoding="utf-8")
     try:
         tree = ast.parse(text)
+        for node in ast.walk(tree):
+            body = getattr(node, "body", None)
+            if (
+                isinstance(body, list)
+                and body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                del body[0]
         body = ast.dump(tree, include_attributes=False)
     except Exception:
         lines = []
@@ -880,7 +890,12 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             same_skeleton_count = 0
             no_improve_count = 0
             print(f">>> Same skeleton for {stuck_rounds} rounds, best={best_score:.1f} still negative. Fresh restart #{restart_count}. Seed offset +{restart_count * 100}.")
-        elif (not solved_seen) and same_skeleton_count >= 4 and best_score > 0 and no_improve_count >= 2:
+        elif (
+            (not solved_seen)
+            and same_skeleton_count >= 4
+            and 0 < best_score < 0.25 * target_score
+            and no_improve_count >= 2
+        ):
             decision = "same_skeleton_oscillation_fresh_restart"
             force_fresh_restart = True
             restart_count += 1
@@ -888,6 +903,17 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             same_skeleton_count = 0
             no_improve_count = 0
             print(f">>> Same skeleton for {stuck_rounds} rounds, best={best_score:.1f} positive but oscillating. Fresh restart #{restart_count}. Seed offset +{restart_count * 100}.")
+        elif (
+            (not solved_seen)
+            and no_improve_count >= patience_unsolved
+            and best_score >= 0.25 * target_score
+        ):
+            decision = "unsolved_high_achievement_continue_from_best"
+            no_improve_count = 0
+            print(
+                f">>> Stagnation detected, but best={best_score:.1f} already reaches "
+                f"{best_score / target_score:.1%} of target. Keep best-centered local search; no fresh restart."
+            )
         elif (not solved_seen) and no_improve_count >= patience_unsolved:
             decision = "unsolved_stagnation_fresh_restart"
             force_fresh_restart = True

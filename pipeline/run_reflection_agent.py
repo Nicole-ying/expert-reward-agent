@@ -34,7 +34,32 @@ def _environment_summary(environment_card_md):
     return "\n\n".join(selected)
 
 
-def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md=""):
+def _compact_route_context(cfg, environment_card_md):
+    match = re.search(r"selected_route_id:\s*([a-z0-9_]+)", environment_card_md or "")
+    if not match:
+        return ""
+    route_id = match.group(1)
+    route_path = Path(cfg.get("rag", {}).get("route_catalog_path", ""))
+    skeleton_path = Path(cfg.get("rag", {}).get("skeleton_catalog_path", ""))
+    if not route_path.exists():
+        return f"- selected_route_id: {route_id}"
+    routes = json.loads(route_path.read_text(encoding="utf-8")).get("routes", [])
+    route = next((item for item in routes if item.get("route_id") == route_id), {})
+    recommended = route.get("recommended_skeletons", [])
+    names = {}
+    if skeleton_path.exists():
+        catalog = json.loads(skeleton_path.read_text(encoding="utf-8"))
+        names = {item["skeleton_id"]: item.get("name_zh", "") for item in catalog.get("skeletons", [])}
+    items = [f"{item} ({names[item]})" if names.get(item) else item for item in recommended]
+    return (
+        f"- selected_route_id: {route_id}\n"
+        f"- recommended_design_roles: {', '.join(items)}\n"
+        "- usage: These are design primitives and risk reminders, not mandatory components or a closed menu. "
+        "Use only roles supported by current behavior evidence and declared inputs."
+    )
+
+
+def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md="", cfg=None):
     """Assemble the reflection agent's user prompt — focused, no noise."""
     parts = []
 
@@ -44,6 +69,20 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environm
     m = _re.search(r"score=([-\d.]+)", feedback_md)
     if m:
         prev_score = m.group(1)
+
+    target_score = float((cfg or {}).get("iteration", {}).get("target_score", 0.0))
+    current_score = float(prev_score) if prev_score != "?" else None
+    if target_score > 0 and current_score is not None:
+        gap = target_score - current_score
+        ratio = current_score / target_score
+        parts.append(
+            "# Search objective\n"
+            f"- target_score: {target_score:.6f}\n"
+            f"- current_score: {current_score:.6f}\n"
+            f"- gap_to_target: {gap:.6f}\n"
+            f"- target_achievement_ratio: {ratio:.3%}\n"
+            "Use the target only to judge search progress. Do not reverse-engineer or reproduce an official reward formula."
+        )
 
     parts.append(f"# 上一轮奖励函数代码（该轮得分: {prev_score}）\n```python\n{previous_code.strip()}\n```")
 
@@ -55,6 +94,10 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environm
     environment_summary = _environment_summary(environment_card_md)
     if environment_summary:
         parts.append(f"# 环境事实摘要（只据此理解任务和变量，不猜测环境名称）\n{environment_summary}")
+
+    route_context = _compact_route_context(cfg or {}, environment_card_md)
+    if route_context:
+        parts.append(f"# Compact expert route context\n{route_context}")
 
     if memory_md:
         parts.append(f"# 历史记忆\n{memory_md}")
@@ -107,7 +150,7 @@ def run_reflection_agent(
             "Return a complete reward function whose executable code is materially different from every historical reward. "
             "Do not merely rename variables or comments.\n\n"
             f"# Rejected duplicate draft\n```python\n{duplicate_draft}\n```\n\n"
-        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md)
+        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg)
     elif validation_retry:
         failed_draft_path = run_dir / f"reward_{reward_version}.md"
         failed_draft = read_text(failed_draft_path) if failed_draft_path.exists() else ""
@@ -117,9 +160,9 @@ def run_reflection_agent(
             "这是代码格式修复，不要重新诊断、不要调用工具、不要改变原定修改方向。"
             "直接输出修复后的完整 Python 代码。\n\n"
             f"# 被截断或无效的上一版草稿\n{failed_draft}\n\n"
-        ) + build_user_prompt(feedback_md, "", previous_code, best_code, environment_card_md)
+        ) + build_user_prompt(feedback_md, "", previous_code, best_code, environment_card_md, cfg)
     else:
-        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md)
+        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg)
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_reflection_agent.input.md", user_prompt)
     record_prompt(run_dir, "agent_reflection", system_prompt, user_prompt)
