@@ -412,6 +412,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     iter_cfg = cfg.get("iteration", {})
     train_cfg = cfg.get("training", {})
     rag_cfg = cfg.get("rag", {})
+    ablation_cfg = cfg.get("ablation", {})
 
     prefix = prefix or iter_cfg.get("experiment_prefix", "exp_iter")
     rounds = int(rounds if rounds is not None else iter_cfg.get("total_rounds", 10))
@@ -435,6 +436,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     use_reflection_agent = bool(iter_cfg.get("use_reflection_agent", False))
 
     memory_path = str(experiment_root_for(cfg, prefix, seed) / "memory" / "reward_memory.md")
+    restart_memory_path = memory_path if not ablation_cfg.get("disable_memory", False) else "__disabled_memory__"
     cards_path = rag_cfg.get("reward_misalignment_cards_path", "knowledge_base/iteration/reward_misalignment_cards.md")
 
     # Resume support
@@ -550,7 +552,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             if force_fresh_restart:
                 print(">>> Fresh restart: injecting failed-skeleton context into generation")
                 version = 1
-                failed_info = build_restart_context(memory_path, target_score)
+                failed_info = build_restart_context(restart_memory_path, target_score)
                 # Write restart context where run_03 can read it
                 gen_dir = Path(cfg["experiment"]["run_root"]) / paths["gen_run_name"]
                 gen_dir.mkdir(parents=True, exist_ok=True)
@@ -740,7 +742,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 gen_dir = Path(cfg["experiment"]["run_root"]) / paths["gen_run_name"]
                 gen_dir.mkdir(parents=True, exist_ok=True)
                 (gen_dir / "restart_context.md").write_text(
-                    build_restart_context(memory_path, target_score), encoding="utf-8"
+                    build_restart_context(restart_memory_path, target_score), encoding="utf-8"
                 )
                 run_cmd([
                     "python", "-m", "pipeline.run_direct_generation_pipeline",

@@ -35,6 +35,8 @@ def _environment_summary(environment_card_md):
 
 
 def _compact_route_context(cfg, environment_card_md):
+    if cfg.get("ablation", {}).get("disable_expert_rag", False):
+        return ""
     match = re.search(r"selected_route_id:\s*([a-z0-9_]+)", environment_card_md or "")
     if not match:
         return ""
@@ -105,6 +107,45 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environm
     return "\n\n".join(parts)
 
 
+def _score_only_feedback(feedback_md):
+    outcome = re.search(
+        r"## Final-policy outcome\s*(.*?)(?=\n## |\Z)",
+        feedback_md,
+        flags=re.DOTALL,
+    )
+    distribution = re.search(
+        r"## Evaluation distribution\s*(.*?)(?=\n## |\Z)",
+        feedback_md,
+        flags=re.DOTALL,
+    )
+    blocks = ["# Score-Only Feedback Ablation"]
+    if outcome:
+        blocks.extend(["## Final-policy outcome", outcome.group(1).strip()])
+    if distribution:
+        blocks.extend(["## Evaluation distribution", distribution.group(1).strip()])
+    return "\n\n".join(blocks)
+
+
+def _score_only_memory(memory_md):
+    rows = []
+    for line in memory_md.splitlines():
+        if not line.startswith("|") or line.startswith("|---") or "| iter |" in line:
+            continue
+        columns = [item.strip() for item in line.strip().strip("|").split("|")]
+        if len(columns) >= 6:
+            rows.append(columns[:6])
+    if not rows:
+        return ""
+    lines = [
+        "# Score-Only Reward Memory",
+        "",
+        "| iter | skeleton | score | best | delta | len |",
+        "|---:|---|---:|---:|---:|---:|",
+    ]
+    lines.extend("| " + " | ".join(row) + " |" for row in rows)
+    return "\n".join(lines)
+
+
 def run_reflection_agent(
     config_path,
     previous_reward_path,
@@ -119,19 +160,30 @@ def run_reflection_agent(
     duplicate_retry=None,
 ):
     cfg = load_config(config_path)
+    ablation_cfg = cfg.get("ablation", {})
     run_dir = Path(cfg["experiment"]["run_root"]) / out_run_name
     for sub in ["llm_inputs", "prompt_records", "response_records", "validations"]:
         (run_dir / sub).mkdir(parents=True, exist_ok=True)
 
-    system_prompt = read_text("prompts/reflection_agent_prompt.md")
+    reflection_mode = ablation_cfg.get("reflection_mode", "structured")
+    prompt_path = (
+        "prompts/reflection_agent_unconstrained_prompt.md"
+        if reflection_mode == "unconstrained"
+        else "prompts/reflection_agent_prompt.md"
+    )
+    system_prompt = read_text(prompt_path)
     previous_code = read_text(previous_reward_path)
     feedback_md = read_text(str(Path(train_run_dir) / "training_feedback.md"))
+    if ablation_cfg.get("feedback_mode") == "score_only":
+        feedback_md = _score_only_feedback(feedback_md)
     environment_card_md = ""
     if environment_card_path and Path(environment_card_path).exists():
         environment_card_md = read_text(environment_card_path)
     memory_md = ""
-    if Path(memory_path).exists():
+    if not ablation_cfg.get("disable_memory", False) and Path(memory_path).exists():
         memory_md = read_text(memory_path)
+        if ablation_cfg.get("feedback_mode") == "score_only":
+            memory_md = _score_only_memory(memory_md)
 
     # Best code
     best_code = ""
@@ -266,7 +318,7 @@ def run_reflection_agent(
                 temperature=llm_cfg["temperature_reward_generator"],
                 max_tokens=llm_cfg["max_tokens_reward"],
             )
-            if not validation_retry:
+            if not validation_retry and not ablation_cfg.get("disable_expert_rag", False):
                 request.update(tools=tools, tool_choice="auto")
             try:
                 resp = client.completion(**request)

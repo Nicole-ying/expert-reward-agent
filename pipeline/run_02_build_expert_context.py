@@ -7,6 +7,14 @@ from rag.direct_context_builder import build_expert_reward_context
 def run(config_path, run_name):
     cfg = load_config(config_path)
     run_dir = Path(cfg["experiment"]["run_root"]) / run_name
+    if cfg.get("ablation", {}).get("disable_expert_rag", False):
+        write_text(
+            run_dir / "expert_reward_context.md",
+            "# Expert Reward Context Disabled\n\n"
+            "This run is the w/o Expert RAG ablation. Design from environment facts only.\n",
+        )
+        print(run_dir / "expert_reward_context.md")
+        return
     env_md = read_text(run_dir / "environment_card.md")
     route_id, expert_md = build_expert_reward_context(
         env_md,

@@ -7,10 +7,28 @@ except Exception:
     yaml = None
 
 
+def _deep_merge(base, override):
+    result = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 def load_config(path):
-    text = Path(path).read_text(encoding="utf-8")
+    config_path = Path(path)
+    text = config_path.read_text(encoding="utf-8")
     if yaml is not None:
-        return yaml.safe_load(text)
+        cfg = yaml.safe_load(text) or {}
+        parent = cfg.pop("extends", None)
+        if parent:
+            parent_path = Path(parent)
+            if not parent_path.is_absolute():
+                parent_path = config_path.parent / parent_path
+            cfg = _deep_merge(load_config(parent_path), cfg)
+        return cfg
     raise RuntimeError("PyYAML is required to load this config. Please run: pip install pyyaml")
 
 

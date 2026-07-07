@@ -10,6 +10,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from stable_baselines3.common.utils import set_random_seed
 from training.reward_wrapper import RewardOverrideWrapper, load_reward_function
+from pipeline.common import load_config
 
 
 def _parse_schedule_value(value):
@@ -132,17 +133,20 @@ def _make_env(env_id, reward_fn, max_progress_steps, seed, rank, monitor_dir, re
     env = gym.make(env_id)
     env.reset(seed=seed + rank)
     env.action_space.seed(seed + rank)
-    env = RewardOverrideWrapper(
-        env,
-        reward_fn,
-        max_training_steps_for_progress=max_progress_steps,
-        reward_clip=reward_clip,
-        error_fallback=error_fallback,
-    )
+    info_keywords = ()
+    if reward_fn is not None:
+        env = RewardOverrideWrapper(
+            env,
+            reward_fn,
+            max_training_steps_for_progress=max_progress_steps,
+            reward_clip=reward_clip,
+            error_fallback=error_fallback,
+        )
+        info_keywords = ("original_env_reward", "generated_reward", "reward_error_count")
     env = Monitor(
         env,
         filename=str(Path(monitor_dir) / f"monitor_{rank}.csv"),
-        info_keywords=("original_env_reward", "generated_reward", "reward_error_count"),
+        info_keywords=info_keywords,
     )
     return env
 
@@ -519,7 +523,8 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/env001_deepseek_rag.yaml")
-    ap.add_argument("--reward", required=True)
+    ap.add_argument("--reward", default=None)
+    ap.add_argument("--use-original-reward", action="store_true")
     ap.add_argument("--run-name", default=None)
     ap.add_argument("--total-timesteps", type=float, default=None)
     ap.add_argument("--eval-episodes", type=int, default=None)
@@ -528,9 +533,13 @@ def main():
     ap.add_argument("--save-dir", default=None)
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
+    cfg = load_config(args.config)
     train_cfg = dict(cfg["training"])
-    reward_fn = load_reward_function(args.reward)
+    if args.use_original_reward and args.reward:
+        raise ValueError("Use either --reward or --use-original-reward, not both")
+    if not args.use_original_reward and not args.reward:
+        raise ValueError("--reward is required unless --use-original-reward is set")
+    reward_fn = None if args.use_original_reward else load_reward_function(args.reward)
 
     if args.seed is not None:
         seed = args.seed
@@ -645,6 +654,7 @@ def main():
     summary = {
         "runner_env_id": train_cfg["runner_env_id"],
         "reward_path": args.reward,
+        "reward_source": "official_environment" if args.use_original_reward else "generated_function",
         "run_name": run_name,
         "n_envs": n_envs,
         "total_timesteps": total_timesteps,
