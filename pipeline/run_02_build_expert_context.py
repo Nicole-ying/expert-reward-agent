@@ -22,7 +22,7 @@ def run(config_path, run_name):
         cfg.get("rag", {}).get("generation_chunks_path"),
         # Fixed Expert Schema is intentionally kept complete; do not truncate it
         # with legacy RAG context length settings.
-        max_chars=0,
+        max_chars=10_000_000,
     )
     write_text(run_dir / "expert_reward_context.md", expert_md)
     print(run_dir / "expert_reward_context.md")
