@@ -2,241 +2,205 @@ import re
 
 
 def extract_selected_route_id(environment_card_md):
-    m = re.search(r"\*{0,2}selected_route_id\*{0,2}\s*:\s*([a-zA-Z0-9_]+)", environment_card_md)
+    """Keep the legacy route id for logging/backward compatibility only."""
+    m = re.search(r"\*{0,2}selected_route_id\*{0,2}\s*:\s*([a-zA-Z0-9_]+)", environment_card_md or "")
     if m:
         return m.group(1).strip()
-    print("WARNING: environment_card.md 中未找到 selected_route_id，回退到 navigation_goal_reaching")
-    return "navigation_goal_reaching"
+    print("WARNING: environment_card.md 中未找到 selected_route_id，回退到 unknown_task_route")
+    return "unknown_task_route"
 
 
-SKELETON_SUMMARY = {
-    "progress_delta_reward": {
-        "role": "密集学习引导",
-        "math": "d(obs, goal) - d(next_obs, goal)",
-        "need": "obs[0], obs[1], next_obs[0], next_obs[1]",
-        "use": "奖励每一步更接近目标。适合目标位置已知的导航/到达任务。",
-        "risk": "目标附近震荡。",
-        "later": "可 clip；后续配合成功、时间或稳定信号。",
-    },
-    "distance_reward": {
-        "role": "密集过程引导",
-        "math": "-d(obs, goal)",
-        "need": "obs[0], obs[1]",
-        "use": "连续负距离信号，引导 agent 靠近目标。与 progress_delta_reward 同时大权重使用会产生重复信号。",
-        "risk": "接近目标但不完成；不关心速度和姿态。",
-        "later": "训练后检查 high_reward_without_success。",
-    },
-    "stability_penalty": {
-        "role": "轻量稳定约束",
-        "math": "-lambda_v*|velocity| - lambda_a*|angle| - lambda_w*|angular_velocity|",
-        "need": "next_obs[2], next_obs[3], next_obs[4], next_obs[5]",
-        "use": "抑制高速、大角度或高角速度。适合需要稳定运动或姿态控制的任务。",
-        "risk": "过强会保守或不敢动。",
-        "later": "若高速失稳，增大权重。",
-    },
-    "soft_landing_proxy": {
-        "role": "任务完成近似信号",
-        "math": "small_bonus if near_target and low_speed and stable_angle and both_contact else 0",
-        "need": "position, velocity, angle, contact flags",
-        "use": "多条件组合的完成近似。不能直接把 contact 当 success。",
-        "risk": "如果条件太宽，会变成 contact reward hacking。",
-        "later": "如果 high_reward_without_success，收紧条件或移除。",
-    },
-    "terminal_success_reward": {
-        "role": "任务目标奖励",
-        "math": "R_success * I[success]",
-        "need": "显式 success flag",
-        "use": "当环境提供显式 success flag 时可用。若 explicit_success_flag_available=false，不可使用。",
-        "risk": "会诱导 LLM 发明 info['success']。",
-        "later": "当 wrapper 明确暴露 success 后再加。",
-    },
-    "terminal_failure_penalty": {
-        "role": "失败惩罚",
-        "math": "-R_failure * I[failure]",
-        "need": "显式 failure flag 或 termination_reason",
-        "use": "当环境提供显式 failure flag 时可用。若 explicit_failure_flag_available=false，不可使用。",
-        "risk": "误判终止原因。",
-        "later": "当能区分失败终止后再加。",
-    },
-    "time_penalty": {
-        "role": "效率约束",
-        "math": "-lambda_time",
-        "need": "每步调用",
-        "use": "惩罚每步耗时。先完成任务再加入，不建议 v1 使用。",
-        "risk": "可能导致冒险或快速失败。",
-        "later": "若能接近但拖太久，再小权重加入。",
-    },
-    "energy_penalty": {
-        "role": "动作/能耗约束",
-        "math": "-lambda_action * engine_use(action)",
-        "need": "action",
-        "use": "惩罚动作幅度/能耗。先完成任务再加入，v1 太早加入可能不敢动。",
-        "risk": "agent_afraid_to_move。",
-        "later": "能完成任务并稳定后再优化能耗。",
-    },
-    "gated_reward": {
-        "role": "安全门控",
-        "math": "if unsafe then penalty else task_reward",
-        "need": "明确 unsafe 条件",
-        "use": "按条件切换奖励模式。v1 不建议使用复杂门控。",
-        "risk": "门控过严导致学不到。",
-        "later": "若安全被进度奖励抵消，再加入。",
-    },
-    "potential_based_shaping": {
-        "role": "势能塑形",
-        "math": "gamma*Phi(next_obs)-Phi(obs)",
-        "need": "可定义 Phi",
-        "use": "基于势能差分的塑形信号。比 progress_delta 更抽象，当任务有明确的势能定义时可使用。",
-        "risk": "Phi 错误会误导学习。",
-        "later": "如果需要更标准的 shaping，再替换或补充。",
-    },
-    "forward_progress_reward": {
-        "role": "前进方向引导",
-        "math": "lambda_fwd * forward_velocity",
-        "need": "forward velocity component",
-        "use": "奖励沿前进方向的速度。适合 locomotion 类任务。",
-        "risk": "快速前进但容易摔倒。",
-        "later": "若 fast_then_fail，配合稳定性约束。",
-    },
-    "alive_bonus": {
-        "role": "存活激励",
-        "math": "lambda_alive * I[not_done]",
-        "need": "done flag",
-        "use": "每步给予小额存活奖励，鼓励 agent 不提前终止。适合 locomotion/balance 类任务。",
-        "risk": "hover_or_stand_still（原地不动来获取存活奖励）。",
-        "later": "若 agent 不动，减小权重或配合前向奖励。",
-    },
-    "action_smoothness_penalty": {
-        "role": "动作平滑约束",
-        "math": "-lambda_smooth * |action - previous_action|",
-        "need": "previous action or action history",
-        "use": "惩罚动作的剧烈变化。适合连续控制任务。",
-        "risk": "离散动作空间不可用（无历史信息）。",
-        "later": "若动作抖动，增大权重。",
-    },
-    "event_reward": {
-        "role": "事件目标奖励",
-        "math": "R_event * I[event]",
-        "need": "event flag",
-        "use": "对特定事件给予奖励。适合 resource_gathering 等离散目标任务。",
-        "risk": "event_reward_farming（反复触发事件）。",
-        "later": "若事件被 exploit，加 cooldown 或递减。",
-    },
-}
+EXPERT_SCHEMA_CONTEXT = r"""# Expert Schema Context（非检索版）
 
+这份内容不是 RAG 检索结果，也不是按 benchmark 名称写死的奖励模板。它是给 Reward Generator 使用的固定专家 Schema：先读 environment_card.md 中的任务画像和奖励职责拆解，再从下面的小型公式算子库中选择合适数学形式。
 
-# Route-based skeleton groups: each route maps to the skeletons most relevant to it.
-# These are derived from route_catalog_03.json; the full catalog is the authoritative source.
-# This mapping is used as a fallback when the catalog cannot be loaded at context-build time.
-_ROUTE_SKELETON_MAP = {
-    "survival_balance_task": [
-        "alive_bonus", "terminal_failure_penalty", "stability_penalty",
-        "energy_penalty", "action_smoothness_penalty",
-    ],
-    "navigation_goal_reaching": [
-        "progress_delta_reward", "distance_reward", "potential_based_shaping",
-        "stability_penalty", "soft_landing_proxy",
-        "terminal_success_reward", "terminal_failure_penalty",
-        "time_penalty", "energy_penalty", "gated_reward",
-    ],
-    "locomotion_continuous_control": [
-        "forward_progress_reward", "terminal_failure_penalty", "energy_penalty",
-        "alive_bonus", "action_smoothness_penalty", "stability_penalty",
-    ],
-    "manipulation_grasping": [
-        "terminal_success_reward", "event_reward", "progress_delta_reward",
-        "distance_reward", "energy_penalty", "action_smoothness_penalty", "gated_reward",
-    ],
-    "autonomous_driving_safety": [
-        "progress_delta_reward", "terminal_failure_penalty", "gated_reward",
-        "action_smoothness_penalty", "energy_penalty", "event_reward", "weighted_sum_reward",
-    ],
-    "sparse_exploration": [
-        "terminal_success_reward", "event_reward", "progress_delta_reward",
-        "potential_based_shaping", "intrinsic_exploration_reward", "dynamic_curriculum_reward",
-    ],
-    "multi_objective_task": [
-        "weighted_sum_reward", "gated_reward", "dynamic_curriculum_reward",
-        "learned_preference_reward",
-    ],
-}
+核心顺序必须是：
 
-# Task-agnostic route summary lines — one generic line + route-specific observation hints.
-_ROUTE_SUMMARIES = {
-    "survival_balance_task": (
-        "survival_balance_task：任务目标是维持存活、平衡或安全状态。"
-        "重点观察 over_conservative_policy / agent_afraid_to_move / early_failure。"
-    ),
-    "navigation_goal_reaching": (
-        "navigation_goal_reaching：任务目标是接近/到达指定位置。"
-        "重点观察 goal_near_oscillation / high_reward_without_success / fast_crash_near_goal。"
-    ),
-    "locomotion_continuous_control": (
-        "locomotion_continuous_control：任务目标是稳定前进通过地形。"
-        "重点观察 fast_then_fail / hover_or_stand_still / over_conservative_policy。"
-    ),
-    "manipulation_grasping": (
-        "manipulation_grasping：任务目标是抓取、移动或精确操控物体。"
-        "重点观察 goal_near_oscillation / weight_domination / sparse_reward_no_learning。"
-    ),
-    "autonomous_driving_safety": (
-        "autonomous_driving_safety：任务目标是在安全约束下完成驾驶进度。"
-        "重点观察 reckless_behavior / over_conservative_policy / safety_progress_conflict。"
-    ),
-    "sparse_exploration": (
-        "sparse_exploration：任务目标稀疏，需要在探索与目标引导之间平衡。"
-        "重点观察 sparse_reward_no_learning / reward_farming / premature_convergence。"
-    ),
-    "multi_objective_task": (
-        "multi_objective_task：多个核心目标需要联合权衡。"
-        "重点观察 weight_domination / objective_conflict / unstable_curriculum。"
-    ),
-}
+```text
+环境事实 → 任务画像 → 奖励职责 reward roles → 职责-信号映射 → 公式算子 → reward code
+```
+
+不要反过来先套某个 skeleton 名称。模板只提供专家思考方式，不构成封闭候选集合。
+
+---
+
+## 1. Expert Schema 使用规则
+
+- environment_card.md 中的 `expert_task_profile`、`reward_role_decomposition`、`role_to_signal_mapping` 优先级最高。
+- 本文件只提供通用公式算子和少量动力学类型示例，不替代环境卡片。
+- 先选 role，再选 signal，再选 formula operator，最后写 compute_reward。
+- 如果某个 role 需要的信号不可用，必须排除，不得硬写。
+- 如果任务画像与模板不完全一致，以 environment_card.md 的可用信号和禁止信号为准。
+- 不要因为模板中出现某个 role，就机械加入该 role。
+- reward_v1 优先覆盖主学习信号和必要健康约束；效率、能耗、复杂门控和动态权重默认留到后续迭代。
+
+---
+
+## 2. Formula Operator Library
+
+### 2.1 dense_state_signal
+- 适用职责：持续前进、速度、姿态、高度、接近目标等连续状态职责。
+- 常见形式：
+  - positive: `w * signal`
+  - penalty: `-w * abs(error)` 或 `-w * error**2`
+- 使用条件：该状态信号每步可观测，且与任务目标直接相关。
+- 风险：无界状态值可能支配总奖励；状态值可能被占据/刷分，而不代表任务完成。
+
+### 2.2 bounded_signal
+- 适用职责：限制速度、距离、姿态误差或其他连续信号的极端值。
+- 常见形式：
+  - `x / (1 + abs(x))`
+  - `1 / (1 + k * abs(error))`
+  - `max(0, 1 - abs(error) / threshold)`
+- 使用条件：原始信号可能过大、尺度不稳定，或 velocity/proximity 类信号容易被刷。
+- 风险：threshold 过小会导致反馈饱和或无梯度。
+
+### 2.3 improvement_delta
+- 适用职责：接近目标、距离减少、状态改善。
+- 常见形式：
+  - `old_measure - new_measure`
+  - `next_value - current_value`
+- 使用条件：obs 和 next_obs 中存在可比较的当前量与下一步量。
+- 风险：目标附近可能震荡；没有明确目标度量时不要使用。
+
+### 2.4 potential_based_shaping
+- 适用职责：有明确 potential function 的任务塑形。
+- 常见形式：`gamma * Phi(next_obs) - Phi(obs)`
+- 使用条件：能够从环境信号定义合理的 Phi。
+- 风险：错误 Phi 会误导策略；reward_v1 不默认使用，除非任务天然适合。
+
+### 2.5 quadratic_penalty
+- 适用职责：姿态误差、角速度、动作幅度、速度等轻量约束。
+- 常见形式：`-w * error**2` 或 `-w * sum(action_i**2)`
+- 使用条件：约束信号可观测，且不应压制主学习信号。
+- 风险：权重过大会导致 agent_afraid_to_move 或 over_conservative_policy。
+
+### 2.6 soft_health_gate
+- 适用职责：让主进展奖励在健康状态下充分生效，而不是直接加大惩罚。
+- 常见形式：`main_reward * (1 / (1 + k * abs(posture_error)))`
+- 使用条件：前进/接近奖励导致不健康冲刺、翻倒或失稳。
+- 风险：gate 太严格会抑制探索；跳跃类任务尤其要轻。
+
+### 2.7 joint_condition_proxy
+- 适用职责：多个条件必须同时满足的软完成近似，例如 near + low speed + stable。
+- 常见形式：`factor_1 * factor_2 * factor_3`，每个 factor 都是连续 bounded 形式。
+- 使用条件：没有显式 success flag，但有连续信号可构造 soft proxy。
+- 风险：乘积容易塌缩；单一接触或单一事件不能当成功。
+
+### 2.8 curriculum_weighting
+- 适用职责：早期探索和后期精细控制明显冲突时。
+- 常见形式：`early_weight = 1 - training_progress`，`late_weight = training_progress`
+- 使用条件：training_progress 明确允许，且确有阶段性需求。
+- 风险：增加消融混杂；reward_v1 默认不要使用。
+
+---
+
+## 3. Expert Task Template A: planar_monoped_hopping
+
+### 适用任务线索
+- 平面单腿或少腿跳跃式前进；
+- 观测中有 torso_height、torso_angle、forward_velocity、vertical_velocity、joint angles/speeds；
+- 动作为连续关节力矩；
+- 终止通常与高度、躯干角度或状态非法有关；
+- 任务要求 sustained forward progress，而不是只保持直立。
+
+### 主职责 mandatory reward roles
+1. sustained_forward_progress
+   - 目的：鼓励持续向前运动，而不是短时间冲刺。
+   - 可用信号：forward_velocity。
+   - 推荐算子：dense_state_signal、bounded_signal、soft_health_gate。
+   - 风险：velocity_burst_then_fall、shuffling_without_real_hop。
+
+2. healthy_posture_or_height_constraint
+   - 目的：保持身体高度和躯干姿态在健康范围附近，同时允许必要跳跃动态。
+   - 可用信号：torso_height、torso_angle、torso_angular_velocity。
+   - 推荐算子：quadratic_penalty、bounded_signal、soft_health_gate。
+   - 风险：约束过强会抑制跳跃，使 agent 不敢探索。
+
+### 条件职责 conditional reward roles
+1. light_energy_regularization
+   - 条件：只有当策略已经能产生前进后再加入。
+   - 可用信号：action。
+   - 推荐算子：quadratic_penalty。
+   - 风险：过早加入会导致 energy_freeze。
+
+2. vertical_dynamics_regularization
+   - 条件：如果策略只是滑行、乱跳或原地弹跳，再考虑轻量垂直动态约束。
+   - 可用信号：vertical_velocity、torso_height。
+   - 推荐算子：bounded_signal、quadratic_penalty。
+   - 风险：直接奖励 vertical activity 可能导致原地弹跳。
+
+### 慎用/禁用 avoid roles
+- bipedal_alternating_contact_reward：单腿任务不适配；
+- contact_reward_without_contact_signal：没有接触信号时不能使用；
+- unconditional_alive_bonus：容易站着不动或拖时间；
+- strong_vertical_activity_reward：容易学成原地弹跳。
+
+---
+
+## 4. Expert Task Template B: multi_legged_body_locomotion
+
+### 适用任务线索
+- 多足身体或高维关节身体；
+- 动作为连续 torque；
+- 目标是沿某一方向持续前进；
+- 观测可能包含 body orientation、body velocity、joint positions/speeds、actions；
+- 失败通常表现为翻滚、侧向漂移、腿部乱动、能耗过高或原地抖动。
+
+### 主职责 mandatory reward roles
+1. directional_forward_progress
+   - 目的：鼓励沿目标方向前进。
+   - 可用信号：forward_velocity 或对应方向速度。
+   - 推荐算子：dense_state_signal、bounded_signal。
+   - 风险：sideways_drift、velocity_farming、thrashing_forward。
+
+2. body_orientation_health
+   - 目的：避免躯干翻滚、侧翻或极端姿态。
+   - 可用信号：torso_orientation、body_angle、angular_velocity。
+   - 推荐算子：quadratic_penalty、bounded_signal、soft_health_gate。
+   - 风险：过强会导致 over_conservative_policy。
+
+### 条件职责 conditional reward roles
+1. light_action_energy_regularization
+   - 条件：策略已有明显前进后再加入。
+   - 可用信号：action。
+   - 推荐算子：quadratic_penalty。
+   - 风险：过强会导致 agent_afraid_to_move。
+
+2. lateral_drift_control
+   - 条件：只有当侧向速度或姿态信号明确可用时使用。
+   - 可用信号：side_velocity、body_orientation。
+   - 推荐算子：quadratic_penalty、bounded_signal。
+   - 风险：如果没有明确信号，不得伪造。
+
+### 慎用/禁用 avoid roles
+- bipedal_alternating_gait：多足身体不一定需要双足交替步态；
+- monoped_vertical_hopping：多足行走不应被引导成跳跃；
+- contact_reward_without_contact_signal：没有接触信号时不能使用；
+- unconditional_alive_bonus：容易导致站立或原地抖动。
+
+---
+
+## 5. reward_v1 生成要求
+
+- 直接生成 reward_v1.py，不再生成 reward_design_plan.json。
+- 使用 role-based component budget：每个组件必须有明确职责，不能为了显得完整而堆叠。
+- 以 environment_card.md 的 reward_role_decomposition 为主，本文件模板为辅。
+- 如果 success/failure 显式信号不存在，不要使用 terminal_success_reward / terminal_failure_penalty。
+- 效率类职责、复杂门控和 curriculum_weighting 默认后续迭代再加入。
+- 每个组件的设计要考虑可利用风险：agent 可能找到哪些捷径？条件信号是否容易被 exploit？
+- 返回格式建议为 `return float(total_reward), components`；components 必须是 dict。
+"""
 
 
 def build_expert_reward_context(environment_card_md, chunks_path=None, max_chars=6500):
+    """Build a fixed expert-schema context without retrieval.
+
+    The route id is returned only for backward-compatible logging. The content is a
+    compact expert schema used by the reward generator; it is not a RAG result.
+    """
     route_id = extract_selected_route_id(environment_card_md)
-
-    if route_id not in _ROUTE_SKELETON_MAP:
-        raise ValueError(f"未知 selected_route_id: {route_id}")
-    related = list(_ROUTE_SKELETON_MAP[route_id])
-
-    lines = []
-    lines.append("# 专家奖励知识上下文（RAG 压缩版）")
-    lines.append("")
-    lines.append("这份内容不是完整知识库原文，而是给 Reward Generator 直接使用的压缩决策摘要。")
-    lines.append("以下骨架是任务相关的设计原语、风险提示和参考起点，不构成封闭候选集合。可直接采用、组合、变形，或基于环境事实提出新的数学结构。")
-    lines.append("")
-    lines.append("## 1. 任务路由摘要")
-    lines.append(f"- {_ROUTE_SUMMARIES.get(route_id, f'{route_id}：按该任务类型选择信号，并先检查接口可用性。')}")
-    lines.append("")
-    lines.append("## 2. 相关奖励骨架摘要（按任务路由检索）")
-    lines.append("")
-    lines.append("以下骨架由任务路由检索推荐。是否使用某个骨架取决于：")
-    lines.append("1. 该骨架所需信号是否在环境接口中实际可用；")
-    lines.append("2. 是否与该任务阶段匹配（v1 优先设计核心学习信号，效率/安全类后续迭代加入）。")
-    lines.append("")
-    for sid in related:
-        if sid not in SKELETON_SUMMARY:
-            continue
-        d = SKELETON_SUMMARY[sid]
-        lines.append(f"### {sid}")
-        lines.append(f"- 角色: {d['role']}")
-        lines.append(f"- 数学形态: {d['math']}")
-        lines.append(f"- 需要信号: {d['need']}")
-        lines.append(f"- 使用说明: {d['use']}")
-        lines.append(f"- 风险: {d['risk']}")
-        lines.append(f"- 后续迭代: {d['later']}")
-        lines.append("")
-    lines.append("## 3. reward_v1 生成要求")
-    lines.append("- 直接生成 reward_v1.py，不再生成 reward_design_plan.json。")
-    lines.append("- 使用 role-based component budget：每个组件必须有明确角色，不能为了显得完整而堆叠。")
-    lines.append("- 将上述骨架作为思考面而非允许列表；最终设计由任务目标、可用信号和预期策略行为决定，不要求组件对应已有 skeleton_id。")
-    lines.append("- 如果 success/failure 显式信号不存在，不要使用 terminal_success_reward / terminal_failure_penalty。")
-    lines.append("- 效率类骨架（energy_penalty、time_penalty）和复杂门控（gated_reward）默认后续迭代再加入。")
-    lines.append("- 每个组件的设计要考虑可利用风险：agent 可能找到哪些捷径？条件信号是否容易被 exploit？")
-    lines.append("- 返回格式建议为 return float(total_reward), components；components 必须是 dict。")
-    md = "\n".join(lines)
+    md = EXPERT_SCHEMA_CONTEXT
     if len(md) > max_chars:
         md = md[:max_chars] + "\n\n<!-- truncated to max_expert_context_chars -->\n"
     return route_id, md
