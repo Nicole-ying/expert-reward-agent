@@ -1,0 +1,31 @@
+{
+  "call_count": 1,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "bipedal walking stability penalty too strong limiting forward speed torso angle"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## stability_penalty_dominance\n- 症状：stability_penalty 在最终策略奖励构成中持续占主导，external 低、episode 短，且其数学形态本身尚未被证伪。对可比的dense信号，`|ratio_to_progress| > 0.5`可作为优先检查并尝试降系数的经验触发器。\n- 修复：降低惩罚系数（至少10倍）或使用距离门控。关联技法 penalty_magnitude_control。\n---\n## penalty_magnitude_control\n- 症状：最终策略中某个持续惩罚的绝对累计量明显压过同时间语义的主学习信号，且 external score 差、agent 可能不动。历史经验中，dense penalty 的 `ratio_to_progress` 绝对值超过约 0.5 是值得优先检查的预警线，不是通用判定线。\n- 原理：惩罚信号主导时，agent 为避免惩罚而选择不行动。惩罚应是方向盘，不是刹车。\n- 修复：降低该惩罚系数（至少10倍），或改为距离门控（只在目标附近生效），或用平滑 bounded 函数代替线性惩罚。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "bipedal walking stability penalty too strong limiting forward speed torso angle"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## stability_penalty_dominance\n- 症状：stability_penalty 在最终策略奖励构成中持续占主导，external 低、episode 短，且其数学形态本身尚未被证伪。对可比的dense信号，`|ratio_to_progress| > 0.5`可作为优先检查并尝试降系数的经验触发器。\n- 修复：降低惩罚系数（至少10倍）或使用距离门控。关联技法 penalty_magnitude_control。\n---\n## penalty_magnitude_control\n- 症状：最终策略中某个持续惩罚的绝对累计量明显压过同时间语义的主学习信号，且 external score 差、agent 可能不动。历史经验中，dense penalty 的 `ratio_to_progress` 绝对值超过约 0.5 是值得优先检查的预警线，不是通用判定线。\n- 原理：惩罚信号主导时，agent 为避免惩罚而选择不行动。惩罚应是方向盘，不是刹车。\n- 修复：降低该惩罚系数（至少10倍），或改为距离门控（只在目标附近生效），或用平滑 bounded 函数代替线性惩罚。"
+    }
+  ]
+}
