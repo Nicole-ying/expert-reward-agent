@@ -1,0 +1,46 @@
+{
+  "call_count": 2,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "purely negative distance reward causes agent to crash quickly to stop accumulating penalties, state value instead of improvement delta"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## early_failure_or_crash\n- 症状：external score 极负（<-100），episode length 很短（<150），提前终止比例 > 50%。\n- 修复：增加密集的 safe altitude/approach 信号；大幅降低稳定性惩罚。关联技法 bounded_continuous_proxy, penalty_magnitude_control。\n---\n## distance_gated_constraint\n- 症状：远离目标时惩罚阻碍 agent 靠近，episode 长但无进展。\n- 原理：远处需要大动作，不应施加精细约束。用距离门控让惩罚只在目标区生效。\n- 修复：penalty *= max(0, 1 - dist/gate_radius)。gate_radius 取初始距离的 30%~50%。"
+        },
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "soft landing bonus never triggers active rate zero, sparse completion signal unreachable"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。\n---\n## bounded_continuous_proxy\n- 症状：完成信号（如 landing bonus）的 `active_rate`（旧日志名 `nonzero_rate`）接近 0；历史经验中低于约 1%~2% 通常意味着策略几乎得不到任务相关反馈，但阈值需结合事件本身频率判断。\n- 原理：二值条件（if near and slow and upright: bonus=2）无梯度。连续乘积 near_factor * slow_factor * upright_factor 提供密集信号。1/(1+kx) 或 max(0,1-x/D) 自动 bounded 防数值爆炸。\n- 修复：用连续乘积因子取代 if 条件；每个因子用 bounded 形式 max(0, 1-dimension/D_threshold)。或使用 proximity=1/(1+5*dist)。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "purely negative distance reward causes agent to crash quickly to stop accumulating penalties, state value instead of improvement delta"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## early_failure_or_crash\n- 症状：external score 极负（<-100），episode length 很短（<150），提前终止比例 > 50%。\n- 修复：增加密集的 safe altitude/approach 信号；大幅降低稳定性惩罚。关联技法 bounded_continuous_proxy, penalty_magnitude_control。\n---\n## distance_gated_constraint\n- 症状：远离目标时惩罚阻碍 agent 靠近，episode 长但无进展。\n- 原理：远处需要大动作，不应施加精细约束。用距离门控让惩罚只在目标区生效。\n- 修复：penalty *= max(0, 1 - dist/gate_radius)。gate_radius 取初始距离的 30%~50%。"
+    },
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "soft landing bonus never triggers active rate zero, sparse completion signal unreachable"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。\n---\n## bounded_continuous_proxy\n- 症状：完成信号（如 landing bonus）的 `active_rate`（旧日志名 `nonzero_rate`）接近 0；历史经验中低于约 1%~2% 通常意味着策略几乎得不到任务相关反馈，但阈值需结合事件本身频率判断。\n- 原理：二值条件（if near and slow and upright: bonus=2）无梯度。连续乘积 near_factor * slow_factor * upright_factor 提供密集信号。1/(1+kx) 或 max(0,1-x/D) 自动 bounded 防数值爆炸。\n- 修复：用连续乘积因子取代 if 条件；每个因子用 bounded 形式 max(0, 1-dimension/D_threshold)。或使用 proximity=1/(1+5*dist)。"
+    }
+  ]
+}

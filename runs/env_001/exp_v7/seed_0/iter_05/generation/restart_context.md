@@ -1,0 +1,13 @@
+# ⚠️ Restart Context
+
+以下骨架在前序迭代中已尝试但未成功：
+- contact_bonus + potential_shaping
+- distance_reward + soft_landing + stability_penalty
+- distance_reward + soft_landing_continuous + stability_penalty
+- distance_reward + soft_landing_proxy + stability_penalty
+
+上述骨架在前序迭代中已尝试但未取得突破。
+请基于训练证据选择改进方向：
+- 如果认为同一骨架仍有可修复空间（如系数调节、条件化约束），可以继续在当前骨架上修改。
+- 如果诊断表明当前骨架存在结构性问题（如信号冲突、梯度消失），请从 expert_reward_context.md 中选择不同的数学形态。
+- 不要机械重复已失败的骨架。
