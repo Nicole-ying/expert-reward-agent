@@ -20,7 +20,9 @@ def run(config_path, run_name):
     route_id, expert_md = build_expert_reward_context(
         env_md,
         cfg.get("rag", {}).get("generation_chunks_path"),
-        max_chars=int(cfg.get("context", {}).get("max_expert_context_chars", 6500)),
+        # Fixed Expert Schema is intentionally kept complete; do not truncate it
+        # with legacy RAG context length settings.
+        max_chars=0,
     )
     write_text(run_dir / "expert_reward_context.md", expert_md)
     print(run_dir / "expert_reward_context.md")
