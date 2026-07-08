@@ -1,7 +1,7 @@
 """Single-agent reflection: replaces run_04 (analysis) + run_05 (revision).
 
-The agent reads feedback, memory, expert context, and uses tools to
-retrieve design techniques and skeleton details. It produces revised code.
+The agent reads feedback, memory, environment-specific task/profile context,
+and optional tool results. It produces revised reward code.
 """
 
 import argparse
@@ -20,11 +20,16 @@ from llm_clients.deepseek_client import DeepSeekClient
 
 
 def _environment_summary(environment_card_md):
-    """Keep task and interface facts needed to interpret reward code."""
+    """Keep task, interface, and environment-specific expert-role facts.
+
+    Do not include generic expert templates here. Reflection only needs the
+    current environment's task profile, reward roles, role-signal mapping, and
+    expected failure modes. Generic templates live in expert_reward_context.md
+    and are mainly used during reward_v1 generation.
+    """
     if not environment_card_md:
         return ""
-    # 反思 agent 不需要路由选择(2)和不确定信号(8)
-    wanted = {1, 3, 4, 5, 7}
+    wanted = {1, 3, 4, 5, 7, 9, 10, 11, 12}
     sections = re.split(r"(?=^## \d+\.)", environment_card_md, flags=re.MULTILINE)
     selected = []
     for section in sections:
@@ -35,40 +40,21 @@ def _environment_summary(environment_card_md):
 
 
 def _compact_route_context(cfg, environment_card_md):
-    if cfg.get("ablation", {}).get("disable_expert_rag", False):
-        return ""
-    match = re.search(r"selected_route_id:\s*([a-z0-9_]+)", environment_card_md or "")
-    if not match:
-        return ""
-    route_id = match.group(1)
-    route_path = Path(cfg.get("rag", {}).get("route_catalog_path", ""))
-    skeleton_path = Path(cfg.get("rag", {}).get("skeleton_catalog_path", ""))
-    if not route_path.exists():
-        return f"- selected_route_id: {route_id}"
-    routes = json.loads(route_path.read_text(encoding="utf-8")).get("routes", [])
-    route = next((item for item in routes if item.get("route_id") == route_id), {})
-    recommended = route.get("recommended_skeletons", [])
-    names = {}
-    if skeleton_path.exists():
-        catalog = json.loads(skeleton_path.read_text(encoding="utf-8"))
-        names = {item["skeleton_id"]: item.get("name_zh", "") for item in catalog.get("skeletons", [])}
-    items = [f"{item} ({names[item]})" if names.get(item) else item for item in recommended]
-    return (
-        f"- selected_route_id: {route_id}\n"
-        f"- recommended_design_roles: {', '.join(items)}\n"
-        "- usage: These are design primitives and risk reminders, not mandatory components or a closed menu. "
-        "Use only roles supported by current behavior evidence and declared inputs."
-    )
+    """Legacy hook kept for backward compatibility.
+
+    Route-to-skeleton recommendations are intentionally no longer inserted into
+    reflection prompts. The environment card's reward-role decomposition is the
+    source of truth for task-specific expert guidance.
+    """
+    return ""
 
 
 def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md="", cfg=None):
-    """Assemble the reflection agent's user prompt — focused, no noise."""
+    """Assemble the reflection agent's user prompt — focused, no generic templates."""
     parts = []
 
-    # Extract current score from feedback
     prev_score = "?"
-    import re as _re
-    m = _re.search(r"score=([-\d.]+)", feedback_md)
+    m = re.search(r"score=([-\d.]+)", feedback_md)
     if m:
         prev_score = m.group(1)
 
@@ -95,7 +81,10 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environm
 
     environment_summary = _environment_summary(environment_card_md)
     if environment_summary:
-        parts.append(f"# 环境事实摘要（只据此理解任务和变量，不猜测环境名称）\n{environment_summary}")
+        parts.append(
+            "# 环境事实与专家任务画像（只据此理解任务和变量，不猜测环境名称）\n"
+            f"{environment_summary}"
+        )
 
     route_context = _compact_route_context(cfg or {}, environment_card_md)
     if route_context:
@@ -146,6 +135,75 @@ def _score_only_memory(memory_md):
     return "\n".join(lines)
 
 
+def _tool_definitions():
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_reward_design_knowledge",
+                "description": "搜索奖励设计技法库。输入症状描述（自然语言），返回匹配的技法和修复方案。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "症状的自然语言描述，如 'penalty dominating progress signal' 或 'landing bonus never triggers'",
+                        }
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_skeleton_detail",
+                "description": "获取某个骨架的数学形态、设计原理、常见陷阱和推荐配合。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "skeleton_name": {
+                            "type": "string",
+                            "description": "骨架名称，如 'progress_delta_reward', 'potential_based_shaping', 'bounded_proximity_reward'",
+                        }
+                    },
+                    "required": ["skeleton_name"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_reward_transformation",
+                "description": "Retrieve general reward-structure transformations from diagnosis evidence, including rationale, risks, and next-round verification targets.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The diagnosed problem dimension or desired transformation, such as persistent proxy farming, sparse credit, product collapse, or global constraint interference.",
+                        }
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+    ]
+
+
+def _run_tool_call(tool_call):
+    args = json.loads(tool_call.function.arguments)
+    if tool_call.function.name == "search_reward_design_knowledge":
+        result = search_reward_design_knowledge(args.get("query", ""))
+    elif tool_call.function.name == "get_skeleton_detail":
+        result = get_skeleton_detail(args.get("skeleton_name", ""))
+    elif tool_call.function.name == "get_reward_transformation":
+        result = get_reward_transformation(args.get("query", ""))
+    else:
+        result = f"Unknown tool: {tool_call.function.name}"
+    return args, result
+
+
 def run_reflection_agent(
     config_path,
     previous_reward_path,
@@ -176,16 +234,17 @@ def run_reflection_agent(
     feedback_md = read_text(str(Path(train_run_dir) / "training_feedback.md"))
     if ablation_cfg.get("feedback_mode") == "score_only":
         feedback_md = _score_only_feedback(feedback_md)
+
     environment_card_md = ""
     if environment_card_path and Path(environment_card_path).exists():
         environment_card_md = read_text(environment_card_path)
+
     memory_md = ""
     if not ablation_cfg.get("disable_memory", False) and Path(memory_path).exists():
         memory_md = read_text(memory_path)
         if ablation_cfg.get("feedback_mode") == "score_only":
             memory_md = _score_only_memory(memory_md)
 
-    # Best code
     best_code = ""
     if best_reward_path and Path(best_reward_path).exists():
         best_code = read_text(best_reward_path)
@@ -252,65 +311,13 @@ def run_reflection_agent(
     else:
         llm_cfg = cfg["llm"]
         client = DeepSeekClient(api_key_env=llm_cfg["api_key_env"], base_url=llm_cfg["base_url"])
-
-        # Tool definitions (OpenAI-compatible format)
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_reward_design_knowledge",
-                    "description": "搜索奖励设计技法库。输入症状描述（自然语言），返回匹配的技法和修复方案。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {"type": "string", "description": "症状的自然语言描述，如 'penalty dominating progress signal' 或 'landing bonus never triggers'"}
-                        },
-                        "required": ["query"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_skeleton_detail",
-                    "description": "获取某个骨架的数学形态、设计原理、常见陷阱和推荐配合。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "skeleton_name": {"type": "string", "description": "骨架名称，如 'progress_delta_reward', 'potential_based_shaping', 'bounded_proximity_reward'"}
-                        },
-                        "required": ["skeleton_name"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_reward_transformation",
-                    "description": "Retrieve general reward-structure transformations from diagnosis evidence, including rationale, risks, and next-round verification targets.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "The diagnosed problem dimension or desired transformation, such as persistent proxy farming, sparse credit, product collapse, or global constraint interference."
-                            }
-                        },
-                        "required": ["query"]
-                    }
-                }
-            }
-        ]
-
-        # Agent loop
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
 
-        # One retrieval round is enough: tools supplement the core prompt, they do not
-        # replace diagnosis. The final completion below runs without tools.
         max_tool_rounds = 1
+        tools = _tool_definitions()
         for tool_round in range(max_tool_rounds):
             request = dict(
                 model=llm_cfg["model_reward"],
@@ -333,15 +340,7 @@ def run_reflection_agent(
                     for tc in msg.tool_calls
                 ]})
                 for tc in msg.tool_calls:
-                    args = json.loads(tc.function.arguments)
-                    if tc.function.name == "search_reward_design_knowledge":
-                        result = search_reward_design_knowledge(args.get("query", ""))
-                    elif tc.function.name == "get_skeleton_detail":
-                        result = get_skeleton_detail(args.get("skeleton_name", ""))
-                    elif tc.function.name == "get_reward_transformation":
-                        result = get_reward_transformation(args.get("query", ""))
-                    else:
-                        result = f"Unknown tool: {tc.function.name}"
+                    args, result = _run_tool_call(tc)
                     tool_trace.append({
                         "round": tool_round + 1,
                         "name": tc.function.name,
@@ -354,7 +353,6 @@ def run_reflection_agent(
                 out_md = msg.content or ""
                 break
         else:
-            # Max rounds reached, take last response
             try:
                 resp = client.completion(
                     model=llm_cfg["model_reward"],
