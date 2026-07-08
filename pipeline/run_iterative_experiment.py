@@ -436,7 +436,9 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     use_reflection_agent = bool(iter_cfg.get("use_reflection_agent", False))
 
     memory_path = str(experiment_root_for(cfg, prefix, seed) / "memory" / "reward_memory.md")
-    restart_memory_path = memory_path if not ablation_cfg.get("disable_memory", False) else "__disabled_memory__"
+    # When memory is disabled, pass a non-existent path so agents see empty history
+    agent_memory_path = memory_path if not ablation_cfg.get("disable_memory", False) else "__disabled_memory__"
+    restart_memory_path = agent_memory_path
     cards_path = rag_cfg.get("reward_misalignment_cards_path", "knowledge_base/iteration/reward_misalignment_cards.md")
 
     # Resume support
@@ -582,7 +584,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                     "--previous-reward", str(previous_reward),
                     "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
                     "--train-run-dir", str(prev_paths["train_dir"]),
-                    "--memory", memory_path,
+                    "--memory", agent_memory_path,
                     "--out-run-name", paths["gen_run_name"],
                     "--reward-version", f"v{version}",
                     *best_arg,
@@ -594,7 +596,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 run_cmd([
                     "python", "-m", "pipeline.run_04_build_iteration_context",
                     "--train-run-dir", str(prev_paths["train_dir"]),
-                    "--memory", memory_path,
+                    "--memory", agent_memory_path,
                     "--cards", cards_path,
                     "--top-k", str(cards_top_k),
                     "--out", str(paths["context_path"]),
@@ -665,7 +667,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                         "--previous-reward", str(previous_reward),
                         "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
                         "--train-run-dir", str(prev_paths["train_dir"]),
-                        "--memory", memory_path,
+                        "--memory", agent_memory_path,
                         "--out-run-name", paths["gen_run_name"],
                         "--reward-version", f"v{version}",
                         "--validation-retry", str(e),
@@ -712,7 +714,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                         "--previous-reward", str(previous_reward),
                         "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
                         "--train-run-dir", str(prev_paths["train_dir"]),
-                        "--memory", memory_path,
+                        "--memory", agent_memory_path,
                         "--out-run-name", paths["gen_run_name"],
                         "--reward-version", f"v{version}",
                         "--duplicate-retry",
@@ -789,7 +791,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                     "--previous-reward", str(previous_reward),
                     "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
                     "--train-run-dir", str(prev_paths["train_dir"]),
-                    "--memory", memory_path,
+                    "--memory", agent_memory_path,
                     "--out-run-name", paths["gen_run_name"],
                     "--reward-version", f"v{version}",
                     "--best-reward", str(best_reward),
