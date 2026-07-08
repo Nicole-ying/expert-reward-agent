@@ -10,15 +10,16 @@ def run(config_path, run_name):
     if cfg.get("ablation", {}).get("disable_expert_rag", False):
         write_text(
             run_dir / "expert_reward_context.md",
-            "# Expert Reward Context Disabled\n\n"
-            "This run is the w/o Expert RAG ablation. Design from environment facts only.\n",
+            "# Expert Schema Disabled\n\n"
+            "This run is the w/o Expert Schema ablation. Design from environment facts only; "
+            "do not use the fixed expert task templates or formula-operator library.\n",
         )
         print(run_dir / "expert_reward_context.md")
         return
     env_md = read_text(run_dir / "environment_card.md")
     route_id, expert_md = build_expert_reward_context(
         env_md,
-        cfg["rag"]["generation_chunks_path"],
+        cfg.get("rag", {}).get("generation_chunks_path"),
         max_chars=int(cfg.get("context", {}).get("max_expert_context_chars", 6500)),
     )
     write_text(run_dir / "expert_reward_context.md", expert_md)
