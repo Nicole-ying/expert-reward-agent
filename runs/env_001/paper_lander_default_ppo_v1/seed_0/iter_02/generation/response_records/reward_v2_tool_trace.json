@@ -1,0 +1,31 @@
+{
+  "call_count": 1,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "progress reward and stability penalty cancel each other, near-zero net reward, agent fails to learn"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## stage_weighted_reward\n- 症状：训练早期需要探索，后期需要精细控制，固定权重难以兼顾。\n- 原理：利用 training_progress 动态调整 exploration vs precision 权重。early 鼓励运动，late 追求精度。\n- 修复：early_weight=1-t, mid_weight=4t(1-t), late_weight=t。对 progress 用 early_weight，对 stability 用 late_weight。\n---\n## stability_penalty_dominance\n- 症状：stability_penalty 在最终策略奖励构成中持续占主导，external 低、episode 短，且其数学形态本身尚未被证伪。对可比的dense信号，`|ratio_to_progress| > 0.5`可作为优先检查并尝试降系数的经验触发器。\n- 修复：降低惩罚系数（至少10倍）或使用距离门控。关联技法 penalty_magnitude_control。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "progress reward and stability penalty cancel each other, near-zero net reward, agent fails to learn"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## stage_weighted_reward\n- 症状：训练早期需要探索，后期需要精细控制，固定权重难以兼顾。\n- 原理：利用 training_progress 动态调整 exploration vs precision 权重。early 鼓励运动，late 追求精度。\n- 修复：early_weight=1-t, mid_weight=4t(1-t), late_weight=t。对 progress 用 early_weight，对 stability 用 late_weight。\n---\n## stability_penalty_dominance\n- 症状：stability_penalty 在最终策略奖励构成中持续占主导，external 低、episode 短，且其数学形态本身尚未被证伪。对可比的dense信号，`|ratio_to_progress| > 0.5`可作为优先检查并尝试降系数的经验触发器。\n- 修复：降低惩罚系数（至少10倍）或使用距离门控。关联技法 penalty_magnitude_control。"
+    }
+  ]
+}
