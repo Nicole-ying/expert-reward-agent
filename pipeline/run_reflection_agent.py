@@ -20,16 +20,16 @@ from llm_clients.deepseek_client import DeepSeekClient
 
 
 def _environment_summary(environment_card_md):
-    """Keep task, interface, and environment-specific expert-role facts.
+    """Keep task and interface facts needed to interpret reward code.
 
-    Do not include generic expert templates here. Reflection only needs the
-    current environment's task profile, reward roles, role-signal mapping, and
-    expected failure modes. Generic templates live in expert_reward_context.md
-    and are mainly used during reward_v1 generation.
+    Sections 9-12 (expert task profile, reward roles, signal mapping, failure modes)
+    are intentionally excluded from reflection. They are designed for the initial
+    reward generator, not for iterative diagnosis. The reflection agent needs raw
+    environment facts (1-7) and training evidence, not pre-digested design advice.
     """
     if not environment_card_md:
         return ""
-    wanted = {1, 3, 4, 5, 7, 9, 10, 11, 12}
+    wanted = {1, 3, 4, 5, 7}
     sections = re.split(r"(?=^## \d+\.)", environment_card_md, flags=re.MULTILINE)
     selected = []
     for section in sections:
@@ -74,8 +74,8 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environm
 
     parts.append(f"# 上一轮奖励函数代码（该轮得分: {prev_score}）\n```python\n{previous_code.strip()}\n```")
 
-    if best_code and best_code != previous_code:
-        parts.append(f"# 历史最佳奖励函数代码（历史最高得分）\n```python\n{best_code.strip()}\n```")
+    if False:  # 历史最佳代码已移除，用历史记忆表格替代
+        pass
 
     parts.append(f"# 训练反馈（上一轮代码的训练结果）\n{feedback_md}")
 

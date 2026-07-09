@@ -18,13 +18,20 @@ build/
 *.zip
 !runs/**/best/**/*.zip
 
-# Large binary files
+# Model binaries — ignore intermediate; keep best
 *.pkl
+*.pt
+*.onnx
+*.pb
+*.h5
+*.bin
+!runs/**/best/**/*.zip
+!runs/**/best/**/*.pkl
 
 # Monitor CSV (can be large)
-monitor*.csv
-monitor_*.csv
+**/monitor*.csv
 
-# TensorBoard events
+# Tensorboard event files (large, reproducible from training)
+runs/**/tensorboard/
 events.out.*
 
