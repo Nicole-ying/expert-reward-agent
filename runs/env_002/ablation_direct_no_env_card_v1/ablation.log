@@ -1,0 +1,32 @@
+============================================================
+Ablation: Direct Reward Generation (no environment card)
+start: 2026-07-10T14:30:47.382464
+env: BipedalWalker-v3  |  seed: 0
+============================================================
+
+--- Step 1: Generate reward (LLM) ---
+Generated (843 chars) in 55.1s
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    # ── 主学习信号：向前速度 ──
+    forward_velocity = next_obs[2]
+    w_forward = 1.0
+    forward_reward = w_forward * forward_velocity
+
+    # ── 姿态约束：保持身体直立 (hinge 允许小幅摆动) ──
+    hull_angle = next_obs[0]
+    w_angle = 0.5
+    angle_threshold = 0.2   # 允许 ±0.2 rad 的自由摆动区间
+    posture_penalty = -w_angle * max(0.0, abs(hull_angle) - angle_threshold)
+
+    # ── 能耗代价：动作平方和 ──
+    w_energy = 0.01
+    action_penalty = -w_e
+
+--- Step 2: Training (BipedalWalker-v3, 1M steps) ---
+
+============================================================
+FINAL: mean=286.12 +- 0.00  |  solved=NO
+LLM gen: 55.1s  |  Train: 16.7 min
+
+Saved: reward -> runs/env_002/ablation_direct_no_env_card_v1/reward_v1.py
+       json   -> runs/env_002/ablation_direct_no_env_card_v1/results.json

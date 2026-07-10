@@ -1,0 +1,206 @@
+============================================================
+ABLATION: No Expert Profile (sections 1-8 only)
+start: 2026-07-09T23:21:29.487958
+config: configs/env002_ablation_no_expert_profile.yaml
+seeds: 5 x 1 iter each
+============================================================
+
+
+############################################################
+ SEED 0  (1/5)
+############################################################
+============================================================
+Config-driven iterative reward experiment
+============================================================
+config          : configs/env002_ablation_no_expert_profile.yaml
+prefix          : ablation_no_expert_profile_v1
+seed            : 0
+rounds          : 1
+start_iter      : 1
+target_score    : 300.0
+total_timesteps : 5000000
+eval_episodes   : 20
+memory_path     : runs/env_002/ablation_no_expert_profile_v1/seed_0/memory/reward_memory.md
+cards_path      : knowledge_base/iteration/reward_misalignment_cards.md
+cards_top_k     : 4
+mock_llm        : False
+
+------------------------------------------------------------
+Iteration 1/1
+------------------------------------------------------------
+
+$ /home/utseus22/anaconda3/bin/python -m pipeline.run_direct_generation_pipeline --config configs/env002_ablation_no_expert_profile.yaml --run-name ablation_no_expert_profile_v1/seed_0/iter_01/generation --seed 0
+
+$ /home/utseus22/anaconda3/bin/python -m training.train_sb3_wrapper --config configs/env002_ablation_no_expert_profile.yaml --reward runs/env_002/ablation_no_expert_profile_v1/seed_0/iter_01/generation/reward_v1.py --run-name ablation_no_expert_profile_v1/seed_0/iter_01/training --save-dir runs/env_002/ablation_no_expert_profile_v1/seed_0/iter_01/training --total-timesteps 5000000 --eval-episodes 20 --seed 0
+
+$ /home/utseus22/anaconda3/bin/python -m pipeline.run_06_update_reward_memory --iter 1 --train-run-dir runs/env_002/ablation_no_expert_profile_v1/seed_0/iter_01/training --memory runs/env_002/ablation_no_expert_profile_v1/seed_0/memory/reward_memory.md --target-score 300.0 --best-score 294.25601602159367 --best-iter 1 --decision new_best
+
+============================================================
+Done. Key files
+============================================================
+iter_01:
+  reward   : runs/env_002/ablation_no_expert_profile_v1/seed_0/iter_01/generation/reward_v1.py
+  feedback : runs/env_002/ablation_no_expert_profile_v1/seed_0/iter_01/training/training_feedback.md
+memory: runs/env_002/ablation_no_expert_profile_v1/seed_0/memory/reward_memory.md
+best: runs/env_002/ablation_no_expert_profile_v1/seed_0/best/best_reward.py
+SEED 0: score=294.25601602159367, time=84.4 min
+
+############################################################
+ SEED 1  (2/5)
+############################################################
+============================================================
+Config-driven iterative reward experiment
+============================================================
+config          : configs/env002_ablation_no_expert_profile.yaml
+prefix          : ablation_no_expert_profile_v1
+seed            : 1
+rounds          : 1
+start_iter      : 1
+target_score    : 300.0
+total_timesteps : 5000000
+eval_episodes   : 20
+memory_path     : runs/env_002/ablation_no_expert_profile_v1/seed_1/memory/reward_memory.md
+cards_path      : knowledge_base/iteration/reward_misalignment_cards.md
+cards_top_k     : 4
+mock_llm        : False
+
+------------------------------------------------------------
+Iteration 1/1
+------------------------------------------------------------
+
+$ /home/utseus22/anaconda3/bin/python -m pipeline.run_direct_generation_pipeline --config configs/env002_ablation_no_expert_profile.yaml --run-name ablation_no_expert_profile_v1/seed_1/iter_01/generation --seed 1
+
+$ /home/utseus22/anaconda3/bin/python -m training.train_sb3_wrapper --config configs/env002_ablation_no_expert_profile.yaml --reward runs/env_002/ablation_no_expert_profile_v1/seed_1/iter_01/generation/reward_v1.py --run-name ablation_no_expert_profile_v1/seed_1/iter_01/training --save-dir runs/env_002/ablation_no_expert_profile_v1/seed_1/iter_01/training --total-timesteps 5000000 --eval-episodes 20 --seed 1
+
+$ /home/utseus22/anaconda3/bin/python -m pipeline.run_06_update_reward_memory --iter 1 --train-run-dir runs/env_002/ablation_no_expert_profile_v1/seed_1/iter_01/training --memory runs/env_002/ablation_no_expert_profile_v1/seed_1/memory/reward_memory.md --target-score 300.0 --best-score 258.87292677262656 --best-iter 1 --decision new_best
+
+============================================================
+Done. Key files
+============================================================
+iter_01:
+  reward   : runs/env_002/ablation_no_expert_profile_v1/seed_1/iter_01/generation/reward_v1.py
+  feedback : runs/env_002/ablation_no_expert_profile_v1/seed_1/iter_01/training/training_feedback.md
+memory: runs/env_002/ablation_no_expert_profile_v1/seed_1/memory/reward_memory.md
+best: runs/env_002/ablation_no_expert_profile_v1/seed_1/best/best_reward.py
+SEED 1: score=258.87292677262656, time=81.1 min
+
+############################################################
+ SEED 2  (3/5)
+############################################################
+============================================================
+Config-driven iterative reward experiment
+============================================================
+config          : configs/env002_ablation_no_expert_profile.yaml
+prefix          : ablation_no_expert_profile_v1
+seed            : 2
+rounds          : 1
+start_iter      : 1
+target_score    : 300.0
+total_timesteps : 5000000
+eval_episodes   : 20
+memory_path     : runs/env_002/ablation_no_expert_profile_v1/seed_2/memory/reward_memory.md
+cards_path      : knowledge_base/iteration/reward_misalignment_cards.md
+cards_top_k     : 4
+mock_llm        : False
+
+------------------------------------------------------------
+Iteration 1/1
+------------------------------------------------------------
+
+$ /home/utseus22/anaconda3/bin/python -m pipeline.run_direct_generation_pipeline --config configs/env002_ablation_no_expert_profile.yaml --run-name ablation_no_expert_profile_v1/seed_2/iter_01/generation --seed 2
+
+$ /home/utseus22/anaconda3/bin/python -m training.train_sb3_wrapper --config configs/env002_ablation_no_expert_profile.yaml --reward runs/env_002/ablation_no_expert_profile_v1/seed_2/iter_01/generation/reward_v1.py --run-name ablation_no_expert_profile_v1/seed_2/iter_01/training --save-dir runs/env_002/ablation_no_expert_profile_v1/seed_2/iter_01/training --total-timesteps 5000000 --eval-episodes 20 --seed 2
+
+$ /home/utseus22/anaconda3/bin/python -m pipeline.run_06_update_reward_memory --iter 1 --train-run-dir runs/env_002/ablation_no_expert_profile_v1/seed_2/iter_01/training --memory runs/env_002/ablation_no_expert_profile_v1/seed_2/memory/reward_memory.md --target-score 300.0 --best-score 297.56691620685433 --best-iter 1 --decision new_best
+
+============================================================
+Done. Key files
+============================================================
+iter_01:
+  reward   : runs/env_002/ablation_no_expert_profile_v1/seed_2/iter_01/generation/reward_v1.py
+  feedback : runs/env_002/ablation_no_expert_profile_v1/seed_2/iter_01/training/training_feedback.md
+memory: runs/env_002/ablation_no_expert_profile_v1/seed_2/memory/reward_memory.md
+best: runs/env_002/ablation_no_expert_profile_v1/seed_2/best/best_reward.py
+SEED 2: score=297.56691620685433, time=82.2 min
+
+############################################################
+ SEED 3  (4/5)
+############################################################
+============================================================
+Config-driven iterative reward experiment
+============================================================
+config          : configs/env002_ablation_no_expert_profile.yaml
+prefix          : ablation_no_expert_profile_v1
+seed            : 3
+rounds          : 1
+start_iter      : 1
+target_score    : 300.0
+total_timesteps : 5000000
+eval_episodes   : 20
+memory_path     : runs/env_002/ablation_no_expert_profile_v1/seed_3/memory/reward_memory.md
+cards_path      : knowledge_base/iteration/reward_misalignment_cards.md
+cards_top_k     : 4
+mock_llm        : False
+
+------------------------------------------------------------
+Iteration 1/1
+------------------------------------------------------------
+
+$ /home/utseus22/anaconda3/bin/python -m pipeline.run_direct_generation_pipeline --config configs/env002_ablation_no_expert_profile.yaml --run-name ablation_no_expert_profile_v1/seed_3/iter_01/generation --seed 3
+
+$ /home/utseus22/anaconda3/bin/python -m training.train_sb3_wrapper --config configs/env002_ablation_no_expert_profile.yaml --reward runs/env_002/ablation_no_expert_profile_v1/seed_3/iter_01/generation/reward_v1.py --run-name ablation_no_expert_profile_v1/seed_3/iter_01/training --save-dir runs/env_002/ablation_no_expert_profile_v1/seed_3/iter_01/training --total-timesteps 5000000 --eval-episodes 20 --seed 3
+
+$ /home/utseus22/anaconda3/bin/python -m pipeline.run_06_update_reward_memory --iter 1 --train-run-dir runs/env_002/ablation_no_expert_profile_v1/seed_3/iter_01/training --memory runs/env_002/ablation_no_expert_profile_v1/seed_3/memory/reward_memory.md --target-score 300.0 --best-score 304.8817092005249 --best-iter 1 --decision target_solved_new_best
+
+============================================================
+Done. Key files
+============================================================
+iter_01:
+  reward   : runs/env_002/ablation_no_expert_profile_v1/seed_3/iter_01/generation/reward_v1.py
+  feedback : runs/env_002/ablation_no_expert_profile_v1/seed_3/iter_01/training/training_feedback.md
+memory: runs/env_002/ablation_no_expert_profile_v1/seed_3/memory/reward_memory.md
+best: runs/env_002/ablation_no_expert_profile_v1/seed_3/best/best_reward.py
+SEED 3: score=304.8817092005249, time=77.8 min
+
+############################################################
+ SEED 4  (5/5)
+############################################################
+============================================================
+Config-driven iterative reward experiment
+============================================================
+config          : configs/env002_ablation_no_expert_profile.yaml
+prefix          : ablation_no_expert_profile_v1
+seed            : 4
+rounds          : 1
+start_iter      : 1
+target_score    : 300.0
+total_timesteps : 5000000
+eval_episodes   : 20
+memory_path     : runs/env_002/ablation_no_expert_profile_v1/seed_4/memory/reward_memory.md
+cards_path      : knowledge_base/iteration/reward_misalignment_cards.md
+cards_top_k     : 4
+mock_llm        : False
+
+------------------------------------------------------------
+Iteration 1/1
+------------------------------------------------------------
+
+$ /home/utseus22/anaconda3/bin/python -m pipeline.run_direct_generation_pipeline --config configs/env002_ablation_no_expert_profile.yaml --run-name ablation_no_expert_profile_v1/seed_4/iter_01/generation --seed 4
+SEED 4 FAILED: Command '['/home/utseus22/anaconda3/bin/python', '-m', 'pipeline.run_direct_generation_pipeline', '--config', 'configs/env002_ablation_no_expert_profile.yaml', '--run-name', 'ablation_no_expert_profile_v1/seed_4/iter_01/generation', '--seed', '4']' returned non-zero exit status 1.
+SEED 4: score=None, time=4.2 min
+
+============================================================
+ABLATION RESULTS (No Expert Profile)
+============================================================
+seed          score
+0        294.25601602159367
+1        258.87292677262656
+2        297.56691620685433
+3        304.8817092005249
+4            FAILED
+
+mean: 288.9  |  min: 258.9  |  max: 304.9  |  std: 17.8
+solved >= 300: 1/4
+
+start: 2026-07-09T23:21:29.487958
+end:   2026-07-10T04:51:07.946569

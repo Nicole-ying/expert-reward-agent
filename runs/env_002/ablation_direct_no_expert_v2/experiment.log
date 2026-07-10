@@ -1,0 +1,61 @@
+============================================================
+Ablation v2: No environment card, no expert schema
+start: 2026-07-10T14:57:33.286116
+env: BipedalWalker-v3  |  seed: 0  |  steps: 1,000,000
+Input: task_spec + masked_step_source ONLY
+============================================================
+
+--- Step 1: Generate reward (LLM) ---
+LLM input saved: llm_input_full.md (5649 chars)
+Generated (1325 chars) in 57.5s
+Reward code:
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    """
+    Bipedal locomotion reward v1.
+    
+    Goal: Walk forward as far and as fast as possible while staying upright.
+    Components:
+    1. forward_reward   - reward for positive horizontal velocity
+    2. upright_penalty  - penalty for body tilt (hull_angle)
+    3. action_cost      - tiny penalty for joint torque usage (energy efficiency)
+    """
+    # Extract observation slices
+    hull_angle = obs[0]               # body tilt angle (0 = upright)
+    horizontal_velocity = obs[2]      # forward velocity (>0 = forward)
+
+    # Main learning signal: reward forward progress
+    forward_reward = max(horizontal_velocity, 0.0)    # no reward for moving backward
+
+    # Stability constraint: penalise deviation from upright
+    upright_penalty = abs(hull_angle)
+
+    # Energy efficiency: small penalty on squared torques
+    action_cost = sum(a * a for a in action)
+
+    # Weights
+    w_vel    = 1.0
+    w_upright = 0.5
+    w_action  = 0.01
+
+    total_reward = w_vel * forward_reward - w_upright * upright_penalty - w_action * action_cost
+
+    components = {
+        "forward_reward": forward_reward,
+        "upright_penalty": upright_penalty,
+        "action_cost": action_cost
+    }
+    return float(total_reward), components
+
+--- Step 2: Training PPO (1,000,000 steps, n_envs=8) ---
+Model saved -> runs/env_002/ablation_direct_no_expert_v2/model.zip (0.2 MB)
+
+--- Step 3: Evaluating (100 episodes, deterministic) ---
+
+============================================================
+EVAL (100 eps): mean=311.33 +- 0.56  |  min=310.1  max=313.1
+Solved (>=300): YES
+LLM gen: 57.5s  |  Train: 14.2 min
+start: 2026-07-10T14:57:33.286116
+end:   2026-07-10T15:13:57.051344
+
+Saved: runs/env_002/ablation_direct_no_expert_v2/results.json

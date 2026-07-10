@@ -1,0 +1,90 @@
+env_id: Env_005
+env_name: null
+environment_name_policy:
+  hide_true_name: true
+  do_not_mention_known_benchmark_name: true
+  do_not_mention_gym_or_gymnasium_id: true
+
+task_description: |
+  This anonymous environment is a continuous-control locomotion task.
+  A 3D quadruped robot with four legs and eight torque-controlled joints
+  must walk or run forward while staying upright. The robot's body height
+  must remain within a healthy range; falling below the minimum height or
+  exceeding the maximum height terminates the episode. The policy should
+  sustain stable forward locomotion rather than merely remaining upright.
+
+action_space:
+  type: Box
+  shape: [8]
+  continuous: true
+  bounds: "[-1.0, 1.0] per joint"
+  actions:
+    0: {name: hip_1_torque, meaning: torque applied to the first hip joint}
+    1: {name: ankle_1_torque, meaning: torque applied to the first ankle joint}
+    2: {name: hip_2_torque, meaning: torque applied to the second hip joint}
+    3: {name: ankle_2_torque, meaning: torque applied to the second ankle joint}
+    4: {name: hip_3_torque, meaning: torque applied to the third hip joint}
+    5: {name: ankle_3_torque, meaning: torque applied to the third ankle joint}
+    6: {name: hip_4_torque, meaning: torque applied to the fourth hip joint}
+    7: {name: ankle_4_torque, meaning: torque applied to the fourth ankle joint}
+
+observation_space:
+  type: Box
+  shape: [27]
+  fields:
+    # --- Position (13D) ---
+    - {index: 0, name: body_z, meaning: vertical position of the main body (height)}
+    - {index: 1, name: quat_w, meaning: real part of body orientation quaternion (w)}
+    - {index: 2, name: quat_x, meaning: first imaginary part of body orientation quaternion (x)}
+    - {index: 3, name: quat_y, meaning: second imaginary part of body orientation quaternion (y)}
+    - {index: 4, name: quat_z, meaning: third imaginary part of body orientation quaternion (z)}
+    - {index: 5, name: joint_1_angle, meaning: angle of the first hip joint}
+    - {index: 6, name: joint_2_angle, meaning: angle of the first ankle joint}
+    - {index: 7, name: joint_3_angle, meaning: angle of the second hip joint}
+    - {index: 8, name: joint_4_angle, meaning: angle of the second ankle joint}
+    - {index: 9, name: joint_5_angle, meaning: angle of the third hip joint}
+    - {index: 10, name: joint_6_angle, meaning: angle of the third ankle joint}
+    - {index: 11, name: joint_7_angle, meaning: angle of the fourth hip joint}
+    - {index: 12, name: joint_8_angle, meaning: angle of the fourth ankle joint}
+    # --- Velocity (14D) ---
+    - {index: 13, name: body_x_velocity, meaning: forward velocity of the main body in world x}
+    - {index: 14, name: body_y_velocity, meaning: lateral velocity of the main body in world y}
+    - {index: 15, name: body_z_velocity, meaning: vertical velocity of the main body}
+    - {index: 16, name: body_roll_velocity, meaning: roll angular velocity}
+    - {index: 17, name: body_pitch_velocity, meaning: pitch angular velocity}
+    - {index: 18, name: body_yaw_velocity, meaning: yaw angular velocity}
+    - {index: 19, name: joint_1_velocity, meaning: angular velocity of first hip joint}
+    - {index: 20, name: joint_2_velocity, meaning: angular velocity of first ankle joint}
+    - {index: 21, name: joint_3_velocity, meaning: angular velocity of second hip joint}
+    - {index: 22, name: joint_4_velocity, meaning: angular velocity of second ankle joint}
+    - {index: 23, name: joint_5_velocity, meaning: angular velocity of third hip joint}
+    - {index: 24, name: joint_6_velocity, meaning: angular velocity of third ankle joint}
+    - {index: 25, name: joint_7_velocity, meaning: angular velocity of fourth hip joint}
+    - {index: 26, name: joint_8_velocity, meaning: angular velocity of fourth ankle joint}
+
+termination_conditions:
+  - body_height_outside_healthy_range:
+      min_z: 0.2
+      max_z: 1.0
+      description: "main body vertical position must stay within (0.2, 1.0); falling below (collapse) or exceeding (launch) terminates"
+  - state_value_outside_finite_range:
+      description: "any state value becomes NaN or infinite"
+
+interface_constraints:
+  official_reward_masked: true
+  allowed_info_fields: []
+  forbidden_info_fields:
+    - reward_forward
+    - reward_ctrl
+    - reward_contact
+    - reward_survive
+    - x_position
+    - y_position
+    - distance_from_origin
+  notes:
+    - Forward velocity is directly observable via body_x_velocity (obs[13]) and may be used for reward design.
+    - Body orientation is given as a quaternion (w,x,y,z) at obs[1:5].
+    - body_up_z = 1 - 2*(quat_x² + quat_y²) gives the projection of the body z-axis onto the world z-axis (1.0 = perfectly upright).
+    - The reward function is stateless and cannot accumulate velocity across an episode.
+    - Do not reconstruct or use official reward terms from info.
+    - No contact force information is available in this environment version.

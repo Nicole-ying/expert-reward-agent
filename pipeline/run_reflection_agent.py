@@ -39,17 +39,42 @@ def _environment_summary(environment_card_md):
     return "\n\n".join(selected)
 
 
-def _compact_route_context(cfg, environment_card_md):
-    """Legacy hook kept for backward compatibility.
+def _compact_route_context(cfg, environment_card_md, expert_context_md=""):
+    """Build a compact formula reference for the reflection agent.
 
-    Route-to-skeleton recommendations are intentionally no longer inserted into
-    reflection prompts. The environment card's reward-role decomposition is the
-    source of truth for task-specific expert guidance.
+    Extracts only the operator switching guide (§3) and key anti-patterns from
+    the expert context, avoiding the full 57-line formula operator library.
+    Returns ~15 lines instead of ~57.
     """
-    return ""
+    content = expert_context_md
+    if not content:
+        return ""
+    # Extract just the switching guide table from §3
+    m3 = re.search(r"(## 3\. .*?)(?=\Z)", content, flags=re.DOTALL)
+    if not m3:
+        return ""
+    sec3 = m3.group(1).strip()
+
+    # Compress: keep the table rows, drop verbose descriptions
+    lines = sec3.split("\n")
+    compact = ["# Formula switching guide (evidence → operator)"]
+    in_table = False
+    for line in lines:
+        if line.startswith("|"):
+            compact.append(line)
+            in_table = True
+        elif in_table and not line.startswith("|"):
+            break
+    # If no table found, return the first 15 non-empty lines
+    if len(compact) <= 1:
+        body_lines = [l for l in lines if l.strip() and not l.startswith("#")]
+        compact.extend(body_lines[:12])
+    # Add key anti-pattern reminder
+    compact.append("\nKey anti-patterns: prefer gate over bigger penalty; prefer hinge over quadratic for boundary constraints; convexify forward reward when stuck at low-speed plateau.")
+    return "\n".join(compact)
 
 
-def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md="", cfg=None):
+def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md="", cfg=None, expert_context_md=""):
     """Assemble the reflection agent's user prompt — focused, no generic templates."""
     parts = []
 
@@ -86,7 +111,7 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environm
             f"{environment_summary}"
         )
 
-    route_context = _compact_route_context(cfg or {}, environment_card_md)
+    route_context = _compact_route_context(cfg or {}, environment_card_md, expert_context_md)
     if route_context:
         parts.append(f"# Compact expert route context\n{route_context}")
 
@@ -239,6 +264,13 @@ def run_reflection_agent(
     if environment_card_path and Path(environment_card_path).exists():
         environment_card_md = read_text(environment_card_path)
 
+    # Read the formula operator library from the same directory as the environment card
+    expert_context_md = ""
+    if environment_card_path:
+        expert_path = Path(environment_card_path).parent / "expert_reward_context.md"
+        if expert_path.exists():
+            expert_context_md = read_text(str(expert_path))
+
     memory_md = ""
     if not ablation_cfg.get("disable_memory", False) and Path(memory_path).exists():
         memory_md = read_text(memory_path)
@@ -261,7 +293,7 @@ def run_reflection_agent(
             "Return a complete reward function whose executable code is materially different from every historical reward. "
             "Do not merely rename variables or comments.\n\n"
             f"# Rejected duplicate draft\n```python\n{duplicate_draft}\n```\n\n"
-        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg)
+        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md)
     elif validation_retry:
         failed_draft_path = run_dir / f"reward_{reward_version}.md"
         failed_draft = read_text(failed_draft_path) if failed_draft_path.exists() else ""
@@ -273,7 +305,7 @@ def run_reflection_agent(
             f"# 被截断或无效的上一版草稿\n{failed_draft}\n\n"
         ) + build_user_prompt(feedback_md, "", previous_code, best_code, environment_card_md, cfg)
     else:
-        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg)
+        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md)
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_reflection_agent.input.md", user_prompt)
     record_prompt(run_dir, "agent_reflection", system_prompt, user_prompt)
@@ -311,59 +343,21 @@ def run_reflection_agent(
     else:
         llm_cfg = cfg["llm"]
         client = DeepSeekClient(api_key_env=llm_cfg["api_key_env"], base_url=llm_cfg["base_url"])
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
 
-        max_tool_rounds = 1
-        tools = _tool_definitions()
-        for tool_round in range(max_tool_rounds):
-            request = dict(
+        try:
+            resp = client.completion(
                 model=llm_cfg["model_reward"],
-                messages=messages,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
                 temperature=llm_cfg["temperature_reward_generator"],
                 max_tokens=llm_cfg["max_tokens_reward"],
             )
-            if not validation_retry and not ablation_cfg.get("disable_expert_rag", False):
-                request.update(tools=tools, tool_choice="auto")
-            try:
-                resp = client.completion(**request)
-            except Exception:
-                save_tool_trace("llm_error")
-                raise
-            msg = resp.choices[0].message
-
-            if msg.tool_calls:
-                messages.append({"role": "assistant", "tool_calls": [
-                    {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                    for tc in msg.tool_calls
-                ]})
-                for tc in msg.tool_calls:
-                    args, result = _run_tool_call(tc)
-                    tool_trace.append({
-                        "round": tool_round + 1,
-                        "name": tc.function.name,
-                        "arguments": args,
-                        "result": result,
-                    })
-                    save_tool_trace("tools_returned")
-                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
-            else:
-                out_md = msg.content or ""
-                break
-        else:
-            try:
-                resp = client.completion(
-                    model=llm_cfg["model_reward"],
-                    messages=messages,
-                    temperature=llm_cfg["temperature_reward_generator"],
-                    max_tokens=llm_cfg["max_tokens_reward"],
-                )
-            except Exception:
-                save_tool_trace("llm_error_after_tools")
-                raise
-            out_md = resp.choices[0].message.content or ""
+        except Exception:
+            save_tool_trace("llm_error")
+            raise
+        out_md = resp.choices[0].message.content or ""
 
     record_response(run_dir, "agent_reflection", out_md)
     save_tool_trace("completed")

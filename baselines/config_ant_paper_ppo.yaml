@@ -1,0 +1,45 @@
+# Ant-v4 baseline: paper PPO params × official reward
+# Same hyperparams as env005 paper experiments, using native Ant-v4 reward.
+experiment:
+  env_id: baseline_ant_paper_ppo
+  run_root: runs/baselines
+
+training:
+  runner_env_id: Ant-v4
+
+  # --- Paper PPO hyperparams (same as env005_deepseek_rag.yaml) ---
+  policy: MlpPolicy
+  n_envs: 8
+  total_timesteps: 1000000
+  n_steps: 2048
+  batch_size: 128
+  n_epochs: 10
+  learning_rate: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.0
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  normalize_advantage: true
+  policy_kwargs:
+    ortho_init: true
+    activation_fn: Tanh
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+
+  # --- Normalization ---
+  normalize_obs: true
+  normalize_reward: false
+  clip_obs: 10.0
+
+  # --- Evaluation (same as paper: 20 eps, but also do 100 for final) ---
+  eval_episodes: 100
+  eval_seed_offset: 10000
+
+  device: cpu
+  seed: 0
+  save_dir: runs/baselines/ant_paper_ppo
+  run_name: baseline_ant_paper_ppo
+  tensorboard_log: runs/baselines/tensorboard/ant_paper_ppo

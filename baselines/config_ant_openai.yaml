@@ -1,0 +1,48 @@
+# Baseline: Ant-v5 official reward × SB3/OpenAI PPO default params
+# RL Zoo uses the same defaults for Ant (no special tuning).
+# PPO paper (Schulman et al. 2017) Table 3 MuJoCo defaults.
+#
+# Evaluation: 100 episodes, deterministic, fixed seeds (offset=10000)
+
+experiment:
+  env_id: baseline_ant_openai
+  run_root: runs/baselines
+
+training:
+  runner_env_id: Ant-v5
+
+  policy: MlpPolicy
+  n_envs: 1
+  total_timesteps: 1000000
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  learning_rate: 0.0003                  # 3e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  clip_range_vf: null
+  ent_coef: 0.0
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  normalize_advantage: true
+  use_sde: false
+  policy_kwargs:
+    ortho_init: true
+    activation_fn: Tanh
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+
+  normalize_obs: true
+  normalize_reward: false
+  clip_obs: 10.0
+
+  eval_episodes: 100
+  eval_seed_offset: 10000
+
+  device: cuda
+  seed: 0
+  save_dir: runs/baselines/ant_openai_official
+  run_name: baseline_ant_openai_official
+  tensorboard_log: runs/baselines/tensorboard/ant_openai

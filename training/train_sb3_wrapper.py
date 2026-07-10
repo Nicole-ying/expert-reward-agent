@@ -627,7 +627,11 @@ def main():
     if train_cfg.get("tensorboard_log"):
         from pathlib import Path as _Path
         _Path(train_cfg["tensorboard_log"]).mkdir(parents=True, exist_ok=True)
+        import time as _time
+    _train_start = _time.time()
     model.learn(total_timesteps=total_timesteps, tb_log_name=tb_log_name, callback=component_callback)
+    _train_sec = _time.time() - _train_start
+    print(f"Training duration: {_train_sec/60:.1f} min ({_train_sec:.0f} sec)")
     model.save(str(save_dir / "model.zip"))
     vec_normalize_path = None
     if vec_normalize is not None:
@@ -672,6 +676,7 @@ def main():
             "vecnormalize_path": str(vec_normalize_path) if vec_normalize_path else None,
         },
         "external_eval": eval_result,
+        "train_duration_sec": round(_train_sec, 1),
         "component_summary": component_summary,
     }
     (save_dir / "train_config_used.yaml").write_text(yaml.safe_dump(summary, allow_unicode=True, sort_keys=False), encoding="utf-8")

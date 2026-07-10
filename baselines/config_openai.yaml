@@ -1,0 +1,54 @@
+# Baseline B: OpenAI Baselines / PPO paper default MuJoCo params × official Hopper-v5 reward
+# PPO paper (Schulman et al., 2017) Appendix A, Table 3:
+#   horizon=2048, Adam stepsize=3e-4, epochs=10, minibatch=64, gamma=0.99, GAE lambda=0.95
+# OpenAI Baselines ppo2/defaults.py for MuJoCo: nsteps=2048, nminibatches=32 → batch=64
+#
+# Evaluation protocol (Hopper standard):
+#   100 episodes, deterministic policy, fixed eval seeds (offset=10000)
+#   Reported as mean ± std across training seeds
+
+experiment:
+  env_id: baseline_openai
+  run_root: runs/baselines
+
+training:
+  runner_env_id: Hopper-v5
+
+  # --- PPO hyperparams (OpenAI Baselines / PPO paper defaults) ---
+  policy: MlpPolicy
+  n_envs: 1
+  total_timesteps: 1000000
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  learning_rate: 0.0003                  # 3e-4, linear schedule
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  clip_range_vf: null
+  ent_coef: 0.0
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  normalize_advantage: true
+  use_sde: false
+  policy_kwargs:
+    ortho_init: true                     # PPO paper uses orthogonal init
+    activation_fn: Tanh                  # PPO paper uses tanh
+    net_arch:
+      pi: [64, 64]                       # PPO paper default: 2×64
+      vf: [64, 64]
+
+  # --- Normalization ---
+  normalize_obs: true
+  normalize_reward: false
+  clip_obs: 10.0
+
+  # --- Evaluation protocol (Hopper standard: 100 episodes) ---
+  eval_episodes: 100
+  eval_seed_offset: 10000
+
+  device: cuda
+  seed: 0
+  save_dir: runs/baselines/openai_official
+  run_name: baseline_openai_official
+  tensorboard_log: runs/baselines/tensorboard/openai

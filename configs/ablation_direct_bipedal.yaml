@@ -1,0 +1,37 @@
+# Ablation: direct reward generation (no environment card)
+# BipedalWalker-v3, 1M steps, 8 envs, CPU, 1 seed
+experiment:
+  env_id: ablation_direct_bipedal
+  run_root: runs/env_002
+
+training:
+  runner_env_id: BipedalWalker-v3
+  normalize_obs: true
+  normalize_reward: false
+  clip_obs: 10.0
+  policy: MlpPolicy
+  n_envs: 8
+  total_timesteps: 1000000
+  eval_episodes: 20
+  eval_seed_offset: 10000
+  n_steps: 2048
+  batch_size: 128
+  gae_lambda: 0.95
+  gamma: 0.99
+  n_epochs: 10
+  ent_coef: 0.0
+  learning_rate: 0.0003
+  clip_range: 0.2
+  max_grad_norm: 0.5
+  vf_coef: 0.5
+  policy_kwargs:
+    ortho_init: true
+    activation_fn: Tanh
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+  device: cpu
+  seed: 0
+  save_dir: runs/env_002/ablation_direct_no_env_card_v1/training
+  run_name: ablation_direct_bipedal
+  tensorboard_log: runs/env_002/tensorboard/ablation_direct

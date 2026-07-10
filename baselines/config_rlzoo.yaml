@@ -1,0 +1,53 @@
+# Baseline A: RL Zoo tuned Hopper-v4 PPO hyperparams × official Hopper-v5 reward
+# Purpose: measure the score upper-bound of RL Zoo hyperparams on Hopper-v5
+#
+# Evaluation protocol (Hopper standard):
+#   100 episodes, deterministic policy, fixed eval seeds (offset=10000)
+#   Reported as mean ± std across training seeds
+
+experiment:
+  env_id: baseline_rlzoo
+  run_root: runs/baselines
+
+training:
+  runner_env_id: Hopper-v5
+
+  # --- PPO hyperparams (RL Zoo tuned for Hopper-v4) ---
+  policy: MlpPolicy
+  n_envs: 1
+  total_timesteps: 1000000
+  n_steps: 512
+  batch_size: 32
+  n_epochs: 5
+  learning_rate: 0.0000980828          # 9.81e-5, linear schedule
+  gamma: 0.999
+  gae_lambda: 0.99
+  clip_range: 0.2
+  clip_range_vf: null
+  ent_coef: 0.00229519
+  vf_coef: 0.835671
+  max_grad_norm: 0.7
+  normalize_advantage: true
+  use_sde: false
+  policy_kwargs:
+    log_std_init: -2
+    ortho_init: false
+    activation_fn: ReLU
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+
+  # --- Normalization ---
+  normalize_obs: true
+  normalize_reward: false
+  clip_obs: 10.0
+
+  # --- Evaluation protocol (Hopper standard: 100 episodes) ---
+  eval_episodes: 100
+  eval_seed_offset: 10000
+
+  device: cuda
+  seed: 0
+  save_dir: runs/baselines/rlzoo_official
+  run_name: baseline_rlzoo_official
+  tensorboard_log: runs/baselines/tensorboard/rlzoo

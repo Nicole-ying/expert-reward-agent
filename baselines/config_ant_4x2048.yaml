@@ -1,0 +1,38 @@
+# Ant-v5 baseline variant: n_envs=4, n_steps=2048 (buffer=8192)
+# CPU
+experiment:
+  env_id: baseline_ant_4x2048
+  run_root: runs/baselines
+
+training:
+  runner_env_id: Ant-v5
+  policy: MlpPolicy
+  n_envs: 4
+  n_steps: 2048
+  total_timesteps: 1000000
+  batch_size: 64
+  n_epochs: 10
+  learning_rate: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.0
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  normalize_advantage: true
+  policy_kwargs:
+    ortho_init: true
+    activation_fn: Tanh
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+  normalize_obs: true
+  normalize_reward: false
+  clip_obs: 10.0
+  eval_episodes: 100
+  eval_seed_offset: 10000
+  device: cpu
+  seed: 0
+  save_dir: runs/baselines/ant_4x2048
+  run_name: baseline_ant_4x2048
+  tensorboard_log: runs/baselines/tensorboard/ant_4x2048
