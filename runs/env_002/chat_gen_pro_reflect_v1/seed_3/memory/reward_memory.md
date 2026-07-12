@@ -1,0 +1,14 @@
+# Reward Memory
+
+| iter | skeleton | score | best | delta | len | key_signal | action |
+|---:|---|---:|---:|---:|---:|---|---|
+| 1 | alternating_bonus + balance_penalty + both_off_ground_penalty + forward_progress_reward | -65.96 | -65.96 | 0.00 | 1600.00 | alternating_bonus=0.064 balance_penalty=-0.008 both_off_ground_penalty=-0.024 forward_progress_reward=0.004 | new_best |
+| 2 | balance_penalty + both_off_ground_penalty + forward_progress_raw + forward_with_gait + gait_quality | -49.88 | -49.88 | 0.00 | 194.45 | balance_penalty=-0.021 both_off_ground_penalty=-0.062 forward_progress_raw=0.234 forward_with_gait=0.191 gait_quality=0.535 | new_best |
+| 3 | balance_penalty + both_off_ground_penalty + forward_progress + gait_bonus + gait_quality | -94.99 | -49.88 | -45.11 | 1600.00 | balance_penalty=-0.011 both_off_ground_penalty=-0.011 forward_progress=0.001 gait_bonus=0.259 gait_quality=0.863 | no_meaningful_improvement |
+| 4 | balance_penalty + both_off_ground_penalty + forward_progress + gait_bonus + gait_quality | -74.29 | -49.88 | -24.41 | 1600.00 | balance_penalty=-0.004 both_off_ground_penalty=-0.014 forward_progress=0.002 gait_bonus=0.243 gait_quality=0.810 | no_meaningful_improvement |
+| 5 | action_penalty + balance_penalty + both_off_penalty + forward_reward + gait_efficiency + gait_quality | 186.24 | 186.24 | 0.00 | 797.50 | action_penalty=-0.020 balance_penalty=-0.008 both_off_penalty=-0.035 forward_reward=1.837 gait_efficiency=0.075 | new_best |
+| 6 | action_penalty + balance_gate + balance_modulation + both_off_penalty + forward_reward + gait_efficiency | 202.65 | 202.65 | 0.00 | 748.65 | action_penalty=-0.019 balance_gate=0.930 balance_modulation=-0.080 both_off_penalty=-0.032 forward_reward=2.040 | new_best |
+| 7 | action_penalty + balance_gate + balance_modulation + both_off_penalty + forward_reward + gait_efficiency | 299.05 | 299.05 | 0.00 | 917.35 | action_penalty=-0.019 balance_gate=0.887 balance_modulation=-0.145 both_off_penalty=-0.034 forward_reward=1.875 | new_best |
+| 8 | action_penalty + balance_gate + balance_modulation + both_off_penalty + forward_reward + gait_efficiency | 293.92 | 299.05 | -5.13 | 863.25 | action_penalty=-0.019 balance_gate=0.958 balance_modulation=-0.043 both_off_penalty=-0.037 forward_reward=1.980 | no_meaningful_improvement |
+| 9 | action_penalty + balance_gate + balance_modulation + both_off_penalty + forward_reward + gait_efficiency | 249.01 | 299.05 | -50.04 | 842.40 | action_penalty=-0.020 balance_gate=0.964 balance_modulation=-0.039 both_off_penalty=-0.036 forward_reward=1.888 | no_meaningful_improvement |
+| 10 | action_penalty + balance_gate + balance_modulation + both_off_penalty + forward_reward + gait_efficiency | 286.72 | 299.05 | -12.32 | 835.90 | action_penalty=-0.019 balance_gate=0.940 balance_modulation=-0.064 both_off_penalty=-0.035 forward_reward=2.024 | unsolved_high_achievement_continue_from_best |

@@ -1,0 +1,79 @@
+# Hybrid: deepseek-chat generates initial reward, deepseek-v4-pro does reflection
+experiment:
+  env_id: Env_002
+  run_root: runs/env_002
+
+llm:
+  provider: deepseek
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  model_env: deepseek-chat
+  model_reward: deepseek-chat
+  model_reflection: deepseek-v4-pro
+  temperature_environment_analyzer: 0.0
+  temperature_reward_generator: 0.15
+  max_tokens_env: 4096
+  max_tokens_reward: 8192
+
+inputs:
+  task_spec_path: envs/env_002/task_spec_anonymized.yaml
+  masked_step_path: envs/env_002/masked_step_source.py
+
+prompts:
+  environment_analyzer: prompts/01_environment_analyzer_prompt.md
+  reward_generator: prompts/02_reward_generator_prompt.md
+  reward_revision: prompts/03_reward_revision_prompt.md
+
+rag:
+  route_catalog_path: knowledge_base/stage_generation/route_catalog_03.json
+  skeleton_catalog_path: knowledge_base/stage_generation/skeleton_catalog_02.json
+  generation_chunks_path: knowledge_base/stage_generation/generation_chunks_02_03_exact.jsonl
+  generation_table_chunks_path: knowledge_base/stage_generation/table_chunks_02_03.jsonl
+  reward_misalignment_cards_path: knowledge_base/iteration/reward_misalignment_cards.md
+
+context:
+  include_masked_step_in_reward_generator: false
+  max_expert_context_chars: 6500
+
+iteration:
+  experiment_prefix: chat_gen_pro_reflect_v1
+  total_rounds: 5
+  target_score: 300.0
+  reset_memory_at_start: true
+  cards_top_k: 4
+  save_best_artifacts: true
+  no_improvement_patience_unsolved: 3
+  min_meaningful_improvement: 5.0
+  use_reflection_agent: true
+
+training:
+  runner_env_id: BipedalWalker-v3
+  normalize_obs: true
+  normalize_reward: false
+  clip_obs: 10.0
+  policy: MlpPolicy
+  n_envs: 8
+  total_timesteps: 1000000
+  eval_episodes: 20
+  eval_seed_offset: 10000
+  n_steps: 2048
+  batch_size: 128
+  gae_lambda: 0.95
+  gamma: 0.99
+  n_epochs: 10
+  ent_coef: 0.0
+  learning_rate: 0.0003
+  clip_range: 0.2
+  max_grad_norm: 0.5
+  vf_coef: 0.5
+  policy_kwargs:
+    ortho_init: true
+    activation_fn: Tanh
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+  device: cpu
+  seed: 0
+  save_dir: runs/env_002/chat_gen_pro_reflect_v1
+  run_name: chat_gen_pro_reflect_v1
+  tensorboard_log: runs/env_002/tensorboard/chat_gen_pro_reflect

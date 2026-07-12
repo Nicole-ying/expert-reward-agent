@@ -3,6 +3,7 @@ import ast
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,18 @@ def pad_iter(i):
 def validate_rounds(rounds):
     if rounds < 1:
         raise ValueError("iteration.total_rounds must be >= 1")
+
+
+def _agent_recommended_level3(gen_run_name, run_root):
+    """Check if the reflection agent diagnosed Level 3 in its last response."""
+    resp_path = Path(run_root) / gen_run_name / "response_records" / "agent_reflection.md"
+    if not resp_path.exists():
+        return False
+    resp_text = resp_path.read_text(encoding="utf-8")
+    m = re.search(r"\*\*level\*\*:\s*Level\s*(\d)", resp_text, re.IGNORECASE)
+    if m and int(m.group(1)) == 3:
+        return True
+    return bool(re.search(r"Level\s*3", resp_text, re.IGNORECASE))
 
 
 def validate_output_path_length(cfg, prefix, seed, rounds):
@@ -701,6 +714,31 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             restart_count += 1
             no_improve_count += 1
             continue
+
+        # Agent-driven Level 3 rebuild: if the agent diagnosed Level 3, re-run in rebuild mode
+        if use_reflection_agent and iteration_index > 1 and not force_fresh_restart:
+            if _agent_recommended_level3(paths["gen_run_name"], cfg["experiment"]["run_root"]):
+                print(">>> Agent recommended Level 3 rebuild. Re-running reflection in REBUILD MODE.")
+                rebuild_cmd = [
+                    "python", "-m", "pipeline.run_reflection_agent",
+                    "--config", config_path,
+                    "--previous-reward", str(previous_reward),
+                    "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
+                    "--train-run-dir", str(prev_paths["train_dir"]),
+                    "--memory", agent_memory_path,
+                    "--out-run-name", paths["gen_run_name"],
+                    "--reward-version", f"v{version}",
+                    "--rebuild",
+                ]
+                if best_reward and str(best_reward) != str(previous_reward):
+                    rebuild_cmd += ["--best-reward", str(best_reward)]
+                rebuild_cmd += mock_args
+                run_cmd(rebuild_cmd)
+                current_reward = reward_path_for(cfg, paths["gen_run_name"], version)
+                try:
+                    check_reward_valid(cfg, paths["gen_run_name"], version, True)
+                except (RuntimeError, FileNotFoundError) as exc:
+                    print(f"Rebuild produced invalid code: {exc}")
 
         # Check if current reward is identical to best (not just previous) — skip redundant training
         duplicate_match = find_identical_historical_reward(

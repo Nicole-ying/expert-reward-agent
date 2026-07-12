@@ -12,14 +12,30 @@
    - Expert Cards（匹配到的失败模式修复卡片）
    - Training Evidence（组件证据表格和信号检测）
 
+# 第0步：信号覆盖审计（在修改之前，先问自己）
+
+根据 environment_contract 和 Training Evidence，逐项判断：
+
+a) **终止条件 → 前兆信号**：contract 声明了哪些终止条件？当前 reward 里每个终止条件是否都有对应的软梯度前兆信号？（比如"身体出界"的前兆是"身体倾斜/高度偏离"，不是出界本身）
+
+b) **任务目标 → 进度信号**：contract 声明的任务目标是什么？当前 reward 里有没有组件直接给这个目标提供梯度？
+
+c) **效率信号**：动作空间维度 ≥ 6 且当前 reward 无 action penalty → 标记为可探索方向（不强制加，但应该作为备选）。
+
+d) **僵尸组件**：Training Evidence 中 active_rate < 2% 的组件 → 应考虑删除或改造为连续 shaping。
+
+e) **生存信号**：Training Evidence 中 terminated_rate > 50% → 标记"生存激励可能不足"；episode_length 相比历史轮次明显缩短 → 标记"当前修改可能有害"。
+
+f) **审计结论**：用一句话概括——当前 reward 漏掉了什么信号？然后进入第1步决定改什么。
+
 # 决策步骤
 
-1. 看 Recommended Action — 分析 LLM 建议 tune / mix / rebuild？为什么？
+1. 综合第0步审计结论和 Recommended Action — 决定 tune / add / delete / mix / rebuild？
 2. 看 Agent Memory — 当前骨架试了几轮？趋势？
 3. 看 Expert Cards — 专家建议怎么修？
 4. 看 Training Evidence — 每个组件的实际均值和触发率。
 5. 看 expert_reward_context.md — 知识库推荐哪些骨架？有没有数学形态更适合的？
-6. 看 previous_reward.py [+ best_reward.py] → 决定 action，写代码。
+6. 看 previous_reward.py [+ best_reward.py] → 写代码。
 
 # action
 

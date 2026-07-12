@@ -1,0 +1,131 @@
+{
+  "call_count": 6,
+  "invocation_count": 4,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "persistent state reward farming agent stays in bonus state without completing task settlement bonus dominates"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。\n---\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。"
+        },
+        {
+          "round": 1,
+          "name": "get_reward_transformation",
+          "arguments": {
+            "query": "persistent_to_transition_event"
+          },
+          "result": "## persistent_to_transition_event\n- diagnosis: The policy repeatedly farms a contact, pickup, checkpoint, or other event state.\n- transform: Reward the state transition or first valid occurrence instead of every step spent in the event state; add cooldown or phase memory only if available.\n- why: The reward represents accomplishment rather than duration or repeated toggling.\n- risks: Transition detection requires both current and next state evidence and may become sparse again.\n- verify_next_round: Repeated-event accumulation should collapse while external completion remains or improves."
+        }
+      ]
+    },
+    {
+      "validation_retry": true,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": []
+    },
+    {
+      "validation_retry": false,
+      "duplicate_retry": true,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "settlement bonus dominates reward magnitude 99% making approach signals negligible, agent succeeds in some episodes but many truncated not settling"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。\n---\n## penalty_magnitude_control\n- 症状：最终策略中某个持续惩罚的绝对累计量明显压过同时间语义的主学习信号，且 external score 差、agent 可能不动。历史经验中，dense penalty 的 `ratio_to_progress` 绝对值超过约 0.5 是值得优先检查的预警线，不是通用判定线。\n- 原理：惩罚信号主导时，agent 为避免惩罚而选择不行动。惩罚应是方向盘，不是刹车。\n- 修复：降低该惩罚系数（至少10倍），或改为距离门控（只在目标附近生效），或用平滑 bounded 函数代替线性惩罚。"
+        },
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "per-step contact bonus farming once settled, need to balance with approach guidance signals"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。"
+        }
+      ]
+    },
+    {
+      "validation_retry": false,
+      "duplicate_retry": true,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "persistent state reward farming, agent stays in good state collecting per-step bonus instead of completing task, settlement bonus dominating all other signals"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。"
+        },
+        {
+          "round": 1,
+          "name": "get_reward_transformation",
+          "arguments": {
+            "query": "persistent_to_transition_event: convert continuous per-step state reward to one-time achievement bonus"
+          },
+          "result": "## persistent_to_transition_event\n- diagnosis: The policy repeatedly farms a contact, pickup, checkpoint, or other event state.\n- transform: Reward the state transition or first valid occurrence instead of every step spent in the event state; add cooldown or phase memory only if available.\n- why: The reward represents accomplishment rather than duration or repeated toggling.\n- risks: Transition detection requires both current and next state evidence and may become sparse again.\n- verify_next_round: Repeated-event accumulation should collapse while external completion remains or improves.\n---\n## state_to_improvement\n- diagnosis: A policy can remain in a rewarding state, hover, stall, or farm a persistent state bonus without completing the task.\n- transform: Replace a persistent state value q(s_next) with an improvement q(s_next)-q(s), or use a valid potential difference when appropriate.\n- why: The reward is paid for becoming better rather than for occupying the same proxy-optimal state repeatedly.\n- risks: Pure improvement rewards may not maintain a desirable terminal state and can oscillate if the quality function is poorly chosen.\n- verify_next_round: Long non-completing episodes and persistent proxy accumulation should decrease while completion or terminal quality improves.\n---\n## sparse_to_dense\n- diagnosis: A task-relevant component is rarely active and the policy receives little local evidence before success or failure.\n- transform: Replace or supplement a hard event with a continuous progress, proximity, or quality signal computed from declared observations.\n- why: This improves reachability and temporal credit assignment; it does not create a differentiable path through the environment.\n- risks: A dense proxy can become an easier objective than task completion.\n- verify_next_round: Active rate should rise, early failures should fall, and external score should improve without long high-reward non-completing episodes."
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "persistent state reward farming agent stays in bonus state without completing task settlement bonus dominates"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。\n---\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。"
+    },
+    {
+      "round": 1,
+      "name": "get_reward_transformation",
+      "arguments": {
+        "query": "persistent_to_transition_event"
+      },
+      "result": "## persistent_to_transition_event\n- diagnosis: The policy repeatedly farms a contact, pickup, checkpoint, or other event state.\n- transform: Reward the state transition or first valid occurrence instead of every step spent in the event state; add cooldown or phase memory only if available.\n- why: The reward represents accomplishment rather than duration or repeated toggling.\n- risks: Transition detection requires both current and next state evidence and may become sparse again.\n- verify_next_round: Repeated-event accumulation should collapse while external completion remains or improves."
+    },
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "settlement bonus dominates reward magnitude 99% making approach signals negligible, agent succeeds in some episodes but many truncated not settling"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。\n---\n## penalty_magnitude_control\n- 症状：最终策略中某个持续惩罚的绝对累计量明显压过同时间语义的主学习信号，且 external score 差、agent 可能不动。历史经验中，dense penalty 的 `ratio_to_progress` 绝对值超过约 0.5 是值得优先检查的预警线，不是通用判定线。\n- 原理：惩罚信号主导时，agent 为避免惩罚而选择不行动。惩罚应是方向盘，不是刹车。\n- 修复：降低该惩罚系数（至少10倍），或改为距离门控（只在目标附近生效），或用平滑 bounded 函数代替线性惩罚。"
+    },
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "per-step contact bonus farming once settled, need to balance with approach guidance signals"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。"
+    },
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "persistent state reward farming, agent stays in good state collecting per-step bonus instead of completing task, settlement bonus dominating all other signals"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。"
+    },
+    {
+      "round": 1,
+      "name": "get_reward_transformation",
+      "arguments": {
+        "query": "persistent_to_transition_event: convert continuous per-step state reward to one-time achievement bonus"
+      },
+      "result": "## persistent_to_transition_event\n- diagnosis: The policy repeatedly farms a contact, pickup, checkpoint, or other event state.\n- transform: Reward the state transition or first valid occurrence instead of every step spent in the event state; add cooldown or phase memory only if available.\n- why: The reward represents accomplishment rather than duration or repeated toggling.\n- risks: Transition detection requires both current and next state evidence and may become sparse again.\n- verify_next_round: Repeated-event accumulation should collapse while external completion remains or improves.\n---\n## state_to_improvement\n- diagnosis: A policy can remain in a rewarding state, hover, stall, or farm a persistent state bonus without completing the task.\n- transform: Replace a persistent state value q(s_next) with an improvement q(s_next)-q(s), or use a valid potential difference when appropriate.\n- why: The reward is paid for becoming better rather than for occupying the same proxy-optimal state repeatedly.\n- risks: Pure improvement rewards may not maintain a desirable terminal state and can oscillate if the quality function is poorly chosen.\n- verify_next_round: Long non-completing episodes and persistent proxy accumulation should decrease while completion or terminal quality improves.\n---\n## sparse_to_dense\n- diagnosis: A task-relevant component is rarely active and the policy receives little local evidence before success or failure.\n- transform: Replace or supplement a hard event with a continuous progress, proximity, or quality signal computed from declared observations.\n- why: This improves reachability and temporal credit assignment; it does not create a differentiable path through the environment.\n- risks: A dense proxy can become an easier objective than task completion.\n- verify_next_round: Active rate should rise, early failures should fall, and external score should improve without long high-reward non-completing episodes."
+    }
+  ]
+}

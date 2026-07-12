@@ -22,9 +22,10 @@
 
 # 总体设计原则
 
-- 从简单到复杂，但“简单”不等于只有一个组件。
-- 不要用“最多几个组件”来机械限制 reward，而要用 role-based component budget 控制复杂度。
+- 从简单到复杂，但”简单”不等于只有一个组件。
+- 不要用”最多几个组件”来机械限制 reward，而要用 role-based component budget 控制复杂度。
 - reward_v1 应覆盖主要学习信号，同时避免过早堆叠太多目标。
+- 写完 reward 后自检：① 每个终止条件是否有前兆软信号？② 任务目标是否有直接的进度信号？③ 动作维度 ≥ 6 时，是否缺少效率约束（即使权重很小）？
 - 不要机械照抄 expert template 或 formula operator。
 - 不要使用 original_reward。
 - 不要计算 fitness_score 或 fitness_score components。

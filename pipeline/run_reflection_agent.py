@@ -19,6 +19,92 @@ from .run_03_direct_reward_generator import extract_code, validate_code
 from llm_clients.deepseek_client import DeepSeekClient
 
 
+def _build_cumulative_record(run_root, prefix, seed, current_iteration, memory_md=""):
+    """Build a compact因果链 table from all previous iterations' responses and feedback.
+
+    Returns a markdown table showing: iter | 做了什么 | 预期 | 实际 len | 实际 score | 预判
+    The "预判" column uses the memory table's decision to judge outcome quality.
+    Returns empty string if no history (iteration 2 or less than 2 completed iters).
+    """
+    if current_iteration <= 2:
+        return ""
+
+    lines = [
+        "# 3. 累积迭代记录（本轮之前所有尝试的因果链）",
+        "| iter | 做了什么 | 预期效果 | 实际 len | 实际 score | 预判 |",
+        "|---|---:|---:|---:|---:|",
+    ]
+
+    # Parse memory table rows for quick lookup
+    mem_scores = {}   # iter -> score
+    mem_lens = {}     # iter -> len
+    mem_skels = {}    # iter -> skeleton
+    mem_decisions = {}  # iter -> decision
+    for line in memory_md.splitlines():
+        if not line.startswith("|") or "|---" in line or "iter |" in line:
+            continue
+        cols = [c.strip() for c in line.strip().strip("|").split("|")]
+        # Table columns: iter | skeleton | score | best | delta | len | key_signal | action
+        if len(cols) >= 8:
+            try:
+                it = int(cols[0])
+                mem_skels[it] = cols[1]
+                mem_scores[it] = cols[2]
+                mem_lens[it] = cols[5]
+                mem_decisions[it] = cols[7]
+            except (ValueError, IndexError):
+                continue
+
+    decision_emoji = {
+        "new_best": "✅",
+        "target_solved_new_best": "✅",
+        "no_meaningful_improvement": "❌",
+        "stop_after_solved_drop_keep_best": "➖",
+        "unsolved_high_achievement_continue_from_best": "➖",
+        "unsolved_improving_continue_from_best": "➖",
+    }
+
+    for it in sorted(mem_skels):
+        if it >= current_iteration:
+            break
+
+        # Extract hypothesis from response record
+        hypothesis = ""
+        resp_path = (
+            Path(run_root) / prefix / f"seed_{seed}"
+            / f"iter_{it:02d}" / "generation" / "response_records" / "agent_reflection.md"
+        )
+        if resp_path.exists():
+            resp_text = resp_path.read_text(encoding="utf-8")
+            m = re.search(r"\*\*hypothesis\*\*:\s*(.+)", resp_text)
+            if m:
+                hypothesis = m.group(1).strip()
+                if len(hypothesis) > 60:
+                    hypothesis = hypothesis[:57] + "..."
+
+        # What changed: skeleton difference from previous
+        prev_skel = mem_skels.get(it - 1, "")
+        curr_skel = mem_skels.get(it, "")
+        if it == 1:
+            what = "初始生成"
+        elif not hypothesis:
+            what = f"骨架变化: {curr_skel[:50]}"
+        else:
+            what = hypothesis
+
+        score = mem_scores.get(it, "?")
+        length = mem_lens.get(it, "?")
+        decision = mem_decisions.get(it, "")
+        emoji = decision_emoji.get(decision, "❓")
+
+        lines.append(f"| {it} | {what} | {hypothesis or '—'} | {length} | {score} | {emoji} |")
+
+    if len(lines) <= 3:
+        return ""
+    lines.append("\n预判列连续 ≥ 3 轮 ❌ → 当前方向大概率错误，应考虑 Level 3 重建。")
+    return "\n".join(lines)
+
+
 def _environment_summary(environment_card_md):
     """Keep task and interface facts needed to interpret reward code.
 
@@ -74,7 +160,7 @@ def _compact_route_context(cfg, environment_card_md, expert_context_md=""):
     return "\n".join(compact)
 
 
-def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md="", cfg=None, expert_context_md=""):
+def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md="", cfg=None, expert_context_md="", cumulative_record="", is_rebuild=False):
     """Assemble the reflection agent's user prompt — focused, no generic templates."""
     parts = []
 
@@ -85,38 +171,53 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environm
 
     target_score = float((cfg or {}).get("iteration", {}).get("target_score", 0.0))
     current_score = float(prev_score) if prev_score != "?" else None
+
+    if is_rebuild:
+        parts.append(
+            "# ⚠️ REBUILD MODE\n"
+            "系统接受了你的 Level 3 重建建议。你不是在修改上一轮代码——你是在基于全部历史设计新骨架。\n"
+            "参考 #6 完整公式算子库选新的主信号框架，基于 #3 累积记录避开已失败的路径。\n"
+            "不要受上一轮代码结构约束。\n"
+        )
+
     if target_score > 0 and current_score is not None:
         gap = target_score - current_score
         ratio = current_score / target_score
         parts.append(
-            "# Search objective\n"
+            "# 1. Search objective\n"
             f"- target_score: {target_score:.6f}\n"
             f"- current_score: {current_score:.6f}\n"
             f"- gap_to_target: {gap:.6f}\n"
-            f"- target_achievement_ratio: {ratio:.3%}\n"
-            "Use the target only to judge search progress. Do not reverse-engineer or reproduce an official reward formula."
+            f"- target_achievement_ratio: {ratio:.3%}"
         )
 
-    parts.append(f"# 上一轮奖励函数代码（该轮得分: {prev_score}）\n```python\n{previous_code.strip()}\n```")
+    parts.append(f"# 2. 上一轮奖励函数代码（该轮得分: {prev_score}）\n```python\n{previous_code.strip()}\n```")
 
-    if False:  # 历史最佳代码已移除，用历史记忆表格替代
-        pass
+    if cumulative_record:
+        parts.append(cumulative_record)
+    else:
+        parts.append("# 3. 累积迭代记录\n（第一轮反思，无历史记录）")
 
-    parts.append(f"# 训练反馈（上一轮代码的训练结果）\n{feedback_md}")
+    parts.append(f"# 4. 训练反馈\n{feedback_md}")
 
     environment_summary = _environment_summary(environment_card_md)
     if environment_summary:
         parts.append(
-            "# 环境事实与专家任务画像（只据此理解任务和变量，不猜测环境名称）\n"
+            "# 5. 环境事实（只据此理解任务和变量，不猜测环境名称）\n"
             f"{environment_summary}"
         )
 
-    route_context = _compact_route_context(cfg or {}, environment_card_md, expert_context_md)
-    if route_context:
-        parts.append(f"# Compact expert route context\n{route_context}")
+    if is_rebuild:
+        # Full expert context for rebuild
+        if expert_context_md:
+            parts.append(f"# 6. Formula Operator Library（完整版，用于 Level 3 重建）\n{expert_context_md}")
+    else:
+        route_context = _compact_route_context(cfg or {}, environment_card_md, expert_context_md)
+        if route_context:
+            parts.append(f"# 6. Formula switching guide\n{route_context}")
 
     if memory_md:
-        parts.append(f"# 历史记忆\n{memory_md}")
+        parts.append(f"# 7. 历史记忆\n{memory_md}")
 
     return "\n\n".join(parts)
 
@@ -229,6 +330,20 @@ def _run_tool_call(tool_call):
     return args, result
 
 
+def _parse_agent_level(response_text):
+    """Extract the agent's Level decision from its response.
+
+    Returns (level_int, level_line) where level_int is 1/2/3 or None if unparseable.
+    """
+    m = re.search(r"\*\*level\*\*:\s*Level\s*(\d)", response_text, re.IGNORECASE)
+    if m:
+        return int(m.group(1)), m.group(0).strip()
+    # Fallback: check for "Level 3" anywhere in the text
+    if re.search(r"Level\s*3", response_text, re.IGNORECASE):
+        return 3, "Level 3 (detected from text)"
+    return None, ""
+
+
 def run_reflection_agent(
     config_path,
     previous_reward_path,
@@ -241,6 +356,7 @@ def run_reflection_agent(
     mock=False,
     validation_retry=None,
     duplicate_retry=None,
+    is_rebuild=False,
 ):
     cfg = load_config(config_path)
     ablation_cfg = cfg.get("ablation", {})
@@ -281,6 +397,26 @@ def run_reflection_agent(
     if best_reward_path and Path(best_reward_path).exists():
         best_code = read_text(best_reward_path)
 
+    # Generate cumulative record from all previous iterations
+    cumulative_record = ""
+    if not validation_retry:  # skip for pure code-fix retries
+        # Extract iter number from out_run_name like "paper_ant_v6/seed_0/iter_07/generation"
+        m_iter = re.search(r"/iter_(\d+)/", out_run_name)
+        current_iter = int(m_iter.group(1)) if m_iter else 1
+        # Extract prefix and seed from out_run_name
+        # Format: {prefix}/seed_{N}/iter_{M}/generation
+        parts = out_run_name.split("/")
+        prefix = parts[0] if len(parts) > 0 else ""
+        seed_str = ""
+        for p in parts:
+            if p.startswith("seed_"):
+                seed_str = p.replace("seed_", "")
+                break
+        if prefix and seed_str and current_iter > 1:
+            cumulative_record = _build_cumulative_record(
+                cfg["experiment"]["run_root"], prefix, seed_str, current_iter, memory_md
+            )
+
     if duplicate_retry:
         duplicate_draft_path = run_dir / f"reward_{reward_version}.py"
         duplicate_draft = read_text(duplicate_draft_path) if duplicate_draft_path.exists() else ""
@@ -293,7 +429,7 @@ def run_reflection_agent(
             "Return a complete reward function whose executable code is materially different from every historical reward. "
             "Do not merely rename variables or comments.\n\n"
             f"# Rejected duplicate draft\n```python\n{duplicate_draft}\n```\n\n"
-        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md)
+        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, is_rebuild)
     elif validation_retry:
         failed_draft_path = run_dir / f"reward_{reward_version}.md"
         failed_draft = read_text(failed_draft_path) if failed_draft_path.exists() else ""
@@ -303,9 +439,9 @@ def run_reflection_agent(
             "这是代码格式修复，不要重新诊断、不要调用工具、不要改变原定修改方向。"
             "直接输出修复后的完整 Python 代码。\n\n"
             f"# 被截断或无效的上一版草稿\n{failed_draft}\n\n"
-        ) + build_user_prompt(feedback_md, "", previous_code, best_code, environment_card_md, cfg)
+        ) + build_user_prompt(feedback_md, "", previous_code, best_code, environment_card_md, cfg, "", cumulative_record, False)
     else:
-        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md)
+        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, is_rebuild)
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_reflection_agent.input.md", user_prompt)
     record_prompt(run_dir, "agent_reflection", system_prompt, user_prompt)
@@ -346,7 +482,7 @@ def run_reflection_agent(
 
         try:
             resp = client.completion(
-                model=llm_cfg["model_reward"],
+                model=llm_cfg.get("model_reflection", llm_cfg["model_reward"]),
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -394,6 +530,7 @@ def main():
     ap.add_argument("--reward-version", default="v2")
     ap.add_argument("--validation-retry", default=None)
     ap.add_argument("--duplicate-retry", default=None)
+    ap.add_argument("--rebuild", action="store_true")
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
 
@@ -409,6 +546,7 @@ def main():
         mock=args.mock,
         validation_retry=args.validation_retry,
         duplicate_retry=args.duplicate_retry,
+        is_rebuild=args.rebuild,
     )
 
 

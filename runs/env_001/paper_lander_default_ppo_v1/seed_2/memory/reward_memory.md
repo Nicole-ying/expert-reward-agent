@@ -8,3 +8,4 @@
 | 4 | distance_progress + landing_approach + stability_penalty | 73.07 | 73.07 | 0.00 | 414.05 | distance_progress=0.005 landing_approach=0.208 stability_penalty=-0.003 | new_best |
 | 5 | distance_progress + landing_approach + stability_penalty + time_penalty | 278.05 | 278.05 | 0.00 | 231.30 | distance_progress=0.005 landing_approach=0.223 stability_penalty=-0.002 time_penalty=-0.020 | target_solved_new_best |
 | 6 | distance_progress + landing_approach + stability_penalty + time_penalty | 278.05 | 278.05 | 0.00 | 231.30 | distance_progress=0.005 landing_approach=0.223 stability_penalty=-0.002 time_penalty=-0.020 | target_solved_no_improvement |
+| 7 | distance_progress + engine_penalty + landing_approach + stability_penalty + time_penalty | 210.91 | 278.05 | -67.14 | 293.25 | distance_progress=0.011 engine_penalty=-0.007 landing_approach=0.161 stability_penalty=-0.005 time_penalty=-0.020 | stop_solved_no_improvement_keep_best |
