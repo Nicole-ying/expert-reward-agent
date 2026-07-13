@@ -1,0 +1,47 @@
+{
+  "call_count": 2,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "bipedal walker unstable gait early falling action energy penalty missing efficiency"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## early_failure_or_crash\n- 症状：external score 极负（<-100），episode length 很短（<150），提前终止比例 > 50%。\n- 修复：增加密集的 safe altitude/approach 信号；大幅降低稳定性惩罚。关联技法 bounded_continuous_proxy, penalty_magnitude_control。\n---\n## locomotion_energy_domination\n- 症状：能耗或动作惩罚绝对累计贡献过大，策略动作幅度很小且前进不足。\n- 原理：完成任务前过早优化控制成本会抑制步态探索。\n- 修复：Level 1降低单一动作代价；若仍失败，Level 2将代价门控到已具备前进能力的阶段。事件、状态值和逐步差分不能套用同一固定ratio阈值。"
+        },
+        {
+          "round": 1,
+          "name": "get_skeleton_detail",
+          "arguments": {
+            "skeleton_name": "progress_delta_reward"
+          },
+          "result": "NOTE: Skeleton coefficients and ratio ranges are legacy starting points, not universal constraints.\n## progress_delta_reward\n- 数学形态: delta = d(current, goal) - d(next, goal); reward = delta * scale\n- 设计原理: 每一步向目标靠近即奖励，天然有正有负。比 distance_reward 更直接反映动作效果，不会像 distance_reward 那样远距离数值爆炸。\n- 常见陷阱: 目标附近易震荡（delta 正负交替）；若 scale 过大可能主导所有信号。\n- 推荐配合: 配合 clip(delta, -0.5, 0.5) 或改用 proximity=1/(1+5*dist)。scale 需要根据环境尺度和最终策略统计验证。对同为dense逐步信号的早期学习阶段，可用 penalty/progress 约0.1（主学习信号约为惩罚10倍）作为v6经验起点，再由外部行为验证；不适用于事件奖励或不同时间语义的组件。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "bipedal walker unstable gait early falling action energy penalty missing efficiency"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## early_failure_or_crash\n- 症状：external score 极负（<-100），episode length 很短（<150），提前终止比例 > 50%。\n- 修复：增加密集的 safe altitude/approach 信号；大幅降低稳定性惩罚。关联技法 bounded_continuous_proxy, penalty_magnitude_control。\n---\n## locomotion_energy_domination\n- 症状：能耗或动作惩罚绝对累计贡献过大，策略动作幅度很小且前进不足。\n- 原理：完成任务前过早优化控制成本会抑制步态探索。\n- 修复：Level 1降低单一动作代价；若仍失败，Level 2将代价门控到已具备前进能力的阶段。事件、状态值和逐步差分不能套用同一固定ratio阈值。"
+    },
+    {
+      "round": 1,
+      "name": "get_skeleton_detail",
+      "arguments": {
+        "skeleton_name": "progress_delta_reward"
+      },
+      "result": "NOTE: Skeleton coefficients and ratio ranges are legacy starting points, not universal constraints.\n## progress_delta_reward\n- 数学形态: delta = d(current, goal) - d(next, goal); reward = delta * scale\n- 设计原理: 每一步向目标靠近即奖励，天然有正有负。比 distance_reward 更直接反映动作效果，不会像 distance_reward 那样远距离数值爆炸。\n- 常见陷阱: 目标附近易震荡（delta 正负交替）；若 scale 过大可能主导所有信号。\n- 推荐配合: 配合 clip(delta, -0.5, 0.5) 或改用 proximity=1/(1+5*dist)。scale 需要根据环境尺度和最终策略统计验证。对同为dense逐步信号的早期学习阶段，可用 penalty/progress 约0.1（主学习信号约为惩罚10倍）作为v6经验起点，再由外部行为验证；不适用于事件奖励或不同时间语义的组件。"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "call_count": 2,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "velocity penalty proximity gate too narrow agent crashes near target because deceleration feedback only activates very close"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## distance_gated_constraint\n- 症状：远离目标时惩罚阻碍 agent 靠近，episode 长但无进展。\n- 原理：远处需要大动作，不应施加精细约束。用距离门控让惩罚只在目标区生效。\n- 修复：penalty *= max(0, 1 - dist/gate_radius)。gate_radius 取初始距离的 30%~50%。\n---\n## goal_near_oscillation\n- 症状：progress 正常，episode 长（>800），landing proxy 触发率 < 10%。\n- 修复：添加连续 low-speed+low-angle+proximity 乘积 shaping。关联技法 bounded_continuous_proxy, anti_oscillation_potential。"
+        },
+        {
+          "round": 1,
+          "name": "get_reward_transformation",
+          "arguments": {
+            "query": "global_to_local_gate proximity activation radius too narrow"
+          },
+          "result": "## global_to_local_gate\n- diagnosis: A precision, safety, or stability constraint interferes with exploration in states where it is not yet relevant.\n- transform: Gate the constraint by a task-relevant phase or continuous relevance factor, so it becomes strong only where the behavior matters.\n- why: The policy can explore globally and optimize precision locally.\n- risks: A hard or narrow gate can make the constraint unreachable or discontinuous.\n- verify_next_round: Action suppression should fall outside the relevant region while local safety or precision improves.\n---\n## sparse_to_dense\n- diagnosis: A task-relevant component is rarely active and the policy receives little local evidence before success or failure.\n- transform: Replace or supplement a hard event with a continuous progress, proximity, or quality signal computed from declared observations.\n- why: This improves reachability and temporal credit assignment; it does not create a differentiable path through the environment.\n- risks: A dense proxy can become an easier objective than task completion.\n- verify_next_round: Active rate should rise, early failures should fall, and external score should improve without long high-reward non-completing episodes.\n---\n## proxy_to_completion_alignment\n- diagnosis: Generated reward is high but external completion remains poor, indicating a proxy-optimal behavior.\n- transform: Tighten the proxy using missing completion dimensions, convert persistent proxy value to progress, or add a reliable completion transition signal.\n- why: The easiest way to maximize the proxy should become closer to the actual task objective.\n- risks: Adding too many conditions can make the signal unreachable.\n- verify_next_round: Proxy magnitude may fall, but external score, completion, or terminal quality should improve."
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "velocity penalty proximity gate too narrow agent crashes near target because deceleration feedback only activates very close"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## distance_gated_constraint\n- 症状：远离目标时惩罚阻碍 agent 靠近，episode 长但无进展。\n- 原理：远处需要大动作，不应施加精细约束。用距离门控让惩罚只在目标区生效。\n- 修复：penalty *= max(0, 1 - dist/gate_radius)。gate_radius 取初始距离的 30%~50%。\n---\n## goal_near_oscillation\n- 症状：progress 正常，episode 长（>800），landing proxy 触发率 < 10%。\n- 修复：添加连续 low-speed+low-angle+proximity 乘积 shaping。关联技法 bounded_continuous_proxy, anti_oscillation_potential。"
+    },
+    {
+      "round": 1,
+      "name": "get_reward_transformation",
+      "arguments": {
+        "query": "global_to_local_gate proximity activation radius too narrow"
+      },
+      "result": "## global_to_local_gate\n- diagnosis: A precision, safety, or stability constraint interferes with exploration in states where it is not yet relevant.\n- transform: Gate the constraint by a task-relevant phase or continuous relevance factor, so it becomes strong only where the behavior matters.\n- why: The policy can explore globally and optimize precision locally.\n- risks: A hard or narrow gate can make the constraint unreachable or discontinuous.\n- verify_next_round: Action suppression should fall outside the relevant region while local safety or precision improves.\n---\n## sparse_to_dense\n- diagnosis: A task-relevant component is rarely active and the policy receives little local evidence before success or failure.\n- transform: Replace or supplement a hard event with a continuous progress, proximity, or quality signal computed from declared observations.\n- why: This improves reachability and temporal credit assignment; it does not create a differentiable path through the environment.\n- risks: A dense proxy can become an easier objective than task completion.\n- verify_next_round: Active rate should rise, early failures should fall, and external score should improve without long high-reward non-completing episodes.\n---\n## proxy_to_completion_alignment\n- diagnosis: Generated reward is high but external completion remains poor, indicating a proxy-optimal behavior.\n- transform: Tighten the proxy using missing completion dimensions, convert persistent proxy value to progress, or add a reliable completion transition signal.\n- why: The easiest way to maximize the proxy should become closer to the actual task objective.\n- risks: Adding too many conditions can make the signal unreachable.\n- verify_next_round: Proxy magnitude may fall, but external score, completion, or terminal quality should improve."
+    }
+  ]
+}

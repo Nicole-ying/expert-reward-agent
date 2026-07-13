@@ -1,0 +1,47 @@
+{
+  "call_count": 2,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "agent crashes at high speed before landing, no soft landing approach guidance, velocity penalty needed during descent phase"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。\n---\n## penalty_magnitude_control\n- 症状：最终策略中某个持续惩罚的绝对累计量明显压过同时间语义的主学习信号，且 external score 差、agent 可能不动。历史经验中，dense penalty 的 `ratio_to_progress` 绝对值超过约 0.5 是值得优先检查的预警线，不是通用判定线。\n- 原理：惩罚信号主导时，agent 为避免惩罚而选择不行动。惩罚应是方向盘，不是刹车。\n- 修复：降低该惩罚系数（至少10倍），或改为距离门控（只在目标附近生效），或用平滑 bounded 函数代替线性惩罚。"
+        },
+        {
+          "round": 1,
+          "name": "get_reward_transformation",
+          "arguments": {
+            "query": "global_to_local_gate for velocity penalty during landing approach"
+          },
+          "result": "## global_to_local_gate\n- diagnosis: A precision, safety, or stability constraint interferes with exploration in states where it is not yet relevant.\n- transform: Gate the constraint by a task-relevant phase or continuous relevance factor, so it becomes strong only where the behavior matters.\n- why: The policy can explore globally and optimize precision locally.\n- risks: A hard or narrow gate can make the constraint unreachable or discontinuous.\n- verify_next_round: Action suppression should fall outside the relevant region while local safety or precision improves.\n---\n## unbounded_to_bounded\n- diagnosis: A component has unstable scale, extreme values, or sensitivity to raw environment units.\n- transform: Normalize the input by a meaningful range and use clipping, tanh, exponential decay, or another bounded output form.\n- why: Bounding limits numerical dominance and makes coefficients easier to interpret.\n- risks: Premature saturation can remove useful distinctions; the input scale still matters.\n- verify_next_round: Magnitude share and score variance should stabilize while relevant states remain distinguishable.\n---\n## state_to_improvement\n- diagnosis: A policy can remain in a rewarding state, hover, stall, or farm a persistent state bonus without completing the task.\n- transform: Replace a persistent state value q(s_next) with an improvement q(s_next)-q(s), or use a valid potential difference when appropriate.\n- why: The reward is paid for becoming better rather than for occupying the same proxy-optimal state repeatedly.\n- risks: Pure improvement rewards may not maintain a desirable terminal state and can oscillate if the quality function is poorly chosen.\n- verify_next_round: Long non-completing episodes and persistent proxy accumulation should decrease while completion or terminal quality improves."
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "agent crashes at high speed before landing, no soft landing approach guidance, velocity penalty needed during descent phase"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。\n---\n## penalty_magnitude_control\n- 症状：最终策略中某个持续惩罚的绝对累计量明显压过同时间语义的主学习信号，且 external score 差、agent 可能不动。历史经验中，dense penalty 的 `ratio_to_progress` 绝对值超过约 0.5 是值得优先检查的预警线，不是通用判定线。\n- 原理：惩罚信号主导时，agent 为避免惩罚而选择不行动。惩罚应是方向盘，不是刹车。\n- 修复：降低该惩罚系数（至少10倍），或改为距离门控（只在目标附近生效），或用平滑 bounded 函数代替线性惩罚。"
+    },
+    {
+      "round": 1,
+      "name": "get_reward_transformation",
+      "arguments": {
+        "query": "global_to_local_gate for velocity penalty during landing approach"
+      },
+      "result": "## global_to_local_gate\n- diagnosis: A precision, safety, or stability constraint interferes with exploration in states where it is not yet relevant.\n- transform: Gate the constraint by a task-relevant phase or continuous relevance factor, so it becomes strong only where the behavior matters.\n- why: The policy can explore globally and optimize precision locally.\n- risks: A hard or narrow gate can make the constraint unreachable or discontinuous.\n- verify_next_round: Action suppression should fall outside the relevant region while local safety or precision improves.\n---\n## unbounded_to_bounded\n- diagnosis: A component has unstable scale, extreme values, or sensitivity to raw environment units.\n- transform: Normalize the input by a meaningful range and use clipping, tanh, exponential decay, or another bounded output form.\n- why: Bounding limits numerical dominance and makes coefficients easier to interpret.\n- risks: Premature saturation can remove useful distinctions; the input scale still matters.\n- verify_next_round: Magnitude share and score variance should stabilize while relevant states remain distinguishable.\n---\n## state_to_improvement\n- diagnosis: A policy can remain in a rewarding state, hover, stall, or farm a persistent state bonus without completing the task.\n- transform: Replace a persistent state value q(s_next) with an improvement q(s_next)-q(s), or use a valid potential difference when appropriate.\n- why: The reward is paid for becoming better rather than for occupying the same proxy-optimal state repeatedly.\n- risks: Pure improvement rewards may not maintain a desirable terminal state and can oscillate if the quality function is poorly chosen.\n- verify_next_round: Long non-completing episodes and persistent proxy accumulation should decrease while completion or terminal quality improves."
+    }
+  ]
+}

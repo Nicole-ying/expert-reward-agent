@@ -2,7 +2,7 @@
 
 - prefix: ablation_unconstrained_v1
 - seed: 0
-- rounds_completed: 5
+- rounds_completed: 10
 - target_score: 200.000
 - best_iter: 3
 - best_score: 121.869

@@ -1,0 +1,290 @@
+# ⚠️ 上一版代码验证失败
+错误信息：Reward v3 failed validation: 代码无法解析 AST: invalid character '：' (U+FF1A) (<unknown>, line 5) (record: runs\env_001\ablation_unconstrained_v4\seed_0\iter_03\generation\validations\reward_v3.validation.json)
+这是代码格式修复，不要重新诊断、不要调用工具、不要改变原定修改方向。直接输出修复后的完整 Python 代码。
+
+# 被截断或无效的上一版草稿
+## 诊断分析
+
+### 1. Agent 发生了什么？
+
+**核心问题：settle_reward 被"农场化"（farming）。**
+
+证据链：
+- **settle_reward 占比 90%**（magnitude_share），每 episode 累积 +1371，完全压倒其他信号。
+- **progress_delta 近乎死亡**（0.1% 份额，episode_sum_mean 仅 1.24）。agent 不再被距离变化引导。
+- **episode 平均长度 743 步**，7/20 被截断（timeout）。agent 学会在目标附近悬停，每步收集 settle_reward（~1.85/步），而不是完成着陆。
+- **13/20 terminate**（机体休眠=着陆成功），说明 agent *会*着陆，但效率极低——它被奖励函数训练成"靠近目标后尽可能拖延"。
+
+数学上，settle_reward = 2.0 × prox_gate × (vf + af + cf) 是一个**每步加性的绝对状态奖励**。只要 agent 保持"还算近、还算慢、还算正"的状态，每步都能获得正值，形成"悬停收集"策略。这是 `goal_near_oscillation` 模式的典型表现。
+
+### 2. 最值得干预的组件：settle_reward
+
+它是唯一主导项（90%），且数学形态（绝对状态值的每步加性奖励）直接导致了 farming。progress_delta 只是因为被淹没而显得小——一旦 settle 不再 farmable，progress 需要接管引导职责。
+
+### 3. 上一轮修改回顾
+
+Iter 1 → Iter 2：将 settle 从 product 形式改为 sum 形式（为了 denser signal），添加了 velocity_damping 和 orientation_penalty。结果：crash 问题解决（len 68→743），但引入了 farming（太长、太多 timeout）。现在是时候修正 farming 问题。
+
+### 修改方案
+
+**settle_reward → settle_delta**：将 settle 从"绝对状态奖励"改为"着陆质量改善奖励"。每步奖励 = w × Δquality。这从根本上消除 farming——在原地不动给出零奖励，只有向更好着陆状态前进才有奖励。一旦完全着陆，环境自动终止。
+
+配套调整：
+- **progress_delta 权重 1.0→3.0**：接管主要引导职责
+- **distance_penalty 0.3→0.5**：适度加强基线拉力
+- **proximity gate 陡度 5.0→7.0**：让 settle 信号更集中在真正接近时
+- **settle 权重从 2.0→8.0**：delta 形式总积累有限（约 quality_range×weight），需要更大权重来提供足够的学习信号
+
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    """
+    Reward function for 2D lander navigation to target platform.
+
+    Key change from previous: settle_delta replaces absolute settle_reward.
+    Settle quality improvement is rewarded per-step; holding steady gives zero.
+    This prevents the "hover and farm" strategy seen with per-step absolute settle.
+    """
+    # Previous state
+    px, py, pvx, pvy, pangle, pang_vel, pleft_contact, pright_contact = obs
+    # Next state (result of action)
+    nx, ny, nvx, nvy, nangle, nang_vel, nleft_contact, nright_contact = next_obs
+
+    # --- Distances ---
+    prev_distance = (px ** 2 + py ** 2) ** 0.5
+    curr_distance = (nx ** 2 + ny ** 2) ** 0.5
+
+    # --- Speeds ---
+    prev_speed = (pvx ** 2 + pvy ** 2) ** 0.5
+    curr_speed = (nvx ** 2 + nvy ** 2) ** 0.5
+
+    # --- Proximity gate (tighter than before: k=7.0) ---
+    k_prox = 7.0
+    prev_prox = 1.0 / (1.0 + k_prox * prev_distance)
+    curr_prox = 1.0 / (1.0 + k_prox * curr_distance)
+
+    # --- Settle quality factors (previous state) ---
+    prev_velocity_factor = 1.0 / (1.0 + 3.0 * prev_speed)
+    prev_angle_factor = 1.0 / (1.0 + 3.0 * abs(pangle))
+    prev_contact_factor = 0.5 * (pleft_contact + pright_contact)
+    prev_quality = prev_prox * (prev_velocity_factor + prev_angle_factor + prev_contact_factor)
+
+    # --- Settle quality factors (current state) ---
+    curr_velocity_factor = 1.0 / (1.0 + 3.0 * curr_speed)
+    curr_angle_factor = 1.0 / (1.0 + 3.0 * abs(nangle))
+    curr_contact_factor = 0.5 * (nleft_contact + nright_contact)
+    curr_quality = curr_prox * (curr_velocity_factor + curr_angle_factor + curr_contact_factor)
+
+    # ============================================================
+    # Component A: progress_delta (primary approach guidance)
+    # ============================================================
+    # Positive when moving toward target, negative when moving away.
+    w_progress = 3.0
+    progress_reward = w_progress * (prev_distance - curr_distance)
+
+    # ============================================================
+    # Component B: distance_penalty (steady baseline pull)
+    # ============================================================
+    w_dist = 0.5
+    distance_penalty = -w_dist * curr_distance
+
+    # ============================================================
+    # Component C: velocity_damping (proximity-gated speed penalty)
+    # ============================================================
+    w_vel = 1.5
+    velocity_damping = -w_vel * curr_prox * curr_speed
+
+    # ============================================================
+    # Component D: settle_delta (improvement in landing quality)
+    # ============================================================
+    # Rewards *improvement* in settle quality, not absolute state.
+    # Zero when holding steady — eliminates the "hover and farm" strategy.
+    # Quality ranges from ~0 (far, fast, tilted) to ~3 (landed perfectly).
+    w_settle = 8.0
+    settle_delta = w_settle * (curr_quality - prev_quality)
+
+    # ============================================================
+    # Component E: orientation_penalty (proximity-gated tilt penalty)
+    # ============================================================
+    w_orient = 0.5
+    w_angvel = 0.15
+    orientation_penalty = -w_orient * curr_prox * (nangle ** 2 + w_angvel * nang_vel ** 2)
+
+    # ============================================================
+    # Component F: engine_penalty (fuel efficiency)
+    # ============================================================
+    w_engine = 0.05
+    engine_penalty = -w_engine if action != 0 else 0.0
+
+    # --- Total ---
+    total_reward = (
+
+
+# Search objective
+- target_score: 200.000000
+- current_score: 108.116443
+- gap_to_target: 91.883557
+- target_achievement_ratio: 54.058%
+Use the target only to judge search progress. Do not reverse-engineer or reproduce an official reward formula.
+
+# 上一轮奖励函数代码（该轮得分: 108.116443）
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    """
+    Reward function for 2D lander navigation to a target platform.
+    Key changes from previous version:
+      - settle_proxy: product -> sum of independent factors (denser signal)
+      - new velocity_damping: proximity-gated speed penalty to prevent crash
+      - reduced distance penalty weight to avoid dominating other signals
+    """
+    # Previous state (for delta calculations)
+    px, py, pvx, pvy, pangle, pang_vel, pleft_contact, pright_contact = obs
+    # Next state (result of action)
+    nx, ny, nvx, nvy, nangle, nang_vel, nleft_contact, nright_contact = next_obs
+
+    # --- Shared helpers ---
+    prev_distance = (px ** 2 + py ** 2) ** 0.5
+    curr_distance = (nx ** 2 + ny ** 2) ** 0.5
+    speed = (nvx ** 2 + nvy ** 2) ** 0.5
+
+    # proximity gate: ~1 when close to target, decays with distance
+    k_prox = 5.0
+    proximity_gate = 1.0 / (1.0 + k_prox * curr_distance)
+
+    # --- Component A: progress_to_goal (delta-distance) ---
+    # Reward moving toward target, penalize moving away.
+    # Positive when distance decreases.
+    w_progress = 1.0
+    progress_reward = w_progress * (prev_distance - curr_distance)
+
+    # --- Component B: distance_penalty (small steady pull toward target) ---
+    # Prevents loitering far away; kept small to not dominate.
+    w_dist = 0.3
+    distance_penalty = -w_dist * curr_distance
+
+    # --- Component C: velocity_damping (proximity-gated) ---
+    # Penalise high speed, scaled by proximity: strong near target, weak far away.
+    # This is the key signal to prevent crash landings.
+    w_vel = 1.5
+    velocity_damping = -w_vel * proximity_gate * speed
+
+    # --- Component D: settle_reward (sum of independent factors) ---
+    # Each factor rewards one aspect of a good landing.
+    # Using SUM instead of PRODUCT so partial progress gives partial reward.
+    velocity_factor = 1.0 / (1.0 + 3.0 * speed)       # ~1 when slow
+    angle_factor = 1.0 / (1.0 + 3.0 * abs(nangle))    # ~1 when upright
+    contact_factor = 0.5 * (nleft_contact + nright_contact)  # ~1 when both legs down
+
+    # Gate by proximity: settle bonuses only matter when near the platform
+    w_settle = 2.0
+    settle_reward = w_settle * proximity_gate * (velocity_factor + angle_factor + contact_factor)
+
+    # --- Component E: orientation_penalty (proximity-gated) ---
+    # Penalise tilt and rotation, stronger near target.
+    k_gate = 5.0
+    orient_gate = 1.0 / (1.0 + k_gate * curr_distance)
+    w_orient = 0.5
+    w_angvel = 0.15
+    orientation_penalty = -w_orient * orient_gate * (nangle ** 2 + w_angvel * nang_vel ** 2)
+
+    # --- Component F: engine_efficiency ---
+    # Small penalty for any engine use to encourage fuel efficiency.
+    w_engine = 0.05
+    engine_penalty = -w_engine if action != 0 else 0.0
+
+    # --- Total ---
+    total_reward = (
+        progress_reward
+        + distance_penalty
+        + velocity_damping
+        + settle_reward
+        + orientation_penalty
+        + engine_penalty
+    )
+
+    components = {
+        "progress_delta": float(progress_reward),
+        "distance_penalty": float(distance_penalty),
+        "velocity_damping": float(velocity_damping),
+        "settle_reward": float(settle_reward),
+        "orientation_penalty": float(orientation_penalty),
+        "engine_penalty": float(engine_penalty),
+    }
+
+    return float(total_reward), components
+```
+
+# 训练反馈（上一轮代码的训练结果）
+# Training Feedback
+
+## Final-policy outcome
+score=108.116443, len=743.300000, terminated=13/20, truncated=7/20, reward_errors=0
+score_range=[-39.175074, 241.716908]
+
+## Final-policy reward composition
+
+These statistics come from the same fixed evaluation episodes as `score`. Shares describe observed reward composition, not causal influence.
+
+| component | episode_sum_mean | signed_share | magnitude_share | active_rate |
+|---|---:|---:|---:|---:|
+| settle_reward | 1371.660417 | 90.0% | 90.0% | 100.0% |
+| distance_penalty | -65.745510 | -4.3% | 4.3% | 100.0% |
+| velocity_damping | -51.630633 | -3.4% | 3.4% | 99.9% |
+| engine_penalty | -32.910000 | -2.2% | 2.2% | 88.6% |
+| progress_delta | 1.240063 | 0.1% | 0.1% | 98.8% |
+| orientation_penalty | -0.762181 | -0.1% | 0.1% | 100.0% |
+
+## Evaluation distribution
+- fixed_eval_seeds: 10000..10019
+- early_terminal (<150 steps and score<-50): 0/20
+- training_reward_errors_max: 0
+- full_training_distribution_stats: component_stats.md / training_summary.json (not primary reflection evidence)
+
+
+# 环境事实与专家任务画像（只据此理解任务和变量，不猜测环境名称）
+## 1. 任务目标
+本任务是 **2D 飞行器着陆控制**：一个搭载主推进器与姿态推进器的刚体从视口顶部附近出发，必须在最短时间内飞向并稳定停靠在画面中央的目标平台上，且尽可能少地使用引擎推力。  
+主要目标：**到达目标位置并安全、稳定地着陆**（接近目标、减小速度、保持直立姿态、双腿接触平台）。  
+次要目标：耗费更少的燃料（即减少不必要的引擎动作），并尽可能快地完成着陆。  
+不该混淆的目标：纯粹的速度最小化或仅追求时间最短而不考虑着陆稳定性。
+
+## 3. 观察空间 observation_space
+- type: Box
+- shape: (8,)
+- dtype: float32（推断）
+- obs[0]: x_position – 相对于目标平台的水平坐标，reward_usable: true
+- obs[1]: y_position – 相对于目标平台高度的垂直坐标，reward_usable: true
+- obs[2]: x_velocity – 水平线速度，reward_usable: true
+- obs[3]: y_velocity – 垂直线速度，reward_usable: true
+- obs[4]: body_angle – 机体倾斜角度，reward_usable: true
+- obs[5]: angular_velocity – 角速度，reward_usable: true
+- obs[6]: left_support_contact – 左支撑腿接触标志（1.0 接触，0.0 未接触），reward_usable: true
+- obs[7]: right_support_contact – 右支撑腿接触标志（1.0 接触，0.0 未接触），reward_usable: true
+
+## 4. 动作空间 action_space
+- type: Discrete
+- n: 4
+- action/action_dim 0: no_engine（无任何引擎推力）
+- action/action_dim 1: left_orientation_engine（启动左侧姿态引擎，施加旋转冲量）
+- action/action_dim 2: main_engine（启动主引擎，产生纵向推力）
+- action/action_dim 3: right_orientation_engine（启动右侧姿态引擎，施加反向旋转冲量）
+
+## 5. step 与终止条件分析
+### 5.1 终止模式
+- **success-like termination:** `body_not_awake_or_settled`（机体停止运动/休眠，通常意味着已经稳定着陆在目标平台上）。
+- **failure-like termination:** `crash_or_body_contact`（发生碰撞或除双腿外其他部位接触地面），`horizontal_position_outside_viewport`（水平位置飞出视口边界）。
+- **ambiguous termination:** 无。
+- **truncation:** 源码未显式提供截断，但环境可能带有默认的最大回合步数，其信息未在给出的 step 源码中体现，暂视为不存在。
+
+### 5.2 success/failure 信号可用性
+- explicit_success_flag_available: false
+- explicit_failure_flag_available: false
+- allowed_info_fields: 当前 step 源码返回空字典 `{}`
+- forbidden_or_uncertain_info_fields: 所有 info 字段均不可用（不存在）
+
+## 7. 可用于奖励函数的信号
+- **position:** x_position, y_position（均为相对于目标的坐标，接近零时表示已到达）
+- **velocity:** x_velocity, y_velocity（用于抑制速度，特别是在着陆阶段）
+- **orientation:** body_angle, angular_velocity（用于抑制滚动与倾斜）
+- **contact:** left_support_contact, right_support_contact（标志是否已安全落在平台上）
+- **action/engine:** action index（可区分是否启动引擎、哪一个引擎，以便进行燃料惩罚）
+- **other:** 可从组合状态中提取“着陆成功”的复合特征（位置近零、速度极小、角度极小、双腿均接触）

@@ -9,3 +9,6 @@
 | 5 | landing_proxy + progress_reward + stability_penalty | -107.40 | 121.87 | -229.27 | 68.50 | landing_proxy=0.033 progress_reward=0.318 stability_penalty=-0.021 | no_meaningful_improvement |
 | 6 | distance_reward + landing_proxy + stability_penalty | -64.50 | 121.87 | -186.37 | 951.00 | distance_reward=0.698 landing_proxy=2.241 stability_penalty=-0.020 | unsolved_high_achievement_continue_from_best |
 | 7 | landing_proxy + progress_reward + proximity_reward + stability_penalty | -24.24 | 121.87 | -146.11 | 1000.00 | landing_proxy=4.047 progress_reward=0.026 proximity_reward=0.215 stability_penalty=-0.009 | no_meaningful_improvement |
+| 8 | landing_proxy + progress_reward + proximity_reward + stability_penalty | -35.35 | 121.87 | -157.22 | 817.55 | landing_proxy=3.685 progress_reward=0.044 proximity_reward=0.065 stability_penalty=-0.017 | no_meaningful_improvement |
+| 9 | landing_proxy + progress_reward + proximity_reward + stability_penalty | -98.08 | 121.87 | -219.95 | 1000.00 | landing_proxy=10.201 progress_reward=0.005 proximity_reward=0.333 stability_penalty=-0.021 | unsolved_high_achievement_continue_from_best |
+| 10 | landing_proxy + progress_reward + stability_penalty | 0.16 | 121.87 | -121.71 | 963.10 | landing_proxy=3.778 progress_reward=0.017 stability_penalty=-0.018 | no_meaningful_improvement |

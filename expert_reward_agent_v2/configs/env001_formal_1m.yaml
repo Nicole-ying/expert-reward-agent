@@ -1,0 +1,28 @@
+llm:
+  provider: deepseek
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  model: deepseek-v4-pro
+  planner_temperature: 0.1
+  planner_max_tokens: 4096
+  generation_temperature: 0.15
+  generation_max_tokens: 8192
+
+inputs:
+  task_spec_path: envs/env_001/task_spec_anonymized.yaml
+  masked_step_path: envs/env_001/masked_step_source.py
+
+agent:
+  target_score: 200.0
+  max_episode_steps: 1000
+  max_scientific_iterations: 10
+  generation_retries: 2
+
+training:
+  legacy_config_path: configs/env001_deepseek_rag.yaml
+  total_timesteps: 1000000
+  eval_episodes: 20
+  confirmation_eval_episodes: 20
+  eval_seed_offset: 10000
+  confirmation_seed_offset: 20000
+  seed: 0

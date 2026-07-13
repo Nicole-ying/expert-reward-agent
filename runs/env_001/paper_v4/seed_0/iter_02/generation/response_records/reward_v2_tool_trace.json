@@ -1,0 +1,31 @@
+{
+  "call_count": 1,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "state-based proximity reward being farmed by agent hovering near target without completing task, need progress-based or improvement-based reward"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## stage_weighted_reward\n- 症状：训练早期需要探索，后期需要精细控制，固定权重难以兼顾。\n- 原理：利用 training_progress 动态调整 exploration vs precision 权重。early 鼓励运动，late 追求精度。\n- 修复：early_weight=1-t, mid_weight=4t(1-t), late_weight=t。对 progress 用 early_weight，对 stability 用 late_weight。\n---\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "state-based proximity reward being farmed by agent hovering near target without completing task, need progress-based or improvement-based reward"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## stage_weighted_reward\n- 症状：训练早期需要探索，后期需要精细控制，固定权重难以兼顾。\n- 原理：利用 training_progress 动态调整 exploration vs precision 权重。early 鼓励运动，late 追求精度。\n- 修复：early_weight=1-t, mid_weight=4t(1-t), late_weight=t。对 progress 用 early_weight，对 stability 用 late_weight。\n---\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。"
+    }
+  ]
+}

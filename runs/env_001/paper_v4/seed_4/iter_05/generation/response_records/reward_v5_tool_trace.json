@@ -1,0 +1,31 @@
+{
+  "call_count": 1,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "get_reward_transformation",
+          "arguments": {
+            "query": "persistent_to_transition_event sustained contact reward farming"
+          },
+          "result": "## persistent_to_transition_event\n- diagnosis: The policy repeatedly farms a contact, pickup, checkpoint, or other event state.\n- transform: Reward the state transition or first valid occurrence instead of every step spent in the event state; add cooldown or phase memory only if available.\n- why: The reward represents accomplishment rather than duration or repeated toggling.\n- risks: Transition detection requires both current and next state evidence and may become sparse again.\n- verify_next_round: Repeated-event accumulation should collapse while external completion remains or improves.\n---\n## state_to_improvement\n- diagnosis: A policy can remain in a rewarding state, hover, stall, or farm a persistent state bonus without completing the task.\n- transform: Replace a persistent state value q(s_next) with an improvement q(s_next)-q(s), or use a valid potential difference when appropriate.\n- why: The reward is paid for becoming better rather than for occupying the same proxy-optimal state repeatedly.\n- risks: Pure improvement rewards may not maintain a desirable terminal state and can oscillate if the quality function is poorly chosen.\n- verify_next_round: Long non-completing episodes and persistent proxy accumulation should decrease while completion or terminal quality improves.\n---\n## sparse_to_dense\n- diagnosis: A task-relevant component is rarely active and the policy receives little local evidence before success or failure.\n- transform: Replace or supplement a hard event with a continuous progress, proximity, or quality signal computed from declared observations.\n- why: This improves reachability and temporal credit assignment; it does not create a differentiable path through the environment.\n- risks: A dense proxy can become an easier objective than task completion.\n- verify_next_round: Active rate should rise, early failures should fall, and external score should improve without long high-reward non-completing episodes."
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "get_reward_transformation",
+      "arguments": {
+        "query": "persistent_to_transition_event sustained contact reward farming"
+      },
+      "result": "## persistent_to_transition_event\n- diagnosis: The policy repeatedly farms a contact, pickup, checkpoint, or other event state.\n- transform: Reward the state transition or first valid occurrence instead of every step spent in the event state; add cooldown or phase memory only if available.\n- why: The reward represents accomplishment rather than duration or repeated toggling.\n- risks: Transition detection requires both current and next state evidence and may become sparse again.\n- verify_next_round: Repeated-event accumulation should collapse while external completion remains or improves.\n---\n## state_to_improvement\n- diagnosis: A policy can remain in a rewarding state, hover, stall, or farm a persistent state bonus without completing the task.\n- transform: Replace a persistent state value q(s_next) with an improvement q(s_next)-q(s), or use a valid potential difference when appropriate.\n- why: The reward is paid for becoming better rather than for occupying the same proxy-optimal state repeatedly.\n- risks: Pure improvement rewards may not maintain a desirable terminal state and can oscillate if the quality function is poorly chosen.\n- verify_next_round: Long non-completing episodes and persistent proxy accumulation should decrease while completion or terminal quality improves.\n---\n## sparse_to_dense\n- diagnosis: A task-relevant component is rarely active and the policy receives little local evidence before success or failure.\n- transform: Replace or supplement a hard event with a continuous progress, proximity, or quality signal computed from declared observations.\n- why: This improves reachability and temporal credit assignment; it does not create a differentiable path through the environment.\n- risks: A dense proxy can become an easier objective than task completion.\n- verify_next_round: Active rate should rise, early failures should fall, and external score should improve without long high-reward non-completing episodes."
+    }
+  ]
+}

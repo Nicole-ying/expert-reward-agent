@@ -1,0 +1,63 @@
+{
+  "call_count": 3,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "proximity reward causes hovering near target, agent never lands, collects continuous reward instead of completing episode"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## goal_near_oscillation\n- 症状：progress 正常，episode 长（>800），landing proxy 触发率 < 10%。\n- 修复：添加连续 low-speed+low-angle+proximity 乘积 shaping。关联技法 bounded_continuous_proxy, anti_oscillation_potential。"
+        },
+        {
+          "round": 1,
+          "name": "get_skeleton_detail",
+          "arguments": {
+            "skeleton_name": "progress_delta_reward"
+          },
+          "result": "NOTE: Skeleton coefficients and ratio ranges are legacy starting points, not universal constraints.\n## progress_delta_reward\n- 数学形态: delta = d(current, goal) - d(next, goal); reward = delta * scale\n- 设计原理: 每一步向目标靠近即奖励，天然有正有负。比 distance_reward 更直接反映动作效果，不会像 distance_reward 那样远距离数值爆炸。\n- 常见陷阱: 目标附近易震荡（delta 正负交替）；若 scale 过大可能主导所有信号。\n- 推荐配合: 配合 clip(delta, -0.5, 0.5) 或改用 proximity=1/(1+5*dist)。scale 需要根据环境尺度和最终策略统计验证。对同为dense逐步信号的早期学习阶段，可用 penalty/progress 约0.1（主学习信号约为惩罚10倍）作为v6经验起点，再由外部行为验证；不适用于事件奖励或不同时间语义的组件。"
+        },
+        {
+          "round": 1,
+          "name": "get_skeleton_detail",
+          "arguments": {
+            "skeleton_name": "potential_based_shaping"
+          },
+          "result": "NOTE: Skeleton coefficients and ratio ranges are legacy starting points, not universal constraints.\n## potential_based_shaping\n- 数学形态: F = γ * Φ(next_obs) - Φ(obs)\n- 设计原理: 唯一保证最优策略不变的塑形方式（Ng 1999）。天然抗震荡，因为 agent 优化的是势能差而非瞬时 delta。\n- 常见陷阱: Φ 定义错误会误导学习。需要明确可计算的势能函数。γ 通常接近 1.0。\n- 推荐配合: 用 Φ=-distance 实现 progress_delta 的无偏版本。用 Φ=-(distance + speed + abs(angle)) 可同时引导接近+减速+稳定。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "proximity reward causes hovering near target, agent never lands, collects continuous reward instead of completing episode"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## goal_near_oscillation\n- 症状：progress 正常，episode 长（>800），landing proxy 触发率 < 10%。\n- 修复：添加连续 low-speed+low-angle+proximity 乘积 shaping。关联技法 bounded_continuous_proxy, anti_oscillation_potential。"
+    },
+    {
+      "round": 1,
+      "name": "get_skeleton_detail",
+      "arguments": {
+        "skeleton_name": "progress_delta_reward"
+      },
+      "result": "NOTE: Skeleton coefficients and ratio ranges are legacy starting points, not universal constraints.\n## progress_delta_reward\n- 数学形态: delta = d(current, goal) - d(next, goal); reward = delta * scale\n- 设计原理: 每一步向目标靠近即奖励，天然有正有负。比 distance_reward 更直接反映动作效果，不会像 distance_reward 那样远距离数值爆炸。\n- 常见陷阱: 目标附近易震荡（delta 正负交替）；若 scale 过大可能主导所有信号。\n- 推荐配合: 配合 clip(delta, -0.5, 0.5) 或改用 proximity=1/(1+5*dist)。scale 需要根据环境尺度和最终策略统计验证。对同为dense逐步信号的早期学习阶段，可用 penalty/progress 约0.1（主学习信号约为惩罚10倍）作为v6经验起点，再由外部行为验证；不适用于事件奖励或不同时间语义的组件。"
+    },
+    {
+      "round": 1,
+      "name": "get_skeleton_detail",
+      "arguments": {
+        "skeleton_name": "potential_based_shaping"
+      },
+      "result": "NOTE: Skeleton coefficients and ratio ranges are legacy starting points, not universal constraints.\n## potential_based_shaping\n- 数学形态: F = γ * Φ(next_obs) - Φ(obs)\n- 设计原理: 唯一保证最优策略不变的塑形方式（Ng 1999）。天然抗震荡，因为 agent 优化的是势能差而非瞬时 delta。\n- 常见陷阱: Φ 定义错误会误导学习。需要明确可计算的势能函数。γ 通常接近 1.0。\n- 推荐配合: 用 Φ=-distance 实现 progress_delta 的无偏版本。用 Φ=-(distance + speed + abs(angle)) 可同时引导接近+减速+稳定。"
+    }
+  ]
+}

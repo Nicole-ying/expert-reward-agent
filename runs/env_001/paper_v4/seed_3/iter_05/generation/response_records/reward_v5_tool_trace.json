@@ -1,0 +1,76 @@
+{
+  "call_count": 3,
+  "invocation_count": 3,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "landing reward dominates 74% of total reward composition while only 11% active rate, progress only 15%"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## stage_weighted_reward\n- 症状：训练早期需要探索，后期需要精细控制，固定权重难以兼顾。\n- 原理：利用 training_progress 动态调整 exploration vs precision 权重。early 鼓励运动，late 追求精度。\n- 修复：early_weight=1-t, mid_weight=4t(1-t), late_weight=t。对 progress 用 early_weight，对 stability 用 late_weight。\n---\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。"
+        }
+      ]
+    },
+    {
+      "validation_retry": true,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": []
+    },
+    {
+      "validation_retry": false,
+      "duplicate_retry": true,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "engine usage penalty for fuel efficiency in lunar lander type tasks"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## penalty_magnitude_control\n- 症状：最终策略中某个持续惩罚的绝对累计量明显压过同时间语义的主学习信号，且 external score 差、agent 可能不动。历史经验中，dense penalty 的 `ratio_to_progress` 绝对值超过约 0.5 是值得优先检查的预警线，不是通用判定线。\n- 原理：惩罚信号主导时，agent 为避免惩罚而选择不行动。惩罚应是方向盘，不是刹车。\n- 修复：降低该惩罚系数（至少10倍），或改为距离门控（只在目标附近生效），或用平滑 bounded 函数代替线性惩罚。\n---\n## stability_penalty_dominance\n- 症状：stability_penalty 在最终策略奖励构成中持续占主导，external 低、episode 短，且其数学形态本身尚未被证伪。对可比的dense信号，`|ratio_to_progress| > 0.5`可作为优先检查并尝试降系数的经验触发器。\n- 修复：降低惩罚系数（至少10倍）或使用距离门控。关联技法 penalty_magnitude_control。"
+        },
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "landing reward dominates sparse bonus but agent already succeeds, how to improve efficiency"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。\n---\n## bounded_continuous_proxy\n- 症状：完成信号（如 landing bonus）的 `active_rate`（旧日志名 `nonzero_rate`）接近 0；历史经验中低于约 1%~2% 通常意味着策略几乎得不到任务相关反馈，但阈值需结合事件本身频率判断。\n- 原理：二值条件（if near and slow and upright: bonus=2）无梯度。连续乘积 near_factor * slow_factor * upright_factor 提供密集信号。1/(1+kx) 或 max(0,1-x/D) 自动 bounded 防数值爆炸。\n- 修复：用连续乘积因子取代 if 条件；每个因子用 bounded 形式 max(0, 1-dimension/D_threshold)。或使用 proximity=1/(1+5*dist)。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "landing reward dominates 74% of total reward composition while only 11% active rate, progress only 15%"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## stage_weighted_reward\n- 症状：训练早期需要探索，后期需要精细控制，固定权重难以兼顾。\n- 原理：利用 training_progress 动态调整 exploration vs precision 权重。early 鼓励运动，late 追求精度。\n- 修复：early_weight=1-t, mid_weight=4t(1-t), late_weight=t。对 progress 用 early_weight，对 stability 用 late_weight。\n---\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。"
+    },
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "engine usage penalty for fuel efficiency in lunar lander type tasks"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## penalty_magnitude_control\n- 症状：最终策略中某个持续惩罚的绝对累计量明显压过同时间语义的主学习信号，且 external score 差、agent 可能不动。历史经验中，dense penalty 的 `ratio_to_progress` 绝对值超过约 0.5 是值得优先检查的预警线，不是通用判定线。\n- 原理：惩罚信号主导时，agent 为避免惩罚而选择不行动。惩罚应是方向盘，不是刹车。\n- 修复：降低该惩罚系数（至少10倍），或改为距离门控（只在目标附近生效），或用平滑 bounded 函数代替线性惩罚。\n---\n## stability_penalty_dominance\n- 症状：stability_penalty 在最终策略奖励构成中持续占主导，external 低、episode 短，且其数学形态本身尚未被证伪。对可比的dense信号，`|ratio_to_progress| > 0.5`可作为优先检查并尝试降系数的经验触发器。\n- 修复：降低惩罚系数（至少10倍）或使用距离门控。关联技法 penalty_magnitude_control。"
+    },
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "landing reward dominates sparse bonus but agent already succeeds, how to improve efficiency"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。\n---\n## bounded_continuous_proxy\n- 症状：完成信号（如 landing bonus）的 `active_rate`（旧日志名 `nonzero_rate`）接近 0；历史经验中低于约 1%~2% 通常意味着策略几乎得不到任务相关反馈，但阈值需结合事件本身频率判断。\n- 原理：二值条件（if near and slow and upright: bonus=2）无梯度。连续乘积 near_factor * slow_factor * upright_factor 提供密集信号。1/(1+kx) 或 max(0,1-x/D) 自动 bounded 防数值爆炸。\n- 修复：用连续乘积因子取代 if 条件；每个因子用 bounded 形式 max(0, 1-dimension/D_threshold)。或使用 proximity=1/(1+5*dist)。"
+    }
+  ]
+}

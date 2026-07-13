@@ -1,0 +1,290 @@
+# Duplicate reward retry
+The previous generation duplicated iter 9 (runs\env_001\ablation_unconstrained_v4\seed_2\iter_09\generation\reward_v9.py). Retry 1: generate a materially different reward function.
+The previous draft is semantically identical to the previous trained reward and is not a valid search intervention. Re-analyze the full environment facts, training feedback, Agent Memory, previous reward, and best reward below. Choose a different evidence-based modification plan, then implement one concrete tune/delete/add/mix change. Return a complete reward function whose executable code is materially different from every historical reward. Do not merely rename variables or comments.
+
+# Rejected duplicate draft
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    x_old, y_old = obs[0], obs[1]
+    x_new, y_new = next_obs[0], next_obs[1]
+    vx_new = next_obs[2]
+    vy_new = next_obs[3]
+    angle_new = next_obs[4]
+    angvel_new = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
+
+    # ---------- 高度门控的水平对准（高空抑制，低空增强）----------
+    height_gate = 1.0 / (1.0 + y_new)
+    alignment = 1.5 * height_gate / (1.0 + 10.0 * (x_new ** 2))
+
+    # ---------- 下降进度奖励（高度降低）----------
+    delta_y = y_old - y_new
+    progress_y = 0.2 * max(0.0, delta_y)
+
+    # ---------- 下降速度奖励 ----------
+    descend_vel = 0.1 * max(0.0, -vy_new)
+
+    # ---------- 近地奖励（无接触要求，引导进入低空）----------
+    height_near = 1.0 * max(0.0, 2.0 - y_new)
+
+    # ---------- 接触奖励（双腿同时接触）----------
+    both_contact = left_contact * right_contact
+    contact_reward = 10.0 * both_contact
+
+    # ---------- 垂直速度惩罚（容忍度略放宽）----------
+    down_penalty = -5.0 * (max(0.0, -vy_new - 0.5) ** 2)
+
+    # ---------- 水平速度惩罚 ----------
+    vx_limit = 0.2
+    lat_penalty = -2.0 * (max(0.0, abs(vx_new) - vx_limit) ** 2)
+
+    # ---------- 姿态角惩罚 ----------
+    angle_limit = 0.05
+    att_penalty = -2.0 * (max(0.0, abs(angle_new) - angle_limit) ** 2)
+
+    # ---------- 角速度惩罚 ----------
+    angvel_limit = 0.05
+    angvel_penalty = -2.0 * (max(0.0, abs(angvel_new) - angvel_limit) ** 2)
+
+    # ---------- 趋近静止奖励 ----------
+    speed_norm = (vx_new ** 2 + vy_new ** 2) ** 0.5
+    still_bonus = 0.5 * max(0.0, 0.1 - speed_norm)
+
+    total_reward = (
+        alignment +
+        progress_y +
+        descend_vel +
+        height_near +
+        contact_reward +
+        down_penalty +
+        lat_penalty +
+        att_penalty +
+        angvel_penalty +
+        still_bonus
+    )
+
+    components = {
+        'alignment': alignment,
+        'progress_y': progress_y,
+        'descend_vel': descend_vel,
+        'height_near': height_near,
+        'contact_reward': contact_reward,
+        'down_penalty': down_penalty,
+        'lat_penalty': lat_penalty,
+        'att_penalty': att_penalty,
+        'angvel_penalty': angvel_penalty,
+        'still_bonus': still_bonus
+    }
+
+    return float(total_reward), components
+```
+
+# Search objective
+- target_score: 200.000000
+- current_score: -205.036446
+- gap_to_target: 405.036446
+- target_achievement_ratio: -102.518%
+Use the target only to judge search progress. Do not reverse-engineer or reproduce an official reward formula.
+
+# 上一轮奖励函数代码（该轮得分: -205.036446）
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    x_old, y_old = obs[0], obs[1]
+    x_new, y_new = next_obs[0], next_obs[1]
+    vx_new = next_obs[2]
+    vy_new = next_obs[3]
+    angle_new = next_obs[4]
+    angvel_new = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
+
+    # ---------- 高度门控的水平对准（高空抑制，低空增强）----------
+    height_gate = 1.0 / (1.0 + y_new)
+    alignment = 1.5 * height_gate / (1.0 + 10.0 * (x_new ** 2))
+
+    # ---------- 下降进度奖励（高度降低）----------
+    delta_y = y_old - y_new
+    progress_y = 0.2 * max(0.0, delta_y)
+
+    # ---------- 下降速度奖励 ----------
+    descend_vel = 0.1 * max(0.0, -vy_new)
+
+    # ---------- 近地奖励（无接触要求，引导进入低空）----------
+    height_near = 1.0 * max(0.0, 2.0 - y_new)
+
+    # ---------- 接触奖励（双腿同时接触）----------
+    both_contact = left_contact * right_contact
+    contact_reward = 10.0 * both_contact
+
+    # ---------- 垂直速度惩罚（容忍度略放宽）----------
+    down_penalty = -5.0 * (max(0.0, -vy_new - 0.5) ** 2)
+
+    # ---------- 水平速度惩罚 ----------
+    vx_limit = 0.2
+    lat_penalty = -2.0 * (max(0.0, abs(vx_new) - vx_limit) ** 2)
+
+    # ---------- 姿态角惩罚 ----------
+    angle_limit = 0.05
+    att_penalty = -2.0 * (max(0.0, abs(angle_new) - angle_limit) ** 2)
+
+    # ---------- 角速度惩罚 ----------
+    angvel_limit = 0.05
+    angvel_penalty = -2.0 * (max(0.0, abs(angvel_new) - angvel_limit) ** 2)
+
+    # ---------- 趋近静止奖励 ----------
+    speed_norm = (vx_new ** 2 + vy_new ** 2) ** 0.5
+    still_bonus = 0.5 * max(0.0, 0.1 - speed_norm)
+
+    total_reward = (
+        alignment +
+        progress_y +
+        descend_vel +
+        height_near +
+        contact_reward +
+        down_penalty +
+        lat_penalty +
+        att_penalty +
+        angvel_penalty +
+        still_bonus
+    )
+
+    components = {
+        'alignment': alignment,
+        'progress_y': progress_y,
+        'descend_vel': descend_vel,
+        'height_near': height_near,
+        'contact_reward': contact_reward,
+        'down_penalty': down_penalty,
+        'lat_penalty': lat_penalty,
+        'att_penalty': att_penalty,
+        'angvel_penalty': angvel_penalty,
+        'still_bonus': still_bonus
+    }
+
+    return float(total_reward), components
+```
+
+# 训练反馈（上一轮代码的训练结果）
+# Training Feedback
+
+## Final-policy outcome
+score=-205.036446, len=785.850000, terminated=15/20, truncated=5/20, reward_errors=0
+score_range=[-297.060305, -125.518562]
+
+## Final-policy reward composition
+
+These statistics come from the same fixed evaluation episodes as `score`. Shares describe observed reward composition, not causal influence.
+
+| component | episode_sum_mean | signed_share | magnitude_share | active_rate |
+|---|---:|---:|---:|---:|
+| height_near | 494.329784 | 66.7% | 66.7% | 100.0% |
+| alignment | 231.122867 | 31.2% | 31.2% | 100.0% |
+| lat_penalty | -8.057471 | -1.1% | 1.1% | 16.3% |
+| still_bonus | 2.736286 | 0.4% | 0.4% | 24.0% |
+| att_penalty | -2.497858 | -0.3% | 0.3% | 15.7% |
+| angvel_penalty | -1.172042 | -0.2% | 0.2% | 15.7% |
+| descend_vel | 1.140845 | 0.2% | 0.2% | 63.7% |
+| progress_y | 0.051331 | 0.0% | 0.0% | 63.7% |
+| contact_reward | 0.000000 | 0.0% | 0.0% | 0.0% |
+| down_penalty | 0.000000 | 0.0% | 0.0% | 0.0% |
+
+## Evaluation distribution
+- fixed_eval_seeds: 10000..10019
+- early_terminal (<150 steps and score<-50): 0/20
+- training_reward_errors_max: 0
+- full_training_distribution_stats: component_stats.md / training_summary.json (not primary reflection evidence)
+
+
+# 环境事实与专家任务画像（只据此理解任务和变量，不猜测环境名称）
+## 1. 任务目标
+主任务：在二维平面中，控制一个带有两侧支撑腿的着陆器从视野上方中心附近受随机初速出发，**安全、稳定地降落到视野中央的目标平台上**，要求着陆器最终静止、姿态竖直且两侧支撑腿均与平台接触。  
+次任务：在保证主目标的前提下，**尽可能快地完成着陆**，并且**尽量降低发动机推力消耗**（即少用燃料）。  
+不应混淆的目标：燃料优化与快速着陆是辅助目标，它们不能凌驾于安全稳定着陆之上；本任务的最终评判是“是否成功停靠在平台上”这一离散事件，并非将能耗作为等价的主要目标。
+
+## 3. 观察空间 observation_space
+- **type**: Box
+- **shape**: (8,)
+- **dtype**: 根据上下文推断为 float32 (或混合了 bool 转为 float 的标志位，实际为连续量)
+- **各维度含义**：
+  - `obs[0]`: x_position (目标平台的相对水平坐标) —— reward_usable: true，用于控制水平对准。
+  - `obs[1]`: y_position (相对于目标平台高度的垂直坐标) —— reward_usable: true，用于测量剩余高度/下降进度。
+  - `obs[2]`: x_velocity (水平线速度) —— reward_usable: true，用于减速控制。
+  - `obs[3]`: y_velocity (垂直线速度) —— reward_usable: true，用于控制坠落/着陆速度。
+  - `obs[4]`: body_angle (机体偏转角) —— reward_usable: true，用于保持竖直姿态。
+  - `obs[5]`: angular_velocity (角速度) —— reward_usable: true，姿态稳定惩罚。
+  - `obs[6]`: left_support_contact (左支撑腿接触标志，1.0表示接触) —— reward_usable: true，接地判断。
+  - `obs[7]`: right_support_contact (右支撑腿接触标志，1.0表示接触) —— reward_usable: true，接地判断。
+
+## 4. 动作空间 action_space
+- **type**: Discrete
+- **n**: 4
+- **动作含义**：
+  - `action 0` (no_engine): 不启动任何引擎（零推力）。
+  - `action 1` (left_orientation_engine): 启动左侧姿态引擎，产生旋转力矩。
+  - `action 2` (main_engine): 启动主引擎，产生向上的升力。
+  - `action 3` (right_orientation_engine): 启动右侧姿态引擎，产生相反的旋转力矩。
+- **值域**：`[0, 1, 2, 3]`，每个动作只消耗一个离散选择的“燃料单位”。
+
+## 5. step 与终止条件分析
+### 5.1 终止模式
+- **success-like termination**:  
+  `body_not_awake_or_settled` —— 机体静止且（可能）已与平台产生接触。根据任务描述“settle at a central target pad... make safe contact”，此条件很可能标志着成功着陆。但是否伴随 `left_support_contact` 和 `right_support_contact` 同时为真，需要观察，但终止代码中只用此单一条件判定终止，可能表示“已稳定着陆”。
+- **failure-like termination**:  
+  `crash_or_body_contact` —— 机体与外环境发生碰撞（非支撑腿安全着陆），通常是坠毁。  
+  `horizontal_position_outside_viewport` —— 水平飘出视野边界，失败。
+- **ambiguous termination**:  
+  在没有显式成功标志的情况下，终止由这三种条件之一触发，其中 `body_not_awake_or_settled` 语义为“非清醒或已稳定”，我们暂时将其视为**成功候选**，但无法 100% 确认。需要后续根据经验收集证据。
+- **truncation**:  
+  源代码未展示任何步数限制或超时截断（`return ..., False, {}` 中没有 truncated）。如果存在，可能在上层包装器中，但当前分析不可见。
+
+### 5.2 success/failure 信号可用性
+- **explicit_success_flag_available**: false （info 字典为空）
+- **explicit_failure_flag_available**: false
+- **allowed_info_fields**: 无（info={} 且没有声明任何可用字段）
+- **forbidden_or_uncertain_info_fields**: 所有 info 字段都不允许使用，因为没有可靠信息源。`original_reward` 被屏蔽，禁止访问。
+
+## 7. 可用于奖励函数的信号
+- **position**:
+  - `next_obs[0]` (x_position)：到目标平台的水平距离。
+  - `next_obs[1]` (y_position)：到目标平台高度的垂直距离。
+- **velocity**:
+  - `next_obs[2]` (x_velocity)
+  - `next_obs[3]` (y_velocity)
+- **orientation**:
+  - `next_obs[4]` (body_angle)
+  - `next_obs[5]` (angular_velocity)
+- **contact**:
+  - `next_obs[6]` (left_support_contact)
+  - `next_obs[7]` (right_support_contact)
+- **action/engine**:
+  - `action`：离散动作编号，可用于惩罚引擎使用（燃料消耗），但不能直接读出推力大小。
+- **other**:  
+  无。
+
+# Compact expert route context
+# Formula switching guide (evidence → operator)
+| 当前形态 | 证据模式 | 目标算子 | 变换要点 |
+|---|---|---|---|
+| 线性正奖励 `w * signal` | score 停滞在低水平，signal 正值但偏小 | dense_state_signal (凸化) | 改用 `signal**2` 或指数形式，保持系数使量级可比 |
+| 全时二次惩罚 `-w * error**2` | 惩罚 active_rate≈100% 但 terminated 率仍高 | dense_state_signal (hinge) | 改 `max(0, threshold - signal)`，threshold 设在终止边界的 60-80% |
+| 独立约束惩罚 + 高 terminated | terminated 主因是某状态越界，惩罚已加但无效 | soft_health_gate | 把该状态做成 gate 乘到主奖励上，不额外增加独立惩罚 |
+| 稀疏二值 proxy | active_rate < 5%，episode 很短 | joint_condition_proxy (连续化) | 把二值条件换成连续 bounded factor，确保每步有梯度 |
+| 乘积 proxy 经常塌缩为 0 | 多个 factor 中总有一个趋近 0 | joint_condition_proxy (几何平均) | 用 `(f1 * f2 * ...) ** (1/n)` 替代裸乘积 |
+
+Key anti-patterns: prefer gate over bigger penalty; prefer hinge over quadratic for boundary constraints; convexify forward reward when stuck at low-speed plateau.
+
+# 历史记忆
+# Reward Memory
+
+| iter | skeleton | score | best | delta | len | key_signal | action |
+|---:|---|---:|---:|---:|---:|---|---|
+| 1 | contact_establishment + goal_proximity + soft_landing_stabilization + upright_attitude | -111.84 | -111.84 | 0.00 | 68.50 | contact_establishment=0.050 goal_proximity=-1.075 soft_landing_stabilization=-0.133 upright_attitude=-0.041 | new_best |
+| 2 | att_penalty + contact_bonus + horizontal_penalty + progress + vel_penalty | -21.25 | -21.25 | 0.00 | 1000.00 | att_penalty=-0.008 contact_bonus=0.864 horizontal_penalty=-0.019 progress=0.003 vel_penalty=-0.009 | new_best |
+| 3 | alignment + att_penalty + contact_reward + height_near_reward + horizontal_penalty + progress | 71.06 | 71.06 | 0.00 | 977.60 | alignment=0.469 att_penalty=-0.003 contact_reward=0.868 height_near_reward=0.293 horizontal_penalty=-0.004 | new_best |
+| 4 | alignment + any_contact_reward + att_penalty + height_near_reward + progress + stable_contact_reward | -8.16 | 71.06 | -79.22 | 1000.00 | alignment=0.465 any_contact_reward=0.462 att_penalty=-0.004 height_near_reward=0.239 progress=0.010 | no_meaningful_improvement |
+| 5 | alignment + any_contact_reward + att_penalty + height_near_reward + horizontal_penalty + progress | -69.73 | 71.06 | -140.79 | 937.95 | alignment=0.424 any_contact_reward=1.973 att_penalty=-0.006 height_near_reward=1.958 horizontal_penalty=-0.041 | no_meaningful_improvement |
+| 6 | alignment + any_contact_reward + att_penalty + height_near_reward + horizontal_penalty + progress | -139.01 | 71.06 | -210.07 | 536.45 | alignment=0.077 any_contact_reward=0.936 att_penalty=-0.004 height_near_reward=0.278 horizontal_penalty=-0.014 | unsolved_high_achievement_continue_from_best |
+| 7 | alignment + angvel_penalty + att_penalty + contact_reward + down_penalty + height_near | -119.60 | 71.06 | -190.66 | 685.75 | alignment=0.333 angvel_penalty=-0.126 att_penalty=-0.101 contact_reward=0.632 down_penalty=-0.039 | no_meaningful_improvement |
+| 8 | alignment + angvel_penalty + att_penalty + contact_reward + down_penalty + height_near | -24.74 | 71.06 | -95.80 | 1000.00 | alignment=1.454 angvel_penalty=-0.062 att_penalty=-0.097 contact_reward=1.577 down_penalty=-0.116 | no_meaningful_improvement |
+| 9 | alignment + angvel_penalty + att_penalty + contact_reward + descend_vel + down_penalty | -205.04 | 71.06 | -276.10 | 785.85 | alignment=0.726 angvel_penalty=-0.080 att_penalty=-0.089 contact_reward=3.454 descend_vel=0.019 | unsolved_high_achievement_continue_from_best |

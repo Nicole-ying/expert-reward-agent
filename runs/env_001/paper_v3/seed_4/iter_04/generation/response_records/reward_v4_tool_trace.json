@@ -1,0 +1,31 @@
+{
+  "call_count": 1,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "transition bonus fires repeatedly agent bounces exploits contact touchdown bonus triggers many times per episode"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## coefficient_scale_awareness\n- 症状：所有组件的 mean 值都在 0.001 量级或都在 100 量级，信号缺乏区分度。\n- 原理：不同组件需要不同量级来体现优先级。progress 应该是最强的正信号，惩罚应该是弱而常在的背景。\n- 修复：先比较同时间语义组件的 episode_abs_sum_mean、magnitude_share 与 active_rate；若主学习信号持续被约束项压制，单独降低该约束系数并在下一轮验证。对“dense progress + dense penalty”的早期学习阶段，可把学习信号约为惩罚的 10 倍（即 penalty/progress 约 0.1）作为保守起点；这是v6中的有效经验，不适用于事件 bonus、持续状态奖励或正负抵消严重的差分均值。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "transition bonus fires repeatedly agent bounces exploits contact touchdown bonus triggers many times per episode"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## coefficient_scale_awareness\n- 症状：所有组件的 mean 值都在 0.001 量级或都在 100 量级，信号缺乏区分度。\n- 原理：不同组件需要不同量级来体现优先级。progress 应该是最强的正信号，惩罚应该是弱而常在的背景。\n- 修复：先比较同时间语义组件的 episode_abs_sum_mean、magnitude_share 与 active_rate；若主学习信号持续被约束项压制，单独降低该约束系数并在下一轮验证。对“dense progress + dense penalty”的早期学习阶段，可把学习信号约为惩罚的 10 倍（即 penalty/progress 约 0.1）作为保守起点；这是v6中的有效经验，不适用于事件 bonus、持续状态奖励或正负抵消严重的差分均值。"
+    }
+  ]
+}

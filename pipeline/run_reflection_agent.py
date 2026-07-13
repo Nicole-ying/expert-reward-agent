@@ -241,6 +241,42 @@ def _score_only_feedback(feedback_md):
     return "\n\n".join(blocks)
 
 
+def _eureka_style_feedback(feedback_md):
+    """EUREKA-style feedback: score + simple component value list, no share/rate table.
+
+    Matches the level of detail in EUREKA's reward reflection, which tracks scalar
+    values of individual reward components during training and presents them as a
+    simple text summary without structured diagnostic fields (magnitude_share,
+    signed_share, active_rate).
+    """
+    outcome = re.search(
+        r"## Final-policy outcome\s*(.*?)(?=\n## |\Z)",
+        feedback_md,
+        flags=re.DOTALL,
+    )
+    # Extract component names and episode_sum_mean from the composition table
+    comp_table = re.search(
+        r"\| component \| episode_sum_mean.*?\n((?:\|.*?\n)+)",
+        feedback_md,
+        flags=re.DOTALL,
+    )
+    blocks = ["# Training Feedback (EUREKA-style)"]
+    if outcome:
+        blocks.extend(["## Final-policy outcome", outcome.group(1).strip()])
+    if comp_table:
+        rows = []
+        for line in comp_table.group(1).strip().split("\n"):
+            line = line.strip()
+            if not line or "---" in line or "component" in line.lower():
+                continue
+            cols = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cols) >= 2:
+                rows.append(f"- {cols[0]}: {cols[1]}")
+        if rows:
+            blocks.append("## Reward component values (mean per episode)\n" + "\n".join(rows))
+    return "\n\n".join(blocks)
+
+
 def _score_only_memory(memory_md):
     rows = []
     for line in memory_md.splitlines():
@@ -375,6 +411,8 @@ def run_reflection_agent(
     feedback_md = read_text(str(Path(train_run_dir) / "training_feedback.md"))
     if ablation_cfg.get("feedback_mode") == "score_only":
         feedback_md = _score_only_feedback(feedback_md)
+    elif ablation_cfg.get("feedback_mode") == "eureka_style":
+        feedback_md = _eureka_style_feedback(feedback_md)
 
     environment_card_md = ""
     if environment_card_path and Path(environment_card_path).exists():
@@ -392,6 +430,7 @@ def run_reflection_agent(
         memory_md = read_text(memory_path)
         if ablation_cfg.get("feedback_mode") == "score_only":
             memory_md = _score_only_memory(memory_md)
+        # eureka_style keeps full memory table — only feedback is stripped
 
     best_code = ""
     if best_reward_path and Path(best_reward_path).exists():

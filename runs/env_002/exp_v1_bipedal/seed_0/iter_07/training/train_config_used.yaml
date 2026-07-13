@@ -1,0 +1,164 @@
+runner_env_id: BipedalWalker-v3
+reward_path: runs\env_002\exp_v1_bipedal\seed_0\iter_07\generation\reward_v7.py
+run_name: exp_v1_bipedal/seed_0/iter_07/training
+n_envs: 8
+total_timesteps: 5000000
+reward_clip: 20.0
+error_fallback: zero
+ppo_args:
+  policy: MlpPolicy
+  verbose: '1'
+  device: cuda
+  seed: '0'
+  n_steps: '2048'
+  batch_size: '64'
+  gae_lambda: '0.95'
+  gamma: '0.999'
+  n_epochs: '10'
+  ent_coef: '0.0'
+  learning_rate: '0.0003'
+  clip_range: '0.18'
+  tensorboard_log: runs/env_002/tensorboard
+model_path: runs\env_002\exp_v1_bipedal\seed_0\iter_07\training\model.zip
+monitor_dir: runs\env_002\exp_v1_bipedal\seed_0\iter_07\training\monitor
+tensorboard_log: runs/env_002/tensorboard
+external_eval:
+  eval_episodes: 20
+  eval_seed_offset: 10000
+  eval_seeds:
+  - 10000
+  - 10001
+  - 10002
+  - 10003
+  - 10004
+  - 10005
+  - 10006
+  - 10007
+  - 10008
+  - 10009
+  - 10010
+  - 10011
+  - 10012
+  - 10013
+  - 10014
+  - 10015
+  - 10016
+  - 10017
+  - 10018
+  - 10019
+  episode_rewards:
+  - 281.31053684120394
+  - 275.2540857895458
+  - 40.20417331245605
+  - 277.7420890312852
+  - 278.34435941049736
+  - 277.380327208372
+  - 118.91677687797124
+  - 277.6689123643536
+  - 44.28164837682448
+  - -8.402584933235033
+  - -89.73546828426173
+  - 277.9279292835439
+  - 277.88003646882265
+  - -18.4805088709072
+  - 279.46047951726086
+  - -102.72131598604719
+  - 2.195551383951681
+  - -20.5733857630498
+  - 274.37211816083135
+  - 154.71278791669008
+  episode_lengths:
+  - 1156
+  - 1234
+  - 872
+  - 1194
+  - 1189
+  - 1192
+  - 968
+  - 1188
+  - 665
+  - 481
+  - 133
+  - 1198
+  - 1202
+  - 415
+  - 1184
+  - 109
+  - 513
+  - 457
+  - 1259
+  - 1152
+  episode_terminated:
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  mean_eval_reward: 144.88692740530547
+  mean_episode_length: 888.05
+  min_eval_reward: -102.72131598604719
+  max_eval_reward: 281.31053684120394
+  termination_breakdown:
+    terminated: 20
+    truncated: 0
+component_summary:
+  steps_seen: 5013504
+  reward_error_count_max: 0
+  component_stats:
+    component.alive_bonus:
+      count: 5013504
+      mean: 0.5
+      abs_mean: 0.5
+      nonzero_rate: 1.0
+      min: 0.5
+      max: 0.5
+    component.progress_reward:
+      count: 5013504
+      mean: 0.550751203727159
+      abs_mean: 0.5550754089972774
+      nonzero_rate: 1.0
+      min: -0.8640710196021104
+      max: 1.0004671131833245
+    component.stability_penalty:
+      count: 5013504
+      mean: -0.03716225096340786
+      abs_mean: 0.03716225096340786
+      nonzero_rate: 1.0
+      min: -5.960699652578229
+      max: -8.823575177011827e-09
+    component.total_reward:
+      count: 5013504
+      mean: 1.013588952763785
+      abs_mean: 1.0155777777771704
+      nonzero_rate: 1.0
+      min: -5.435361608249152
+      max: 1.4879973508336717
+    generated_reward:
+      count: 5013504
+      mean: 1.013588952763785
+      abs_mean: 1.0155777777771704
+      nonzero_rate: 1.0
+      min: -5.435361608249152
+      max: 1.4879973508336717
+    original_env_reward:
+      count: 5013504
+      mean: 0.12634005603419796
+      abs_mean: 0.18015957820314063
+      nonzero_rate: 1.0
+      min: -100.0
+      max: 0.8683316574096679

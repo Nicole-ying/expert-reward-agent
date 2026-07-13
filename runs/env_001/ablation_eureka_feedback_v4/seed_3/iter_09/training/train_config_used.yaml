@@ -1,0 +1,248 @@
+runner_env_id: LunarLander-v3
+reward_path: runs\env_001\ablation_eureka_feedback_v4\seed_3\iter_09\generation\reward_v9.py
+reward_source: generated_function
+run_name: ablation_eureka_feedback_v4/seed_3/iter_09/training
+n_envs: 4
+total_timesteps: 1000000
+reward_clip: 20.0
+error_fallback: zero
+ppo_args:
+  policy: MlpPolicy
+  verbose: '1'
+  device: auto
+  seed: '3'
+  n_steps: '1024'
+  batch_size: '64'
+  gae_lambda: '0.98'
+  gamma: '0.999'
+  n_epochs: '4'
+  ent_coef: '0.01'
+  tensorboard_log: runs/env_001/tensorboard
+model_path: runs\env_001\ablation_eureka_feedback_v4\seed_3\iter_09\training\model.zip
+monitor_dir: runs\env_001\ablation_eureka_feedback_v4\seed_3\iter_09\training\monitor
+tensorboard_log: runs/env_001/tensorboard
+normalization:
+  normalize_obs: false
+  normalize_reward: false
+  clip_obs: 10.0
+  clip_normalized_reward: 10.0
+  vecnormalize_path: null
+external_eval:
+  eval_episodes: 20
+  eval_seed_offset: 10000
+  eval_seeds:
+  - 10000
+  - 10001
+  - 10002
+  - 10003
+  - 10004
+  - 10005
+  - 10006
+  - 10007
+  - 10008
+  - 10009
+  - 10010
+  - 10011
+  - 10012
+  - 10013
+  - 10014
+  - 10015
+  - 10016
+  - 10017
+  - 10018
+  - 10019
+  episode_rewards:
+  - 55.807948985085254
+  - 81.46057064318842
+  - 96.53797349911603
+  - 64.6314810280105
+  - 218.910711316348
+  - 42.88775699198064
+  - 202.93552855723152
+  - 71.56432387756053
+  - 199.92932505775627
+  - 249.03216614847665
+  - 41.826428268280665
+  - 71.27467874569783
+  - 207.66881825269763
+  - 251.41453042419556
+  - 55.44652288965526
+  - 37.23985719533833
+  - 11.52228113364961
+  - 246.15815196191022
+  - 42.73580114612581
+  - 30.685872851763232
+  episode_lengths:
+  - 1000
+  - 1000
+  - 1000
+  - 1000
+  - 505
+  - 1000
+  - 792
+  - 1000
+  - 524
+  - 518
+  - 171
+  - 1000
+  - 269
+  - 571
+  - 1000
+  - 1000
+  - 1000
+  - 389
+  - 1000
+  - 1000
+  episode_terminated:
+  - false
+  - false
+  - false
+  - false
+  - true
+  - false
+  - true
+  - false
+  - true
+  - true
+  - true
+  - false
+  - true
+  - true
+  - false
+  - false
+  - false
+  - true
+  - false
+  - false
+  mean_eval_reward: 113.9835364487034
+  mean_episode_length: 786.95
+  min_eval_reward: 11.52228113364961
+  max_eval_reward: 251.41453042419556
+  termination_breakdown:
+    terminated: 8
+    truncated: 12
+  final_policy_component_evaluation:
+    energy_penalty:
+      episode_sum_mean: -6.076499999999914
+      episode_abs_sum_mean: 6.076499999999914
+      signed_contribution_share: -0.007451139044556679
+      magnitude_share: 0.007451139044556679
+      active_rate: 0.772158332803863
+    landing_event:
+      episode_sum_mean: 691.5458687186241
+      episode_abs_sum_mean: 691.5458687186241
+      signed_contribution_share: 0.8479888790440682
+      magnitude_share: 0.8479888790440682
+      active_rate: 0.08945930491136667
+    proximity:
+      episode_sum_mean: 1.3335241490975023
+      episode_abs_sum_mean: 1.3335241490975023
+      signed_contribution_share: 0.0016351968821196022
+      magnitude_share: 0.0016351968821196022
+      active_rate: 0.7109727428680348
+    soft_landing:
+      episode_sum_mean: 116.55700571910765
+      episode_abs_sum_mean: 116.55700571910765
+      signed_contribution_share: 0.14292478502925557
+      magnitude_share: 0.14292478502925557
+      active_rate: 0.8217167545587394
+  final_policy_component_error_count: 0
+train_duration_sec: 898.1
+component_summary:
+  steps_seen: 1003520
+  reward_error_count_max: 0
+  component_stats:
+    component.energy_penalty:
+      count: 1003520
+      mean: -0.006268086336187499
+      abs_mean: 0.006268086336187499
+      nonzero_rate: 0.6268086336096939
+      mean_when_active: -0.010000000000144478
+      abs_mean_when_active: 0.010000000000144478
+      min: -0.01
+      max: 0.0
+    component.landing_event:
+      count: 1003520
+      mean: 0.2822926347578733
+      abs_mean: 0.2822926347578733
+      nonzero_rate: 0.03353694993622449
+      mean_when_active: 8.417361605473808
+      abs_mean_when_active: 8.417361605473808
+      min: 0.0
+      max: 10.0
+    component.proximity:
+      count: 1003520
+      mean: 0.0074450035516321995
+      abs_mean: 0.0074450035516321995
+      nonzero_rate: 0.7068548708545919
+      mean_when_active: 0.010532577278036076
+      abs_mean_when_active: 0.010532577278036076
+      min: 0.0
+      max: 0.041178084909915924
+    component.soft_landing:
+      count: 1003520
+      mean: 0.09172746910145357
+      abs_mean: 0.09172746910145357
+      nonzero_rate: 0.4856166294642857
+      mean_when_active: 0.18888864906179986
+      abs_mean_when_active: 0.18888864906179986
+      min: 0.0
+      max: 0.4653622508049011
+    component.total_reward:
+      count: 1003520
+      mean: 0.37519701561070146
+      abs_mean: 0.37638382954989563
+      nonzero_rate: 0.9792081871811225
+      mean_when_active: 0.38316368319059196
+      abs_mean_when_active: 0.38437569709604213
+      min: -0.01
+      max: 10.228545188903809
+    generated_reward:
+      count: 1003520
+      mean: 0.37519701561070146
+      abs_mean: 0.37638382954989563
+      nonzero_rate: 0.9792081871811225
+      mean_when_active: 0.38316368319059196
+      abs_mean_when_active: 0.38437569709604213
+      min: -0.01
+      max: 10.228545188903809
+    original_env_reward:
+      count: 1003520
+      mean: -0.8362693954607895
+      abs_mean: 3.774848959217686
+      nonzero_rate: 1.0
+      mean_when_active: -0.8362693954607895
+      abs_mean_when_active: 3.774848959217686
+      min: -100.0
+      max: 144.02702803545122
+  episode_component_sum_stats:
+    energy_penalty:
+      count: 6305
+      mean: -0.9960031720856372
+      abs_mean: 0.9960031720856372
+      min: -8.539999999999862
+      max: -0.03
+    landing_event:
+      count: 6305
+      mean: 44.84001662683918
+      abs_mean: 44.84001662683918
+      min: 0.0
+      max: 1060.0
+    proximity:
+      count: 6305
+      mean: 1.1841755222154215
+      abs_mean: 1.1841755222154215
+      min: 0.22316193580627441
+      max: 2.218041172483936
+    soft_landing:
+      count: 6305
+      mean: 14.580593631426494
+      abs_mean: 14.580593631426494
+      min: 0.0
+      max: 309.46750196814537
+    total_reward:
+      count: 6305
+      mean: 59.60878174074524
+      abs_mean: 59.61138510007285
+      min: -0.5026270473003389
+      max: 1216.2760844099103

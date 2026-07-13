@@ -1,0 +1,226 @@
+runner_env_id: LunarLander-v3
+reward_path: runs\env_001\paper_v4\seed_1\iter_08\generation\reward_v8.py
+reward_source: generated_function
+run_name: paper_v4/seed_1/iter_08/training
+n_envs: 4
+total_timesteps: 1000000
+reward_clip: 20.0
+error_fallback: zero
+ppo_args:
+  policy: MlpPolicy
+  verbose: '1'
+  device: auto
+  seed: '1'
+  n_steps: '1024'
+  batch_size: '64'
+  gae_lambda: '0.98'
+  gamma: '0.999'
+  n_epochs: '4'
+  ent_coef: '0.01'
+  tensorboard_log: runs/env_001/tensorboard
+model_path: runs\env_001\paper_v4\seed_1\iter_08\training\model.zip
+monitor_dir: runs\env_001\paper_v4\seed_1\iter_08\training\monitor
+tensorboard_log: runs/env_001/tensorboard
+normalization:
+  normalize_obs: false
+  normalize_reward: false
+  clip_obs: 10.0
+  clip_normalized_reward: 10.0
+  vecnormalize_path: null
+external_eval:
+  eval_episodes: 20
+  eval_seed_offset: 10000
+  eval_seeds:
+  - 10000
+  - 10001
+  - 10002
+  - 10003
+  - 10004
+  - 10005
+  - 10006
+  - 10007
+  - 10008
+  - 10009
+  - 10010
+  - 10011
+  - 10012
+  - 10013
+  - 10014
+  - 10015
+  - 10016
+  - 10017
+  - 10018
+  - 10019
+  episode_rewards:
+  - -17.73276305097984
+  - -48.98611561611409
+  - -68.37386195485301
+  - -10.709172296517082
+  - -25.92267270936466
+  - -34.3374757271544
+  - -37.77155835247517
+  - -61.029771902593474
+  - -36.055820138399724
+  - -30.5061434511082
+  - -16.08063621160744
+  - -11.21131728635018
+  - -48.02244758966738
+  - -72.22818738905795
+  - -19.401618003656978
+  - -12.472881598687806
+  - -26.194273353957286
+  - -27.631773073866228
+  - 12.175978882240159
+  - -28.538497929310935
+  episode_lengths:
+  - 67
+  - 81
+  - 83
+  - 70
+  - 91
+  - 81
+  - 89
+  - 85
+  - 83
+  - 84
+  - 62
+  - 72
+  - 75
+  - 75
+  - 70
+  - 89
+  - 69
+  - 59
+  - 65
+  - 79
+  episode_terminated:
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  mean_eval_reward: -31.051550437674084
+  mean_episode_length: 76.45
+  min_eval_reward: -72.22818738905795
+  max_eval_reward: 12.175978882240159
+  termination_breakdown:
+    terminated: 20
+    truncated: 0
+  final_policy_component_evaluation:
+    angular_vel_penalty:
+      episode_sum_mean: -0.6748643083368143
+      episode_abs_sum_mean: 0.6748643083368143
+      signed_contribution_share: -0.0878237229011444
+      magnitude_share: 0.0878237229011444
+      active_rate: 0.9954218443427076
+    landing_bonus:
+      episode_sum_mean: 1.4990090072154998
+      episode_abs_sum_mean: 1.4990090072154998
+      signed_contribution_share: 0.1950741060828333
+      magnitude_share: 0.1950741060828333
+      active_rate: 0.010464355788096796
+    shaped_progress:
+      episode_sum_mean: 5.25843882537406
+      episode_abs_sum_mean: 5.510432086718675
+      signed_contribution_share: 0.6843089323102647
+      magnitude_share: 0.7171021710160222
+      active_rate: 0.999345977763244
+  final_policy_component_error_count: 0
+component_summary:
+  steps_seen: 1003520
+  reward_error_count_max: 0
+  component_stats:
+    component.angular_vel_penalty:
+      count: 1003520
+      mean: -0.01146710974494833
+      abs_mean: 0.01146710974494833
+      nonzero_rate: 0.9956533003826531
+      mean_when_active: -0.011517171429594231
+      abs_mean_when_active: 0.011517171429594231
+      min: -4.930309772491455
+      max: -0.0
+    component.landing_bonus:
+      count: 1003520
+      mean: 0.01910578554944012
+      abs_mean: 0.01910578554944012
+      nonzero_rate: 0.010037667410714286
+      mean_when_active: 1.9034089064403996
+      abs_mean_when_active: 1.9034089064403996
+      min: 0.0
+      max: 2.7916224002838135
+    component.shaped_progress:
+      count: 1003520
+      mean: 0.0656603123625164
+      abs_mean: 0.07043496507635373
+      nonzero_rate: 0.9999920280612244
+      mean_when_active: 0.0656608358066794
+      abs_mean_when_active: 0.07043552658405927
+      min: -0.15670420229434967
+      max: 0.17901398241519928
+    component.total_reward:
+      count: 1003520
+      mean: 0.07329898816966464
+      abs_mean: 0.09360749191140555
+      nonzero_rate: 0.9999950175382653
+      mean_when_active: 0.07329935338088804
+      abs_mean_when_active: 0.09360795830947588
+      min: -4.53369140625
+      max: 2.7834367752075195
+    generated_reward:
+      count: 1003520
+      mean: 0.07329898816966464
+      abs_mean: 0.09360749191140555
+      nonzero_rate: 0.9999950175382653
+      mean_when_active: 0.07329935338088804
+      abs_mean_when_active: 0.09360795830947588
+      min: -4.53369140625
+      max: 2.7834367752075195
+    original_env_reward:
+      count: 1003520
+      mean: -0.6729920988614317
+      abs_mean: 2.8887111437180515
+      nonzero_rate: 1.0
+      mean_when_active: -0.6729920988614317
+      abs_mean_when_active: 2.8887111437180515
+      min: -100.0
+      max: 139.288187367013
+  episode_component_sum_stats:
+    angular_vel_penalty:
+      count: 12880
+      mean: -0.8934364650250097
+      abs_mean: 0.8934364650250097
+      min: -17.200208075839328
+      max: -0.0019405916006554336
+    landing_bonus:
+      count: 12880
+      mean: 1.4885899001998562
+      abs_mean: 1.4885899001998562
+      min: 0.0
+      max: 104.06525385379791
+    shaped_progress:
+      count: 12880
+      mean: 5.114998542870873
+      abs_mean: 5.115232878425814
+      min: -0.31915619443316245
+      max: 6.811879381770268
+    total_reward:
+      count: 12880
+      mean: 5.710151978253245
+      abs_mean: 5.763376228220284
+      min: -16.15202749124728
+      max: 103.52772700323118

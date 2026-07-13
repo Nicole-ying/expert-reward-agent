@@ -1,0 +1,47 @@
+{
+  "call_count": 2,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "landing proxy reward dominating, agent lingers near target accumulating dense reward instead of completing episode quickly, need sparse success bonus"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。\n---\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。"
+        },
+        {
+          "round": 1,
+          "name": "get_skeleton_detail",
+          "arguments": {
+            "skeleton_name": "bounded_proximity_reward"
+          },
+          "result": "NOTE: Skeleton coefficients and ratio ranges are legacy starting points, not universal constraints.\n## bounded_proximity_reward\n- 数学形态: reward = 1.0 / (1.0 + k * dist_to_target)\n- 设计原理: 自动 bounded 在 [0,1]，不需要猜系数。靠近时自动饱和，不产生数值爆炸。天然防震荡。\n- 常见陷阱: k 值决定衰减速度，k 太大则远处信号太弱。\n- 推荐配合: k 取 2~10 使初始距离处 reward≈0.1~0.3。可作为 progress_delta 的替代或补充。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "landing proxy reward dominating, agent lingers near target accumulating dense reward instead of completing episode quickly, need sparse success bonus"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。\n---\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。"
+    },
+    {
+      "round": 1,
+      "name": "get_skeleton_detail",
+      "arguments": {
+        "skeleton_name": "bounded_proximity_reward"
+      },
+      "result": "NOTE: Skeleton coefficients and ratio ranges are legacy starting points, not universal constraints.\n## bounded_proximity_reward\n- 数学形态: reward = 1.0 / (1.0 + k * dist_to_target)\n- 设计原理: 自动 bounded 在 [0,1]，不需要猜系数。靠近时自动饱和，不产生数值爆炸。天然防震荡。\n- 常见陷阱: k 值决定衰减速度，k 太大则远处信号太弱。\n- 推荐配合: k 取 2~10 使初始距离处 reward≈0.1~0.3。可作为 progress_delta 的替代或补充。"
+    }
+  ]
+}
