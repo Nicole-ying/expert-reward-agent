@@ -205,49 +205,46 @@ INVESTIGATOR_TOOLS = [
         "function": {
             "name": "submit_research_signal",
             "description": (
-                "Submit the final research signal. This is the ONLY valid final "
-                "action. The signal must be compact (~400-800 chars), evidence-cited, "
-                "and structured: (1) key training dynamics findings, (2) component "
-                "anomalies, (3) one strongest mechanism hypothesis, (4) bounded "
-                "decision implication (keep/edit/rebuild which component)."
+                "Submit the final evidence report. This is the ONLY valid final action. "
+                "You are an EVIDENCE SCOUT, not a decision-maker. Report what you "
+                "observed in the training data — do NOT suggest what to do. "
+                "The signal must be compact (~400-600 chars total), with specific "
+                "metrics cited from your tool calls."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "key_findings": {
                         "type": "string",
-                        "maxLength": 300,
-                        "description": "1-2 most salient training dynamics facts with metrics.",
+                        "maxLength": 250,
+                        "description": "1-2 most salient facts from training: score, termination rate, ep length, generated vs native reward ratio.",
                     },
                     "component_anomalies": {
                         "type": "string",
                         "maxLength": 250,
-                        "description": "Components that are vanishing, dominating, or misbehaving.",
+                        "description": "Which components are dead (near-zero active), dominating (>70% share), or self-cancelling (high magnitude but near-zero signed share). Report metrics, not opinions.",
                     },
-                    "mechanism_hypothesis": {
+                    "training_dynamics": {
                         "type": "string",
                         "maxLength": 250,
-                        "description": "One falsifiable causal claim about what's limiting learning.",
+                        "description": "How component activation and reward structure evolved across training: early vs late temporal profile, any scaffold→final drift, checkpoint-level trends.",
                     },
-                    "decision_implication": {
+                    "signal_quality": {
                         "type": "string",
                         "maxLength": 250,
-                        "description": (
-                            "Bounded recommendation: keep/patch/redesign which "
-                            "component, with one-sentence rationale."
-                        ),
+                        "description": "Signal reachability issues: dead gates, thresholds never crossed, coupling between signals, missing attractor for desired behavior.",
                     },
                     "confidence": {
                         "type": "string",
                         "enum": ["low", "medium", "high"],
-                        "description": "How well the evidence supports the hypothesis.",
+                        "description": "How complete the evidence picture is (not how certain the diagnosis is).",
                     },
                 },
                 "required": [
                     "key_findings",
                     "component_anomalies",
-                    "mechanism_hypothesis",
-                    "decision_implication",
+                    "training_dynamics",
+                    "signal_quality",
                     "confidence",
                 ],
             },
@@ -277,15 +274,14 @@ def _execute_tool(tool_name: str, tool_args: Dict[str, Any], ctx: Dict[str, Any]
 def _validate_signal(signal: Dict[str, Any]) -> List[str]:
     """Validate the research signal has all required fields with content."""
     errors = []
-    for field in ("key_findings", "component_anomalies", "mechanism_hypothesis", "decision_implication"):
+    for field in ("key_findings", "component_anomalies", "training_dynamics", "signal_quality"):
         if not signal.get(field):
             errors.append(f"missing required field: {field}")
     if signal.get("confidence") not in ("low", "medium", "high"):
         errors.append("confidence must be low/medium/high")
-    # Total signal should be compact
     total = sum(len(str(signal.get(f, ""))) for f in signal)
-    if total > 1500:
-        errors.append(f"signal too long ({total} chars); target ~800 max")
+    if total > 1200:
+        errors.append(f"signal too long ({total} chars); target ~600 max")
     return errors
 
 
@@ -314,20 +310,26 @@ def run_investigator(
     }
 
     system_prompt = (
-        "You are a read-only training dynamics investigator. Your job is to read "
-        "training outputs and produce a compact evidence diagnosis. You cannot edit "
-        "rewards or train policies.\n\n"
+        "You are an EVIDENCE SCOUT — a read-only training dynamics observer. "
+        "Your job is to autonomously decide what data to inspect, read it, "
+        "and produce a compact evidence report (~400-600 chars).\n\n"
+        "YOU DO NOT make decisions or suggest reward edits. The reward designer "
+        "(a separate LLM with full context) owns all decisions. Your value is "
+        "autonomously choosing which evidence views are most informative and "
+        "filtering out noise.\n\n"
         "WORKFLOW:\n"
-        "1. Call inspect_training_summary to get the quantitative baseline.\n"
-        "2. Call inspect_component_dynamics if you need time-series evidence.\n"
-        "3. Call inspect_previous_reward if you need to connect dynamics to code.\n"
-        "4. Call submit_research_signal ONCE with your final diagnosis.\n\n"
+        "1. Call inspect_training_summary first — always get the baseline.\n"
+        "2. Decide: do you need component_dynamics (temporal trends)? "
+        "training_feedback (final policy outcome)? previous_reward (code context)?\n"
+        "3. Call ONLY the views that matter for this specific training run. "
+        "If all components are healthy with clear temporal profiles, skip dynamics.\n"
+        "4. Call submit_research_signal ONCE with your evidence report.\n\n"
         "RULES:\n"
         "- Make at most 3 function calls total (including submit).\n"
-        "- Every factual claim must cite a metric you observed from the tools.\n"
-        "- Do NOT propose reward formulas or specific coefficients.\n"
-        "- The signal must be compact: Chinese or English, ~400-800 chars total.\n"
-        "- If evidence is insufficient, say so and set confidence=low."
+        "- Every claim must cite a metric you read from tools.\n"
+        "- Do NOT propose coefficients, operators, or edit strategies.\n"
+        "- If evidence is sparse, say so and set confidence=low.\n"
+        "- The best scout finds the ONE most diagnostic signal, not everything."
     )
 
     user_context = (
@@ -348,6 +350,7 @@ def run_investigator(
     submit_received = False
     queries_seen: set[str] = set()
     repair_attempts = 0
+    collected_data: list[str] = []  # accumulate tool results for fallback signal
 
     for turn in range(1, max_turns + 3):  # +extra for repair turns
         final_only = turn > max_turns
@@ -366,11 +369,29 @@ def run_investigator(
                 tools=tools,
                 tool_choice="auto",
                 temperature=0.0,
-                max_tokens=max_tokens,
+                max_tokens=max_tokens * (2 if final_only else 1),
             )
         except Exception as exc:
             tool_trace.append({"turn": turn, "error": f"{type(exc).__name__}: {exc}"})
             break
+
+        # HARD FALLBACK: if we're on the very last possible turn and still no
+        # submit, force-assemble a basic signal from collected data.
+        if turn >= max_turns + 2 and not submit_received:
+            if collected_data:
+                data_preview = "\n".join(collected_data[-2:])[:1500]
+                signal = {
+                    "key_findings": f"Automatic fallback after {turn} turns without submit. Raw data: {data_preview[:200]}",
+                    "component_anomalies": "Subagent exhausted turns without explicit submission.",
+                    "training_dynamics": "No temporal analysis available.",
+                    "signal_quality": "No signal quality assessment available.",
+                    "confidence": "low",
+                }
+                submit_received = True
+                tool_trace.append({"turn": turn, "fallback_signal": True})
+                break
+            else:
+                break
 
         choice = resp.choices[0]
         message = choice.message
@@ -476,6 +497,7 @@ def run_investigator(
             else:
                 queries_seen.add(sig)
                 result = _execute_tool(name, args, ctx)
+                collected_data.append(f"[{name}]: {result[:500]}")
                 tool_trace[-1]["result_len"] = len(result)
 
             pending_results.append((tc, name, result))
@@ -483,13 +505,20 @@ def run_investigator(
         if submit_received and signal:
             break
 
-        # Emit assistant + tool messages in required order
+        # Emit assistant + tool messages in required order.
+        # DeepSeek thinking mode requires reasoning_content to be preserved
+        # in multi-turn conversations — otherwise API rejects with 400.
         if pending_results:
+            raw_msg = choice.message
             assistant_msg: Dict[str, Any] = {
                 "role": "assistant",
                 "content": content or None,
-                "tool_calls": [],
             }
+            # Preserve reasoning_content if present (DeepSeek thinking mode)
+            reasoning = getattr(raw_msg, "reasoning_content", None)
+            if reasoning:
+                assistant_msg["reasoning_content"] = reasoning
+            assistant_msg["tool_calls"] = []
             for idx, (tc, name, result) in enumerate(pending_results):
                 assistant_msg["tool_calls"].append({
                     "id": tc.id,
@@ -513,9 +542,9 @@ def run_investigator(
         parts = [
             f"**Key Findings**: {signal.get('key_findings', '')}",
             f"**Component Anomalies**: {signal.get('component_anomalies', '')}",
-            f"**Mechanism Hypothesis**: {signal.get('mechanism_hypothesis', '')}",
-            f"**Decision Implication**: {signal.get('decision_implication', '')}",
-            f"**Confidence**: `{signal.get('confidence', 'low')}`",
+            f"**Training Dynamics**: {signal.get('training_dynamics', '')}",
+            f"**Signal Quality**: {signal.get('signal_quality', '')}",
+            f"**Evidence Confidence**: `{signal.get('confidence', 'low')}`",
         ]
         signal_text = "\n\n".join(parts)
 

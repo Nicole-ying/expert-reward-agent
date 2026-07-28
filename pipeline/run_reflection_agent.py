@@ -595,20 +595,22 @@ def run_reflection_agent(
                 )
                 if result.get("research_signal_text"):
                     research_signal = result["research_signal_text"]
-                    # Persist the signal for audit
-                    trace = {
-                        "turns_used": result["turns_used"],
-                        "signal": result["research_signal"],
-                        "tool_trace": result["tool_trace"],
-                    }
-                    write_json(str(run_dir / f"subagent_trace_{reward_version}.json"), trace)
+                    print(f"  Subagent: {result['turns_used']} turns, signal={len(research_signal)} chars")
+                else:
+                    print("  Subagent: no valid signal produced")
+                # Always persist trace for audit
+                trace = {
+                    "turns_used": result["turns_used"],
+                    "signal": result["research_signal"],
+                    "tool_trace": result["tool_trace"],
+                    "signal_produced": bool(result.get("research_signal_text")),
+                }
+                write_json(str(run_dir / f"subagent_trace_{reward_version}.json"), trace)
+                if research_signal:
                     write_text(
                         str(run_dir / f"subagent_signal_{reward_version}.md"),
                         f"# Subagent Research Signal\n\n{research_signal}\n",
                     )
-                    print(f"  Subagent: {result['turns_used']} turns, signal={len(research_signal)} chars")
-                else:
-                    print("  Subagent: no valid signal produced")
         except Exception as exc:
             print(f"  Subagent: error (continuing without signal) — {exc}")
 
