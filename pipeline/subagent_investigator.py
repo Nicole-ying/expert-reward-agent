@@ -1,289 +1,90 @@
-"""Subagent Investigator — read-only training dynamics analyst.
+"""Subagent Investigator — read-only training dynamics evidence scout.
 
-This is the "agentic" bridge: a short-lived subagent that reads training outputs
-and produces a compact research signal (~400-800 chars) to enrich the reflection
-prompt. The subagent has tool access but cannot edit rewards or train.
-
-Pattern borrowed from Agentic_CREATE's EvidenceAnalysisService, but radically
-simplified for minimal integration into the expert framework.
+Single-call design: all training data is pre-loaded into one prompt. The subagent
+returns a structured JSON signal directly — no multi-turn tool calling, no function
+calling protocol fragility. Stability over cleverness.
 """
 
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List
-
-from llm_clients.deepseek_client import DeepSeekClient
+from typing import Any, Dict
 
 
-# ── Tools the subagent can call ──────────────────────────────────────────
+# ── Data readers ────────────────────────────────────────────────────────
 
 def _read_training_summary(train_dir: str) -> str:
-    """Read key metrics from training_summary.json."""
     p = Path(train_dir) / "training_summary.json"
     if not p.exists():
         return "(training_summary.json not found)"
-
     data = json.loads(p.read_text(encoding="utf-8"))
     external = data.get("external_eval", {})
     comp_summary = data.get("component_summary", {})
     comp_stats = comp_summary.get("component_stats", {})
-
     lines = [
-        "## Training Summary",
-        f"- mean_eval_reward: {external.get('mean_eval_reward', '?')}",
-        f"- mean_episode_length: {external.get('mean_episode_length', '?')}",
-        f"- std_eval_reward: {external.get('std_eval_reward', '?')}",
-        f"- terminated_count: {sum(1 for t in external.get('episode_terminated', []) if t)}/{len(external.get('episode_terminated', []) or [])}",
-        "",
-        "### Component Breakdown (per-episode mean, activation rate, share)",
+        f"mean_eval_reward={external.get('mean_eval_reward','?')}",
+        f"mean_episode_length={external.get('mean_episode_length','?')}",
+        f"terminated={sum(1 for t in external.get('episode_terminated',[]) if t)}/{len(external.get('episode_terminated',[]) or [])}",
+        "Components:",
     ]
-    for name, stats in sorted(comp_stats.items()):
+    for name, s in sorted(comp_stats.items()):
         short = name.replace("component.", "")
         lines.append(
-            f"- {short}: mean={stats.get('mean', 0):.4f}, "
-            f"nonzero_rate={stats.get('nonzero_rate', 0):.1%}, "
-            f"abs_share={stats.get('abs_frac_of_total', 0):.1%}"
+            f"  {short}: mean={s.get('mean',0):.4f} nonzero={s.get('nonzero_rate',0):.1%} "
+            f"abs_share={s.get('abs_frac_of_total',0):.1%}"
         )
     return "\n".join(lines)
-
-
-def _read_feedback_md(train_dir: str) -> str:
-    """Read the training feedback markdown (full text, bounded)."""
-    p = Path(train_dir) / "training_feedback.md"
-    if not p.exists():
-        return "(training_feedback.md not found)"
-    text = p.read_text(encoding="utf-8")
-    if len(text) > 6000:
-        text = text[:6000] + "\n\n...(truncated for subagent)"
-    return text
 
 
 def _read_component_dynamics(train_dir: str) -> str:
-    """Extract per-component time-evolution from training_summary.json.
-
-    Reads monitor snapshots to understand if components are growing, dying, or
-    oscillating across training.
-    """
     p = Path(train_dir) / "training_summary.json"
     if not p.exists():
-        return "(no training_summary.json)"
-
+        return "(no data)"
     data = json.loads(p.read_text(encoding="utf-8"))
     snapshots = data.get("monitor_snapshots", [])
     if not snapshots:
-        return "(no monitor snapshots — training may not have completed)"
-
-    # Extract all component names across snapshots
-    all_components: Dict[str, List[Dict[str, Any]]] = {}
+        return "(no monitor snapshots)"
+    all_comps: Dict[str, list] = {}
     for snap in snapshots:
         for comp in snap.get("top_components", []):
             name = comp.get("name", "?")
-            all_components.setdefault(name, []).append({
+            all_comps.setdefault(name, []).append({
                 "steps": snap.get("steps", 0),
-                "episode_sum_mean": comp.get("episode_sum_mean"),
-                "active_rate": comp.get("active_rate"),
-                "magnitude_share": comp.get("magnitude_share"),
+                "sum": comp.get("episode_sum_mean"),
+                "active": comp.get("active_rate"),
+                "share": comp.get("magnitude_share"),
             })
-
-    lines = ["## Component Dynamics (across training snapshots)"]
-    for name, history in sorted(all_components.items()):
+    lines = []
+    for name, history in sorted(all_comps.items()):
         if len(history) < 2:
             continue
-        first = history[0]
-        last = history[-1]
-        first_sum = first.get("episode_sum_mean") or 0
-        last_sum = last.get("episode_sum_mean") or 0
-        first_active = first.get("active_rate") or 0
-        last_active = last.get("active_rate") or 0
-        trend = "↗" if last_sum > first_sum else "↘" if last_sum < first_sum else "→"
+        first, last = history[0], history[-1]
+        f_sum, l_sum = first.get("sum") or 0, last.get("sum") or 0
+        f_act, l_act = first.get("active") or 0, last.get("active") or 0
+        trend = "/\\" if l_sum > f_sum else "\\/" if l_sum < f_sum else "--"
         lines.append(
-            f"- {name}: {first_sum:.3f}→{last_sum:.3f} {trend} "
-            f"active {first_active:.0%}→{last_active:.0%} "
-            f"({len(history)} checkpoints)"
+            f"  {name}: {f_sum:.3f}->{l_sum:.3f} {trend} "
+            f"active {f_act:.0%}->{l_act:.0%} ({len(history)} checkpoints)"
         )
+    return "\n".join(lines) if lines else "(no temporal data)"
 
-    # Add reward error stats if present
-    errors = data.get("reward_errors", {})
-    if errors:
-        lines.append(f"\n### Reward Errors\nerror_count={errors.get('error_count', 0)}, "
-                     f"last_error={errors.get('last_error', 'none')}")
 
-    return "\n".join(lines)
+def _read_feedback_md(train_dir: str) -> str:
+    p = Path(train_dir) / "training_feedback.md"
+    if not p.exists():
+        return "(not found)"
+    text = p.read_text(encoding="utf-8")
+    return text[:5000] if len(text) > 5000 else text
 
 
 def _read_previous_reward(reward_path: str) -> str:
-    """Read the previous reward code, bounded."""
     if not reward_path or not Path(reward_path).exists():
-        return "(no previous reward code)"
+        return "(not available)"
     text = Path(reward_path).read_text(encoding="utf-8")
-    if len(text) > 4000:
-        text = text[:4000] + "\n# ...(truncated)"
-    return text
+    return text[:5000] if len(text) > 5000 else text
 
 
-def _read_memory_table(memory_path: str) -> str:
-    """Read the reward memory table, bounded."""
-    if not memory_path or not Path(memory_path).exists():
-        return "(no reward memory)"
-    text = Path(memory_path).read_text(encoding="utf-8")
-    if len(text) > 3000:
-        # Keep header + last 15 lines
-        lines = text.splitlines()
-        text = "\n".join(lines[:3] + ["..."] + lines[-15:])
-    return text
-
-
-# ── Tool definitions (OpenAI-compatible function calling format) ──────────
-
-INVESTIGATOR_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "inspect_training_summary",
-            "description": (
-                "Read training_summary.json for this iteration: external evaluation "
-                "score, per-component means/activation/share, and episode outcomes. "
-                "This is the primary quantitative evidence."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "inspect_component_dynamics",
-            "description": (
-                "Read time-series component dynamics across training checkpoints. "
-                "Shows which components grew, died, or oscillated. Use to diagnose "
-                "learning scaffolds, vanishing signals, and late-training drift."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "inspect_training_feedback",
-            "description": (
-                "Read the human-readable training_feedback.md with final policy "
-                "outcome, component composition table, and episode distribution."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "inspect_previous_reward",
-            "description": (
-                "Read the previous iteration's reward function source code. "
-                "The subagent must inspect this to understand what components "
-                "exist and how they connect to the observed training dynamics."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "submit_research_signal",
-            "description": (
-                "Submit the final evidence report. This is the ONLY valid final action. "
-                "You are an EVIDENCE SCOUT, not a decision-maker. Report what you "
-                "observed in the training data — do NOT suggest what to do. "
-                "The signal must be compact (~400-600 chars total), with specific "
-                "metrics cited from your tool calls."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "key_findings": {
-                        "type": "string",
-                        "maxLength": 250,
-                        "description": "1-2 most salient facts from training: score, termination rate, ep length, generated vs native reward ratio.",
-                    },
-                    "component_anomalies": {
-                        "type": "string",
-                        "maxLength": 250,
-                        "description": "Which components are dead (near-zero active), dominating (>70% share), or self-cancelling (high magnitude but near-zero signed share). Report metrics, not opinions.",
-                    },
-                    "training_dynamics": {
-                        "type": "string",
-                        "maxLength": 250,
-                        "description": "How component activation and reward structure evolved across training: early vs late temporal profile, any scaffold→final drift, checkpoint-level trends.",
-                    },
-                    "signal_quality": {
-                        "type": "string",
-                        "maxLength": 250,
-                        "description": "Signal reachability issues: dead gates, thresholds never crossed, coupling between signals, missing attractor for desired behavior.",
-                    },
-                    "confidence": {
-                        "type": "string",
-                        "enum": ["low", "medium", "high"],
-                        "description": "How complete the evidence picture is (not how certain the diagnosis is).",
-                    },
-                },
-                "required": [
-                    "key_findings",
-                    "component_anomalies",
-                    "training_dynamics",
-                    "signal_quality",
-                    "confidence",
-                ],
-            },
-        },
-    },
-]
-
-
-def _execute_tool(tool_name: str, tool_args: Dict[str, Any], ctx: Dict[str, Any]) -> str:
-    """Execute a read-only tool and return the result string."""
-    train_dir = ctx.get("train_dir", "")
-    if tool_name == "inspect_training_summary":
-        return _read_training_summary(train_dir)
-    elif tool_name == "inspect_component_dynamics":
-        return _read_component_dynamics(train_dir)
-    elif tool_name == "inspect_training_feedback":
-        return _read_feedback_md(train_dir)
-    elif tool_name == "inspect_previous_reward":
-        return _read_previous_reward(ctx.get("previous_reward_path", ""))
-    elif tool_name == "submit_research_signal":
-        # This is handled by the main loop, not executed as a tool
-        return json.dumps(tool_args, ensure_ascii=False)
-    else:
-        return f"Unknown tool: {tool_name}"
-
-
-def _validate_signal(signal: Dict[str, Any]) -> List[str]:
-    """Validate the research signal has all required fields with content."""
-    errors = []
-    for field in ("key_findings", "component_anomalies", "training_dynamics", "signal_quality"):
-        if not signal.get(field):
-            errors.append(f"missing required field: {field}")
-    if signal.get("confidence") not in ("low", "medium", "high"):
-        errors.append("confidence must be low/medium/high")
-    total = sum(len(str(signal.get(f, ""))) for f in signal)
-    if total > 1200:
-        errors.append(f"signal too long ({total} chars); target ~600 max")
-    return errors
-
+# ── Main entry point ────────────────────────────────────────────────────
 
 def run_investigator(
     *,
@@ -292,251 +93,101 @@ def run_investigator(
     memory_path: str = "",
     client: Any = None,
     model: str = "deepseek-chat",
-    max_turns: int = 3,
-    max_tokens: int = 1200,
+    max_tokens: int = 800,
 ) -> Dict[str, Any]:
-    """Run the read-only subagent investigator.
+    """Single-call evidence scout. Pre-loads all data, sends one prompt,
+    returns a structured JSON signal. No function calling, no multi-turn."""
 
-    Returns a dict with:
-      - research_signal: the structured signal dict (or None if failed)
-      - research_signal_text: compact markdown rendering
-      - turns_used: how many LLM turns were consumed
-      - tool_trace: list of tool calls made
-    """
-    ctx = {
-        "train_dir": train_dir,
-        "previous_reward_path": previous_reward_path,
-        "memory_path": memory_path,
-    }
+    # Pre-load all data
+    summary = _read_training_summary(train_dir)
+    dynamics = _read_component_dynamics(train_dir)
+    feedback = _read_feedback_md(train_dir)
+    prev_code = _read_previous_reward(previous_reward_path)
 
     system_prompt = (
-        "You are an EVIDENCE SCOUT — a read-only training dynamics observer. "
-        "Your job is to autonomously decide what data to inspect, read it, "
-        "and produce a compact evidence report (~400-600 chars).\n\n"
-        "YOU DO NOT make decisions or suggest reward edits. The reward designer "
-        "(a separate LLM with full context) owns all decisions. Your value is "
-        "autonomously choosing which evidence views are most informative and "
-        "filtering out noise.\n\n"
-        "WORKFLOW:\n"
-        "1. Call inspect_training_summary first — always get the baseline.\n"
-        "2. Decide: do you need component_dynamics (temporal trends)? "
-        "training_feedback (final policy outcome)? previous_reward (code context)?\n"
-        "3. Call ONLY the views that matter for this specific training run. "
-        "If all components are healthy with clear temporal profiles, skip dynamics.\n"
-        "4. Call submit_research_signal ONCE with your evidence report.\n\n"
+        "You are an EVIDENCE SCOUT. Read the training data below and produce "
+        "a compact JSON signal (~400-600 chars total across all fields).\n\n"
+        "YOU DO NOT make decisions or suggest reward edits. You report what "
+        "you OBSERVED in the data. The reward designer (a separate LLM) owns "
+        "all decisions.\n\n"
+        "Output valid JSON with these fields:\n"
+        "- key_findings: 1-2 most salient facts (score, termination rate, ep len, reward scale)\n"
+        "- component_anomalies: which components are dead, dominating (>70% share), "
+        "  or self-cancelling (high magnitude but near-zero signed share)\n"
+        "- training_dynamics: temporal trends across checkpoints (growth/decay of components, "
+        "  scaffold→final drift, plateau detection)\n"
+        "- signal_quality: dead gates, thresholds never crossed, coupling between signals, "
+        "  missing attractor for desired behavior\n"
+        "- confidence: low/medium/high (completeness of evidence, not certainty of diagnosis)\n\n"
         "RULES:\n"
-        "- Make at most 3 function calls total (including submit).\n"
-        "- Every claim must cite a metric you read from tools.\n"
+        "- Every claim must reference a metric you see in the data.\n"
         "- Do NOT propose coefficients, operators, or edit strategies.\n"
-        "- If evidence is sparse, say so and set confidence=low.\n"
-        "- The best scout finds the ONE most diagnostic signal, not everything."
+        "- If data is sparse, say so and set confidence=low.\n"
+        "- Be terse. Total JSON should be ~400-600 chars."
     )
 
-    user_context = (
-        f"The training run at `{train_dir}` has completed. Inspect its outputs "
-        f"and produce a research signal that will help the reward designer make "
-        f"one evidence-based edit decision.\n\n"
-        f"Previous reward: {previous_reward_path or '(initial generation, no previous)'}\n"
-        f"Memory: {memory_path or '(no memory yet)'}"
-    )
+    user_prompt = f"""Training data for the most recently completed reward iteration:
 
-    messages: List[Dict[str, Any]] = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_context},
-    ]
+=== Training Summary ===
+{summary}
 
-    tool_trace: List[Dict[str, Any]] = []
-    signal: Dict[str, Any] | None = None
-    submit_received = False
-    queries_seen: set[str] = set()
-    repair_attempts = 0
-    collected_data: list[str] = []  # accumulate tool results for fallback signal
+=== Component Dynamics (temporal) ===
+{dynamics}
 
-    for turn in range(1, max_turns + 3):  # +extra for repair turns
-        final_only = turn > max_turns
-        tools = INVESTIGATOR_TOOLS
-        if final_only:
-            # On repair turns, only allow submit
-            tools = [
-                t for t in INVESTIGATOR_TOOLS
-                if t["function"]["name"] == "submit_research_signal"
-            ]
+=== Training Feedback (final policy) ===
+{feedback[:3000]}
 
+=== Previous Reward Code ===
+{prev_code[:3000]}
+
+Based on the evidence above, output your JSON signal. Remember: facts only, no recommendations."""
+
+    signal = None
+    tool_trace = []
+
+    try:
+        resp = client.completion(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,
+            max_tokens=max_tokens,
+        )
+        content = (resp.choices[0].message.content or "").strip()
+
+        # Parse JSON from response
+        # Try direct parse first
         try:
-            resp = client.completion(
-                model=model,
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",
-                temperature=0.0,
-                max_tokens=max_tokens * (2 if final_only else 1),
-            )
-        except Exception as exc:
-            tool_trace.append({"turn": turn, "error": f"{type(exc).__name__}: {exc}"})
-            break
-
-        # HARD FALLBACK: if we're on the very last possible turn and still no
-        # submit, force-assemble a basic signal from collected data.
-        if turn >= max_turns + 2 and not submit_received:
-            if collected_data:
-                data_preview = "\n".join(collected_data[-2:])[:1500]
-                signal = {
-                    "key_findings": f"Automatic fallback after {turn} turns without submit. Raw data: {data_preview[:200]}",
-                    "component_anomalies": "Subagent exhausted turns without explicit submission.",
-                    "training_dynamics": "No temporal analysis available.",
-                    "signal_quality": "No signal quality assessment available.",
-                    "confidence": "low",
-                }
-                submit_received = True
-                tool_trace.append({"turn": turn, "fallback_signal": True})
-                break
-            else:
-                break
-
-        choice = resp.choices[0]
-        message = choice.message
-        content = (message.content or "").strip()
-        tool_calls = list(message.tool_calls or [])
-
-        # Handle empty response
-        if not content and not tool_calls:
-            messages.append({"role": "assistant", "content": content or "(empty)"})
-            messages.append({
-                "role": "user",
-                "content": "Call inspect_* tools to read training data, then submit_research_signal.",
-            })
-            continue
-
-        # Try to parse signal from text content (DeepSeek sometimes embeds function
-        # calls in text rather than using the tool_calls protocol)
-        if not tool_calls and "submit_research_signal" in content.lower():
+            signal = json.loads(content)
+        except json.JSONDecodeError:
+            # Try extracting from code fences or braces
             match = re.search(r'\{[\s\S]*\}', content)
             if match:
                 try:
-                    candidate = json.loads(match.group(0))
-                    if isinstance(candidate, dict) and "key_findings" in candidate:
-                        signal = candidate
-                        submit_received = True
-                        tool_trace.append({
-                            "turn": turn,
-                            "parsed_from_text": True,
-                            "signal": signal,
-                        })
-                        break
+                    signal = json.loads(match.group(0))
                 except json.JSONDecodeError:
                     pass
 
-        if not tool_calls:
-            messages.append({"role": "assistant", "content": content})
-            messages.append({
-                "role": "user",
-                "content": (
-                    "You must use function calls. Call inspect_training_summary, "
-                    "inspect_component_dynamics, inspect_training_feedback, or "
-                    "inspect_previous_reward to read data. Then call "
-                    "submit_research_signal with your diagnosis."
-                ),
-            })
-            continue
+        # Validate required fields
+        if signal and isinstance(signal, dict):
+            required = ["key_findings", "component_anomalies", "training_dynamics", "signal_quality"]
+            missing = [f for f in required if not signal.get(f)]
+            if missing:
+                tool_trace.append({"warning": f"missing fields: {missing}"})
+                for f in missing:
+                    signal[f] = "Not reported."
+            if signal.get("confidence") not in ("low", "medium", "high"):
+                signal["confidence"] = "low"
+        else:
+            signal = None
+            tool_trace.append({"error": "could not parse JSON", "content_preview": content[:300]})
 
-        # Process tool calls.  DeepSeek requires: assistant (with tool_calls)
-        # BEFORE tool messages. Collect results first, then emit in order.
-        pending_results: list[tuple[Any, str, str]] = []  # (tc, tool_name, result_text)
+    except Exception as exc:
+        tool_trace.append({"error": f"{type(exc).__name__}: {exc}"})
 
-        for tc in tool_calls[:2]:  # max 2 calls per turn
-            name = tc.function.name
-            raw_args = tc.function.arguments or "{}"
-            if isinstance(raw_args, str):
-                try:
-                    args = json.loads(raw_args)
-                except json.JSONDecodeError:
-                    args = {}
-            else:
-                args = raw_args or {}
-
-            tool_trace.append({
-                "turn": turn,
-                "tool": name,
-                "args": args,
-            })
-
-            if name == "submit_research_signal":
-                signal = args
-                submit_received = True
-                errors = _validate_signal(signal)
-                if errors:
-                    tool_trace[-1]["validation_errors"] = errors
-                    repair_attempts += 1
-                    if repair_attempts > 2:
-                        signal["confidence"] = "low"
-                        signal.setdefault("key_findings", "Validation failed after repairs")
-                        signal.setdefault("component_anomalies", "Unable to determine")
-                        signal.setdefault("mechanism_hypothesis", "Insufficient evidence")
-                        signal.setdefault("decision_implication", "Review training feedback manually")
-                        tool_trace[-1]["accepted_with_errors"] = True
-                        break
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            f"Signal validation failed: {'; '.join(errors)}. "
-                            "Fix the issues and re-submit. Make signal compact "
-                            "~400-800 chars total."
-                        ),
-                    })
-                    signal = None
-                    submit_received = False
-                    continue
-                tool_trace[-1]["signal_valid"] = True
-                break
-
-            # Execute read-only tool
-            sig = f"{name}:{json.dumps(args, sort_keys=True)}"
-            if sig in queries_seen:
-                result = "(duplicate query — same arguments as earlier)"
-                tool_trace[-1]["cached"] = True
-            else:
-                queries_seen.add(sig)
-                result = _execute_tool(name, args, ctx)
-                collected_data.append(f"[{name}]: {result[:500]}")
-                tool_trace[-1]["result_len"] = len(result)
-
-            pending_results.append((tc, name, result))
-
-        if submit_received and signal:
-            break
-
-        # Emit assistant + tool messages in required order.
-        # DeepSeek thinking mode requires reasoning_content to be preserved
-        # in multi-turn conversations — otherwise API rejects with 400.
-        if pending_results:
-            raw_msg = choice.message
-            assistant_msg: Dict[str, Any] = {
-                "role": "assistant",
-                "content": content or None,
-            }
-            # Preserve reasoning_content if present (DeepSeek thinking mode)
-            reasoning = getattr(raw_msg, "reasoning_content", None)
-            if reasoning:
-                assistant_msg["reasoning_content"] = reasoning
-            assistant_msg["tool_calls"] = []
-            for idx, (tc, name, result) in enumerate(pending_results):
-                assistant_msg["tool_calls"].append({
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": name,
-                        "arguments": tc.function.arguments,
-                    },
-                })
-            messages.append(assistant_msg)
-            for idx, (tc, name, result) in enumerate(pending_results):
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": result,
-                })
-
-    # Build compact signal text
+    # Build signal text
     signal_text = ""
     if signal:
         parts = [
@@ -551,6 +202,6 @@ def run_investigator(
     return {
         "research_signal": signal,
         "research_signal_text": signal_text,
-        "turns_used": len([t for t in tool_trace if "tool" in t]),
+        "turns_used": 1 if signal else 0,
         "tool_trace": tool_trace,
     }
