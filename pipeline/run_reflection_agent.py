@@ -16,6 +16,7 @@ from .reflection_tools import (
     search_reward_design_knowledge,
 )
 from .run_03_direct_reward_generator import extract_code, validate_code
+from .subagent_investigator import run_investigator
 from llm_clients.deepseek_client import DeepSeekClient
 
 
@@ -105,6 +106,110 @@ def _build_cumulative_record(run_root, prefix, seed, current_iteration, memory_m
     return "\n".join(lines)
 
 
+def _build_component_delta(run_root, prefix, seed, current_iter):
+    """Build before/after component comparison for the current edit.
+
+    Reads training_summary.json from current and previous iterations,
+    computes per-component deltas, and formats a diagnostic table.
+    Only reports evidence — does NOT suggest what to do next.
+    """
+    try:
+        prev_dir = Path(run_root) / prefix / f"seed_{seed}" / f"iter_{current_iter-1:02d}" / "training"
+        curr_dir = Path(run_root) / prefix / f"seed_{seed}" / f"iter_{current_iter:02d}" / "training"
+
+        prev_ts = prev_dir / "training_summary.json"
+        curr_ts = curr_dir / "training_summary.json"
+        if not prev_ts.exists() or not curr_ts.exists():
+            return ""
+
+        prev = json.loads(prev_ts.read_text(encoding="utf-8"))
+        curr = json.loads(curr_ts.read_text(encoding="utf-8"))
+
+        prev_comps = prev.get("component_summary", {}).get("component_stats", {})
+        curr_comps = curr.get("component_summary", {}).get("component_stats", {})
+
+        # Build union of component names (short form)
+        all_names = set()
+        for name in list(prev_comps.keys()) + list(curr_comps.keys()):
+            short = name.replace("component.", "")
+            if short not in ("generated_reward", "total_reward", "original_env_reward"):
+                all_names.add(short)
+        all_names = sorted(all_names)
+
+        if not all_names:
+            return ""
+
+        lines = [
+            "# 4. 本轮修改的逐组件效果（编辑前 → 编辑后）",
+            "",
+            "| 组件 | 编辑前均值 | 编辑后均值 | 均值Δ | 编辑前激活率 | 编辑后激活率 | 激活率Δ |",
+            "|---|---:|---:|---:|---:|---:|---:|",
+        ]
+
+        for name in all_names:
+            p = prev_comps.get(f"component.{name}", prev_comps.get(name, {}))
+            c = curr_comps.get(f"component.{name}", curr_comps.get(name, {}))
+            if not p and not c:
+                continue
+
+            p_mean = float(p.get("mean", 0)) if p else None
+            c_mean = float(c.get("mean", 0)) if c else None
+            p_act = float(p.get("nonzero_rate", 0)) if p else None
+            c_act = float(c.get("nonzero_rate", 0)) if c else None
+
+            def fmt(v):
+                if v is None: return "— (新增)"
+                return f"{v:.3f}"
+
+            def fmt_delta(new, old):
+                if new is None: return "已删除"
+                if old is None: return "新增"
+                d = new - old
+                sign = "+" if d > 0 else ""
+                return f"{sign}{d:.3f}"
+
+            def fmt_rate(v):
+                if v is None: return "—"
+                return f"{v:.1%}"
+
+            def fmt_rate_delta(new, old):
+                if new is None: return "—"
+                if old is None: return "—"
+                d = (new - old) * 100
+                sign = "+" if d > 0 else ""
+                return f"{sign}{d:.1f}pp"
+
+            lines.append(
+                f"| {name} | {fmt(p_mean)} | {fmt(c_mean)} | {fmt_delta(c_mean, p_mean)} | "
+                f"{fmt_rate(p_act)} | {fmt_rate(c_act)} | {fmt_rate_delta(c_act, p_act)} |"
+            )
+
+        # Episode-level metrics delta
+        prev_ev = prev.get("external_eval", {})
+        curr_ev = curr.get("external_eval", {})
+        if prev_ev and curr_ev:
+            lines.extend([
+                "",
+                "| 回合级指标 | 编辑前 | 编辑后 | Δ |",
+                "|---|---:|---:|---:|",
+                f"| 开发得分 | {prev_ev.get('mean_eval_reward', 0):.2f} | {curr_ev.get('mean_eval_reward', 0):.2f} | "
+                f"{curr_ev.get('mean_eval_reward', 0) - prev_ev.get('mean_eval_reward', 0):+.2f} |",
+                f"| 平均回合长度 | {prev_ev.get('mean_episode_length', 0):.1f} | {curr_ev.get('mean_episode_length', 0):.1f} | "
+                f"{curr_ev.get('mean_episode_length', 0) - prev_ev.get('mean_episode_length', 0):+.1f} |",
+            ])
+            prev_term = sum(1 for t in prev_ev.get("episode_terminated", []) if t)
+            curr_term = sum(1 for t in curr_ev.get("episode_terminated", []) if t)
+            n_eps = max(len(prev_ev.get("episode_terminated", [])), 1)
+            lines.append(
+                f"| 终止回合数 | {prev_term}/{n_eps} | {curr_term}/{n_eps} | "
+                f"{curr_term - prev_term:+d} |"
+            )
+
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def _environment_summary(environment_card_md):
     """Keep task and interface facts needed to interpret reward code.
 
@@ -160,7 +265,7 @@ def _compact_route_context(cfg, environment_card_md, expert_context_md=""):
     return "\n".join(compact)
 
 
-def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md="", cfg=None, expert_context_md="", cumulative_record="", is_rebuild=False):
+def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md="", cfg=None, expert_context_md="", cumulative_record="", component_delta="", is_rebuild=False, research_signal=""):
     """Assemble the reflection agent's user prompt — focused, no generic templates."""
     parts = []
 
@@ -198,26 +303,32 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environm
     else:
         parts.append("# 3. 累积迭代记录\n（第一轮反思，无历史记录）")
 
-    parts.append(f"# 4. 训练反馈\n{feedback_md}")
+    if component_delta:
+        parts.append(component_delta)
+
+    parts.append(f"# 5. 本轮训练反馈\n{feedback_md}")
+
+    if research_signal:
+        parts.append(f"# 5.5. Subagent 调研信号（基于训练数据的自动诊断）\n{research_signal}")
 
     environment_summary = _environment_summary(environment_card_md)
     if environment_summary:
         parts.append(
-            "# 5. 环境事实（只据此理解任务和变量，不猜测环境名称）\n"
+            "# 6. 环境事实（只据此理解任务和变量，不猜测环境名称）\n"
             f"{environment_summary}"
         )
 
     if is_rebuild:
         # Full expert context for rebuild
         if expert_context_md:
-            parts.append(f"# 6. Formula Operator Library（完整版，用于 Level 3 重建）\n{expert_context_md}")
+            parts.append(f"# 7. Formula Operator Library（完整版，用于 Level 3 重建）\n{expert_context_md}")
     else:
         route_context = _compact_route_context(cfg or {}, environment_card_md, expert_context_md)
         if route_context:
-            parts.append(f"# 6. Formula switching guide\n{route_context}")
+            parts.append(f"# 7. Formula switching guide\n{route_context}")
 
     if memory_md:
-        parts.append(f"# 7. 历史记忆\n{memory_md}")
+        parts.append(f"# 8. 历史记忆\n{memory_md}")
 
     return "\n\n".join(parts)
 
@@ -456,6 +567,51 @@ def run_reflection_agent(
                 cfg["experiment"]["run_root"], prefix, seed_str, current_iter, memory_md
             )
 
+    # Build component delta from current vs previous iteration
+    component_delta = ""
+    if not validation_retry and prefix and seed_str and current_iter > 1:
+        component_delta = _build_component_delta(
+            cfg["experiment"]["run_root"], prefix, seed_str, current_iter
+        )
+
+    # ── Run subagent investigator (agentic bridge) ──
+    research_signal = ""
+    if not validation_retry and not duplicate_retry and not mock:
+        try:
+            subagent_cfg = cfg.get("subagent_investigator", {})
+            if subagent_cfg.get("enabled", True):
+                llm_cfg = cfg["llm"]
+                client = DeepSeekClient(
+                    api_key_env=llm_cfg["api_key_env"],
+                    base_url=llm_cfg["base_url"],
+                )
+                result = run_investigator(
+                    train_dir=str(train_run_dir),
+                    previous_reward_path=str(previous_reward_path),
+                    memory_path=str(memory_path) if Path(memory_path).exists() else "",
+                    client=client,
+                    model=llm_cfg.get("model_investigator", llm_cfg.get("model_reflection", llm_cfg["model_reward"])),
+                    max_turns=int(subagent_cfg.get("max_turns", 3)),
+                )
+                if result.get("research_signal_text"):
+                    research_signal = result["research_signal_text"]
+                    # Persist the signal for audit
+                    trace = {
+                        "turns_used": result["turns_used"],
+                        "signal": result["research_signal"],
+                        "tool_trace": result["tool_trace"],
+                    }
+                    write_json(str(run_dir / f"subagent_trace_{reward_version}.json"), trace)
+                    write_text(
+                        str(run_dir / f"subagent_signal_{reward_version}.md"),
+                        f"# Subagent Research Signal\n\n{research_signal}\n",
+                    )
+                    print(f"  Subagent: {result['turns_used']} turns, signal={len(research_signal)} chars")
+                else:
+                    print("  Subagent: no valid signal produced")
+        except Exception as exc:
+            print(f"  Subagent: error (continuing without signal) — {exc}")
+
     if duplicate_retry:
         duplicate_draft_path = run_dir / f"reward_{reward_version}.py"
         duplicate_draft = read_text(duplicate_draft_path) if duplicate_draft_path.exists() else ""
@@ -468,7 +624,7 @@ def run_reflection_agent(
             "Return a complete reward function whose executable code is materially different from every historical reward. "
             "Do not merely rename variables or comments.\n\n"
             f"# Rejected duplicate draft\n```python\n{duplicate_draft}\n```\n\n"
-        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, is_rebuild)
+        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_delta, is_rebuild, research_signal)
     elif validation_retry:
         failed_draft_path = run_dir / f"reward_{reward_version}.md"
         failed_draft = read_text(failed_draft_path) if failed_draft_path.exists() else ""
@@ -478,9 +634,9 @@ def run_reflection_agent(
             "这是代码格式修复，不要重新诊断、不要调用工具、不要改变原定修改方向。"
             "直接输出修复后的完整 Python 代码。\n\n"
             f"# 被截断或无效的上一版草稿\n{failed_draft}\n\n"
-        ) + build_user_prompt(feedback_md, "", previous_code, best_code, environment_card_md, cfg, "", cumulative_record, False)
+        ) + build_user_prompt(feedback_md, "", previous_code, best_code, environment_card_md, cfg, "", cumulative_record, "", False, research_signal)
     else:
-        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, is_rebuild)
+        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_delta, is_rebuild, research_signal)
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_reflection_agent.input.md", user_prompt)
     record_prompt(run_dir, "agent_reflection", system_prompt, user_prompt)
