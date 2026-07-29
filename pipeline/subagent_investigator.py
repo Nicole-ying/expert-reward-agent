@@ -93,7 +93,7 @@ def run_investigator(
     memory_path: str = "",
     client: Any = None,
     model: str = "deepseek-chat",
-    max_tokens: int = 800,
+    max_tokens: int = 2000,
 ) -> Dict[str, Any]:
     """Single-call evidence scout. Pre-loads all data, sends one prompt,
     returns a structured JSON signal. No function calling, no multi-turn."""
