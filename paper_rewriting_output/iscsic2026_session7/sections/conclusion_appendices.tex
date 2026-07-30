@@ -1,0 +1,52 @@
+\section{Conclusion}
+CREATE turns failed policy training into input for the next reward-design decision. By separating training and evaluation rewards, preserving revision history, and retaining the best reward-policy pair, it implements an autonomous supervisory loop for learning-based control. Across ten reward lineages in two benchmarks, every initially sub-threshold reward is improved beyond the configured task threshold; representative traces show both successful incremental repair and harmful later revisions that are contained by the archive. The results support training-feedback-guided reward evolution as a practical complement to one-shot and population-based reward generation.
+
+\appendices
+\section{Full Reward-Evolution Trajectories}
+Table~\ref{tab:fulltraj} lists the raw native-return sequence used to generate Fig.~\ref{fig:curves}. The values preserve score regressions after threshold crossing and make the archive selection independently auditable.
+
+\begin{table*}[t]
+\caption{Complete raw development-score sequences for all ten reward lineages.}
+\label{tab:fulltraj}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.0pt}
+\begin{tabular}{cl|cl}
+\toprule
+Lunar seed & Score sequence by reward evaluation & Bipedal seed & Score sequence by reward evaluation \\
+\midrule
+0 & -70.35, -129.32, -26.30, -120.27, -123.86, -18.28, -388.67, 224.21, -611.76 & 0 & 270.71, 318.32, 305.31, 320.02 \\
+1 & -42.74, -17.88, 27.72, -29.48, 120.02, -16.87, 24.34, -31.05, 168.34, 240.60 & 1 & 280.50, 313.46, 313.73, 294.44 \\
+2 & -17.90, 220.24, 107.14 & 2 & 272.07, 307.92, 281.78 \\
+3 & -19.59, 147.71, -15.42, 253.71, 249.34, 247.21 & 3 & 289.99, 311.12, 268.71 \\
+4 & 139.53, 114.50, 206.14, 206.14, 110.17 & 4 & 103.03, 264.39, 304.92, 291.41 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Reproducibility and Audit Trail}
+The implementation stores a complete record for every reward evaluation. The reward source, policy-training configuration, policy checkpoint, native-evaluation result, component summary, LLM input, LLM response, and revision decision are written beneath the corresponding seed and iteration. Consequently, a reported score can be traced to the exact reward program and PPO configuration that produced it. The paper tables were generated from these archived run artifacts rather than copied from narrative experiment notes.
+
+The task interface given to the language agent contains the observation and action schemas, a natural-language objective, and masked transition-source information needed to interpret the state. Fields that would leak the official reward, a success label, a failure label, or the evaluation score are explicitly forbidden in generated reward code. During policy training the wrapper replaces the native reward before the transition reaches PPO. During evaluation a separate unwrapped environment is created, and the generated reward is not used in $J_t$. This implementation-level separation is stronger than simply instructing the LLM not to copy the benchmark reward.
+
+Table~\ref{tab:audit} summarizes the artifacts needed to reproduce and inspect one evolution step. The active reward lineage remains sequential because $R_{t+1}$ depends on the evidence produced by $R_t$; however, the five search seeds are independent and can be executed in parallel. The archive records both the active final reward and the best reward, which is necessary for correctly interpreting runs in which the last revision regresses.
+
+\begin{table*}[t]
+\caption{Per-iteration artifacts retained by CREATE.}
+\label{tab:audit}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4.0pt}
+\begin{tabular}{p{2.2cm}p{5.3cm}p{8.0cm}}
+\toprule
+Artifact & Main contents & Audit purpose \\
+\midrule
+Reward source & Executable $R_t$ and named component dictionary & Reconstruct the exact training objective and compare successive versions \\
+Training configuration & Environment ID, PPO seed, interaction budget, parallel environments, clipping, hyperparameters & Verify that only the reward program changes within a lineage \\
+Native evaluation & Twenty episode returns, lengths, termination/truncation flags, aggregate $J_t$ & Recompute the reported task score independently of the generated reward \\
+Component summary & Nonzero rate, signed/absolute mean, magnitude share, runtime-error count & Inspect which generated terms were active and their relative scale \\
+Revision record & Agent input summary, response, declared target, before/after description & Trace how observed training evidence was converted into $R_{t+1}$ \\
+Best archive & Best reward source, policy checkpoint, evaluation result, iteration index & Prevent a later harmful revision from replacing the best discovered controller \\
+\bottomrule
+\end{tabular}
+\end{table*}
