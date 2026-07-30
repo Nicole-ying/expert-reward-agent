@@ -1,0 +1,107 @@
+\section{Experiments}
+\subsection{Implementation and Evaluation Protocol}
+We evaluate LunarLander-v3 and BipedalWalker-v3 in Gymnasium using PPO from Stable-Baselines3~\cite{ppo,sb3}. The repository records the LLM provider as DeepSeek and the configured model identifier as \texttt{deepseek-v4-pro}. Environment analysis uses temperature 0.0; reward generation and revision use temperature 0.15 with an 8192-token output limit. The agent receives an anonymized task specification and available observation/action interfaces, but not the environment's native reward implementation.
+
+Each environment uses search seeds 0--4 and at most ten reward evaluations. A search seed controls the initial reward generation and the PPO seed for every version in that lineage, so comparisons within a lineage preserve the policy-training seed while the reward program changes. Generated rewards are clipped to $[-20,20]$; runtime errors fall back to zero for the affected step. Development evaluation uses 20 fixed environment seeds (10000--10019) and reports mean undiscounted native return. The best archive is updated after every evaluation, and a run continues briefly after threshold crossing when the stopping rule permits confirmation or detects a regression. Table~\ref{tab:setup} gives the actual run configuration; notably, the archived BipedalWalker runs use eight parallel environments.
+
+\begin{table}[t]
+\caption{Policy-training configuration.}
+\label{tab:setup}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{2.7pt}
+\begin{tabular}{lcc}
+\toprule
+Setting & LunarLander & BipedalWalker \\
+\midrule
+Steps / reward & 1M & 5M \\
+Parallel envs & 4 & 8 \\
+$n_{\rm steps}$ / batch & 1024 / 64 & 2048 / 64 \\
+$\gamma$ / GAE $\lambda$ & .999 / .98 & .999 / .95 \\
+PPO epochs & 4 & 10 \\
+Learning rate & default & $3\times10^{-4}$ \\
+Clip range & default & .18 \\
+Entropy coefficient & .01 & 0 \\
+Task threshold & 200 & 300 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Multi-Seed Reward Evolution}
+Table~\ref{tab:seedwise} reports every search seed. All ten initial rewards are below their task threshold. CREATE crosses the threshold in every lineage. LunarLander requires between two and ten reward evaluations (median four); BipedalWalker requires two or three (median two). The best-score means are $228.98\pm16.54$ and $311.54\pm5.17$, where the dispersion is the population standard deviation across five search seeds.
+
+\begin{table*}[t]
+\caption{Seed-wise reward evolution under a maximum of ten reward evaluations. ``First'' is the first threshold-crossing iteration; ``Evals'' is the number actually completed before stopping.}
+\label{tab:seedwise}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4.2pt}
+\begin{tabular}{llrrrr|llrrrr}
+\toprule
+Env. & Seed & Initial & Best & First & Evals & Env. & Seed & Initial & Best & First & Evals \\
+\midrule
+Lunar & 0 & -70.35 & 224.21 & 8 & 9 & Bipedal & 0 & 270.71 & 320.02 & 2 & 4 \\
+Lunar & 1 & -42.74 & 240.60 & 10 & 10 & Bipedal & 1 & 280.50 & 313.73 & 2 & 4 \\
+Lunar & 2 & -17.90 & 220.24 & 2 & 3 & Bipedal & 2 & 272.07 & 307.92 & 2 & 3 \\
+Lunar & 3 & -19.59 & 253.71 & 4 & 6 & Bipedal & 3 & 289.99 & 311.12 & 2 & 3 \\
+Lunar & 4 & 139.53 & 206.14 & 3 & 5 & Bipedal & 4 & 103.03 & 304.92 & 3 & 4 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Figure~\ref{fig:curves} shows the raw, rather than best-so-far, development scores. Reward evolution is not monotonic. Several lineages cross the threshold and then regress after an additional revision, making the best archive operationally important rather than cosmetic. The variation is especially visible in LunarLander: two lineages require long repair sequences, while three cross the threshold within four evaluations. BipedalWalker begins closer to its threshold in four seeds, but seed 4 provides a more demanding repair trajectory and is analyzed below.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.98\textwidth]{reward_evolution_curves.pdf}
+\caption{Raw native-task return of every reward version. Dashed lines mark the configured solution thresholds. Later regressions do not overwrite the archived best reward.}
+\label{fig:curves}
+\end{figure*}
+
+\subsection{Representative Self-Evolution Traces}
+Table~\ref{tab:cases} makes the revision process concrete. BipedalWalker seed 4 begins with a forward-speed term and weak quadratic stability penalties, scoring 103.03. Increasing the three stability coefficients by a factor of five raises the score to 264.39; adding a small squared-action energy penalty produces 304.92. This trace is a compact example of parameter tuning followed by adding a missing efficiency constraint.
+
+LunarLander seed 0 illustrates non-monotonic exploration. The initial proximity/conditional-landing reward scores -70.35. By iteration 8, the program contains landing proximity, descent safety, touchdown, stable-landing, and fuel terms and reaches 224.21. Replacing the state-based proximity term with a positive-only improvement term at iteration 9 collapses the score to -611.76. The archive therefore returns iteration 8 rather than the final active reward.
+
+\begin{table*}[t]
+\caption{Representative reward-program revisions verified from archived source code.}
+\label{tab:cases}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.8pt}
+\begin{tabular}{llp{10.2cm}r}
+\toprule
+Environment & Version & Reward-program change & Score \\
+\midrule
+BipedalWalker & $R_1$ & Forward speed plus weak tilt, angular-velocity, and vertical-velocity penalties & 103.03 \\
+ & $R_2$ & Increase the three stability coefficients by $5\times$ & 264.39 \\
+ & $R_3$ & Add $-0.05\sum_i a_i^2$ action-energy penalty & 304.92 \\
+\midrule
+LunarLander & $R_1$ & Bounded proximity, conditional soft-landing reward, and fuel cost & -70.35 \\
+ & $R_8$ & Landing proximity, descent safety, touchdown bonus, stable-landing reward, and fuel cost & 224.21 \\
+ & $R_9$ & Replace state-based proximity with positive-only landing improvement; archive keeps $R_8$ & -611.76 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Ablation and Limitations}
+We compare the five CREATE LunarLander lineages with their initial versions and an existing unconstrained-revision ablation that allows broad multi-component rewriting. Initial rewards and unconstrained revision both solve 0/5 runs, while CREATE solves 5/5 (Table~\ref{tab:ablation}). The comparison supports the reliability of the implemented controlled loop in this setting; because the ablation simultaneously changes revision scope and planning structure, it does not isolate either factor individually.
+
+\begin{table}[t]
+\caption{LunarLander ablation across five search seeds.}
+\label{tab:ablation}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.3pt}
+\begin{tabular}{lcc}
+\toprule
+Method & Best score & Solved \\
+\midrule
+Initial reward & $-2.21\pm73.38$ & 0/5 \\
+Unconstrained revision & $114.21\pm42.29$ & 0/5 \\
+CREATE & $228.98\pm16.54$ & 5/5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The study has three limits. First, fixed development seeds are reused across reward revisions, so the reported scores measure search-time performance rather than a fully independent test. Second, the two environments do not establish universal superiority over population-based reward search. Third, the configured LLM identifier and prompt artifacts should be released with the final paper to support exact replication. These limits motivate held-out evaluation, budget-matched independent sampling, and additional high-dimensional control tasks.
