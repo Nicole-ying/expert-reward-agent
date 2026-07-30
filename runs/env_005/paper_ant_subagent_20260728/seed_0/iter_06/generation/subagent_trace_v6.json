@@ -1,0 +1,61 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "Automatic fallback after 5 turns without submit. Raw data: [inspect_training_feedback]: # Training Feedback\n\n## Final-policy outcome\nscore=-73.653375, len=700.300000, terminated=11/20, truncated=9/20, reward_errors=0\nscore_range=[-1236.070538, 450.304330]\n\n##",
+    "component_anomalies": "Subagent exhausted turns without explicit submission.",
+    "training_dynamics": "No temporal analysis available.",
+    "signal_quality": "No signal quality assessment available.",
+    "confidence": "low"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 807
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 1035
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {},
+      "validation_errors": [
+        "missing required field: key_findings",
+        "missing required field: component_anomalies",
+        "missing required field: training_dynamics",
+        "missing required field: signal_quality",
+        "confidence must be low/medium/high"
+      ]
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Eval score -73.65 despite agent getting +0.629/step generated reward. Original env reward is -0.723/step — the generated reward is completely anti-aligned with the true objective. Episodes run full 700 steps (11/20 terminated naturally). Score range is vast: [-1236, +450], showing high variance across eval seeds.",
+        "component_anomalies": "gated_forward dominates: 81.4% signed share, 82.2% magnitude share (episode sum mean +957.9). All penalty components are negligible: height_penalty 15.1% active, -0.1 episode sum; action_penalty -2.2; lateral_penalty -23.4 (2% share). upright_bonus at 8.5% share is the only other meaningful component but is dwarfed 10:1 by gated_forward.",
+        "training_dynamics": "Component dynamics snapshots unavailable (no monitor checkpoints). From final-policy composition, gated_forward clearly outcompeted all other signals — it is effectively the sole reward. No evidence of early-vs-late drift since temporal data is missing.",
+        "signal_quality": "Dead gates: height_penalty at 15% active rate is effectively off. The gated_forward signal swamps everything — positive generated reward masks the -0.723/step true env signal. The agent exploits gated_forward to get +0.63/step while the environment judges it at -73.65 total. No coupling between penalties and forward reward to create useful tradeoffs.",
+        "confidence": "medium"
+      },
+      "validation_errors": [
+        "signal too long (1264 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 5,
+      "fallback_signal": true
+    }
+  ],
+  "signal_produced": true
+}

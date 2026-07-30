@@ -1,0 +1,55 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "Automatic fallback after 5 turns without submit. Raw data: [inspect_component_dynamics]: (no monitor snapshots — training may not have completed)\n[inspect_training_feedback]: # Training Feedback\n\n## Final-policy outcome\nscore=464.772331, len=907.700000, termi",
+    "component_anomalies": "Subagent exhausted turns without explicit submission.",
+    "training_dynamics": "No temporal analysis available.",
+    "signal_quality": "No signal quality assessment available.",
+    "confidence": "low"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 742
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 1843
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 3,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 986
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Score=464.8, ep_len=907.7, termination=4/20 (20%). generated_reward per-step=+0.266 vs original_env_reward=-0.555 — a 0.82 gap: the shaped reward paints a rosy picture while the native env says the agent is failing. forward_reward dominates at 62.1% signed share; height_gate at 32.8% is the sole behavioral constraint with teeth.",
+        "component_anomalies": "upright_penalty is functionally dead: 5.5% active rate, -1.5% signed share. With upright_threshold=0.7 and the agent spending ~95% of steps above it, the penalty exerts negligible shaping pressure. action_penalty (-0.1% share) is also invisible. Only forward_reward + height_gate matter.",
+        "training_dynamics": "No temporal snapshots available from this run. Per-step means align with episode-level composition: forward_reward=0.69/step × 907.7 steps ≈ 626 expected sum. The 20% termination suggests the height gate occasionally fails to prevent boundary crossing, but 80% of episodes hit the 1000-step truncation limit.",
+        "signal_quality": "The upright signal has no reach: threshold=0.7 is too low to engage given the agent's typical posture. If upright stability is desired, the threshold or penalty weight needs re-anchoring. The height gate at mean=0.73 suggests headroom before the lower bound, but the 20% termination rate (all likely from z-boundary) indicates occasional failures the gate doesn't fully prevent.",
+        "confidence": "medium"
+      },
+      "validation_errors": [
+        "signal too long (1309 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 5,
+      "fallback_signal": true
+    }
+  ],
+  "signal_produced": true
+}

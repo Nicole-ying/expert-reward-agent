@@ -1,0 +1,55 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "Automatic fallback after 5 turns without submit. Raw data: [inspect_training_feedback]: # Training Feedback\n\n## Final-policy outcome\nscore=-591.524103, len=585.900000, terminated=10/20, truncated=10/20, reward_errors=0\nscore_range=[-1747.282509, 13.295004]\n\n#",
+    "component_anomalies": "Subagent exhausted turns without explicit submission.",
+    "training_dynamics": "No temporal analysis available.",
+    "signal_quality": "No signal quality assessment available.",
+    "confidence": "low"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 744
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 984
+    },
+    {
+      "turn": 3,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 1947
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "mean_eval_reward=-591.5, generated_reward=+0.112/step, original_env_reward=-1.148/step. Score range [-1747, +13.3]; 2/20 early terminates. Agent survives ~586 steps but original locomotion reward is deeply negative — generated components contribute only ~10% offset. gated_forward dominates generated reward at 50.6% signed share (81.5% active).",
+        "component_anomalies": "gated_forward dominates at 63.3% magnitude share — no other component is in the same league. upright_bonus is 100% active but only 22.3% signed share, providing persistent but weak posture gradient. height_penalty is functionally dead (20.1% active, ~0% magnitude share). lateral_penalty nearly dead (23.1% active, 2.1% magnitude share). No component dead at zero but several are negligible.",
+        "training_dynamics": "No temporal snapshots available (monitor not configured). Final-policy composition shows the same dominance structure as step-level: gated_forward >> upright_bonus >> lateral_penalty ≈ action_penalty > height_penalty. The gate threshold (up_z>0.3) creates a strong coupling: forward reward is only available after achieving sufficient posture, which may explain why generated reward is small despite 81.5% gated_forward activation — when active, the agent may not yet have forward velocity.",
+        "signal_quality": "Gate coupling is the key signal-reachability issue: up_z must cross 0.3 before any forward reward signal flows, creating a chicken-and-egg problem where posture must be learned before locomotion can be rewarded. The original env reward (-1.148/step) is a separate signal channel that dwarfs the generated reward in magnitude — the agent may be optimizing the wrong objective. height_penalty safety boundaries (z in [0.3,0.8]) barely trigger, suggesting the agent operates in a safe zone that doesn't need this penalty.",
+        "confidence": "medium"
+      },
+      "validation_errors": [
+        "signal too long (1750 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 5,
+      "fallback_signal": true
+    }
+  ],
+  "signal_produced": true
+}

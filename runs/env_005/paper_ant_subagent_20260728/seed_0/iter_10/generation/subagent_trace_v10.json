@@ -1,0 +1,49 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "Score=424.6, ep_len=872.5, 15% termination (3/20). generated_reward per-step mean=0.576 vs original_env_reward=-0.564 — they nearly cancel. The policy earns positive shaped reward while the native environment signal is equally negative, suggesting misalignment between shaped and true objectives.",
+    "component_anomalies": "upright_penalty is dead (0% active, weight=0.0 by design). forward_reward dominates at 63.3% magnitude share, active 95.6% of steps. _height_gate is healthy (99.9% active, mean 0.70) but tracked as component despite being a gate. No pathological dominance or self-cancellation.",
+    "training_dynamics": "No temporal snapshots available. Final-policy composition is stable: forward_reward and height_gate account for 95.5% of magnitude. lateral_penalty at -4.4% and action_penalty at -0.1% are negligible. The opposing native vs shaped reward structure is the dominant dynamic.",
+    "signal_quality": "upright_gate (used inside forward_reward as multiplier) is not tracked as its own component — its independent restrictiveness is invisible. This is a blind spot: we cannot tell if forward_reward is driven by v_x or by gate activation. Confidence limited by missing temporal data and hidden upright_gate behavior.",
+    "confidence": "medium"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 741
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 2123
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 983
+    },
+    {
+      "turn": 3,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Score=424.6, ep_len=872.5, 15% termination (3/20). generated_reward per-step mean=0.576 vs original_env_reward=-0.564 — they nearly cancel. The policy earns positive shaped reward while the native environment signal is equally negative, suggesting misalignment between shaped and true objectives.",
+        "component_anomalies": "upright_penalty is dead (0% active, weight=0.0 by design). forward_reward dominates at 63.3% magnitude share, active 95.6% of steps. _height_gate is healthy (99.9% active, mean 0.70) but tracked as component despite being a gate. No pathological dominance or self-cancellation.",
+        "training_dynamics": "No temporal snapshots available. Final-policy composition is stable: forward_reward and height_gate account for 95.5% of magnitude. lateral_penalty at -4.4% and action_penalty at -0.1% are negligible. The opposing native vs shaped reward structure is the dominant dynamic.",
+        "signal_quality": "upright_gate (used inside forward_reward as multiplier) is not tracked as its own component — its independent restrictiveness is invisible. This is a blind spot: we cannot tell if forward_reward is driven by v_x or by gate activation. Confidence limited by missing temporal data and hidden upright_gate behavior.",
+        "confidence": "medium"
+      },
+      "signal_valid": true
+    }
+  ],
+  "signal_produced": true
+}

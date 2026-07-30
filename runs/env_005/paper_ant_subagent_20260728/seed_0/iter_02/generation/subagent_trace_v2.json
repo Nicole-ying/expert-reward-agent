@@ -1,0 +1,57 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "mean_ep_length=11.8, 20/20 early terminates. Generated reward mean=-5.58 vs original_env=-0.97 — reward function makes agent 5.8x worse than native. Forward (the intended signal) only +0.22, active 56.9% of steps.",
+    "component_anomalies": "upright_penalty=-5.67 dominates (5.8x larger than all other components combined). Only fires 43.9% of steps but when active the magnitude is catastrophic. height_penalty=-0.03 is negligible despite w_h=10.0 — z thresholds rarely breached.",
+    "training_dynamics": "No temporal snapshots available. Single-point view shows agent never escapes penalty regime: upright_penalty dwarfs forward, health gate blocks forward 43% of time, and all episodes truncate early.",
+    "signal_quality": "Deadly coupling: upright_penalty (w_up=5.0, hinge on up_z<0.7) punishes any tilt. Agent can't explore forward motion (forward=+0.22 active only when health_gate>0), but staying upright enough to unlock forward appears unreachable. The gate blocks the only positive signal.",
+    "confidence": "high"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 741
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 2112
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "mean_eval_reward=0.72 but all 20 episodes terminated (mean length=11.8 steps). Generated reward mean=-5.58, far worse than original_env_reward=-0.97. The upright_penalty component dominates at -5.67 (43.9% nonzero), swamping forward reward at +0.22. The policy is dying from orientation collapse before forward can train.",
+        "component_anomalies": "upright_penalty: mean=-5.67, nonzero_rate=43.9% — fires in under half of steps but magnitude is catastrophic when active (quadratic hinge below up_thr=0.7). forward: mean=+0.2225, nonzero_rate=56.9% — health gate kills forward reward ~43% of time. height_penalty: -0.032 — negligible, so z-gate is not the bottleneck; orientation is.",
+        "training_dynamics": "No checkpoint snapshots available for temporal analysis. Static evidence shows upright_penalty (w_up=5.0) creates a negative reward chasm: below up_thr=0.7 the penalty activates, but forward only activates above up_z=0.5 via gate_up. This creates a 0.5-0.7 dead zone where penalty fires but forward is gated off.",
+        "signal_quality": "The upright_penalty quadratic hinge with w_up=5.0 and up_thr=0.7 creates an unreachable attractor: the agent never achieves stable upright posture. The forward signal (w_fwd=1.0, gated) is too weak to overcome the penalty. Episodes truncate at 11.8 steps — too short for forward reward to accumulate meaningful gradient vs penalty dominance.",
+        "confidence": "medium"
+      },
+      "validation_errors": [
+        "signal too long (1313 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "mean_ep_length=11.8, 20/20 early terminates. Generated reward mean=-5.58 vs original_env=-0.97 — reward function makes agent 5.8x worse than native. Forward (the intended signal) only +0.22, active 56.9% of steps.",
+        "component_anomalies": "upright_penalty=-5.67 dominates (5.8x larger than all other components combined). Only fires 43.9% of steps but when active the magnitude is catastrophic. height_penalty=-0.03 is negligible despite w_h=10.0 — z thresholds rarely breached.",
+        "training_dynamics": "No temporal snapshots available. Single-point view shows agent never escapes penalty regime: upright_penalty dwarfs forward, health gate blocks forward 43% of time, and all episodes truncate early.",
+        "signal_quality": "Deadly coupling: upright_penalty (w_up=5.0, hinge on up_z<0.7) punishes any tilt. Agent can't explore forward motion (forward=+0.22 active only when health_gate>0), but staying upright enough to unlock forward appears unreachable. The gate blocks the only positive signal.",
+        "confidence": "high"
+      },
+      "signal_valid": true
+    }
+  ],
+  "signal_produced": true
+}

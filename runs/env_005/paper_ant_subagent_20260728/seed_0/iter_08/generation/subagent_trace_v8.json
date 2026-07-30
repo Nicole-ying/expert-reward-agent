@@ -1,0 +1,57 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "Eval score=-277.9 vs generated reward +0.49/step. Episodes run full length (986.65 steps, 19/20 truncated). Agent accumulates large positive generated reward (~1490/ep) but fails external eval. Original env reward -0.95/step.",
+    "component_anomalies": "Gated_forward dominates at 65.7% signed share (ep_sum=1030.8). Height_penalty nearly dead: 5.5% active rate, -0.0% share (ep_sum=-0.07). The height safety mechanism is not engaging — agent is never in the z<0.3 or z>0.8 penalty regions.",
+    "training_dynamics": "Generated reward structure is stable per-step but disconnected from eval. All components show consistent activation profiles. No scaffold→final drift observed in composition shares. The gate threshold at 0.3 may not be constraining behavior.",
+    "signal_quality": "Core mismatch: generated reward is positive while eval is deeply negative. Height_penalty is a dead signal — the agent never enters the penalty zone. If height is the proxy for eval-relevant behavior, the penalty thresholds (0.3/0.8) may be unreachable or irrelevant to the task.",
+    "confidence": "medium"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 744
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 1795
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 986
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "External eval score = -277.90 (range [-367, -196]), despite generated reward of +0.49/step. Episodes run near-full length (986.65 mean, 19/20 truncated). Only 1/20 terminated. The agent maximizes the generated reward (episode sum: gated_forward=1030.8, upright_bonus=459.1) but scores deeply negative on the external metric — classic reward-evaluation misalignment.",
+        "component_anomalies": "height_penalty is effectively dead: episode_sum_mean=-0.07, active_rate=5.5%, magnitude_share=0.0%. This means the z-bounds (0.3–0.8) are almost never violated — the agent likely stays low and never triggers the penalty, or the penalty is too weak to matter. upright_bonus + gated_forward hold 95% signed share; lateral_penalty is always active but small (-44.0 episode sum).",
+        "training_dynamics": "Component dynamics not inspected (call budget constraint). Final-policy snapshot shows generated reward composition is stable and dominated by gated_forward (65.7% signed share) and upright_bonus (29.3%). No evidence of collapse or drift in final checkpoint, but temporal emergence pattern unknown.",
+        "signal_quality": "height_penalty gate is nearly unreachable: active_rate=5.5% means the constraints are rarely triggered. This could mean the agent found a low-body-height policy that avoids penalties entirely, or the z_low_safe threshold (0.3) is set too low. The generated reward signal is reachable and strong, but misaligned with external eval.",
+        "confidence": "medium"
+      },
+      "validation_errors": [
+        "signal too long (1374 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Eval score=-277.9 vs generated reward +0.49/step. Episodes run full length (986.65 steps, 19/20 truncated). Agent accumulates large positive generated reward (~1490/ep) but fails external eval. Original env reward -0.95/step.",
+        "component_anomalies": "Gated_forward dominates at 65.7% signed share (ep_sum=1030.8). Height_penalty nearly dead: 5.5% active rate, -0.0% share (ep_sum=-0.07). The height safety mechanism is not engaging — agent is never in the z<0.3 or z>0.8 penalty regions.",
+        "training_dynamics": "Generated reward structure is stable per-step but disconnected from eval. All components show consistent activation profiles. No scaffold→final drift observed in composition shares. The gate threshold at 0.3 may not be constraining behavior.",
+        "signal_quality": "Core mismatch: generated reward is positive while eval is deeply negative. Height_penalty is a dead signal — the agent never enters the penalty zone. If height is the proxy for eval-relevant behavior, the penalty thresholds (0.3/0.8) may be unreachable or irrelevant to the task.",
+        "confidence": "medium"
+      },
+      "signal_valid": true
+    }
+  ],
+  "signal_produced": true
+}

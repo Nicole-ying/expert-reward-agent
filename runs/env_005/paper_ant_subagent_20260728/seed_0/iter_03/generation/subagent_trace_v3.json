@@ -1,0 +1,49 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "Score -383.1, 14/20 terminated, ep_len 503.6. Forward (+329.7/ep) and upright_penalty (-367.1/ep) are nearly equal magnitude and opposite sign — they cancel almost perfectly. Score range [-1658.2, 9.2] shows high variance with catastrophic tails.",
+    "component_anomalies": "upright_penalty at 47.4% signed share dominates negative side, forward at 42.5% dominates positive. These two alone account for ~90% of reward magnitude. height_penalty is near-dead (active 41%, -1.57/ep). lateral_penalty modest (-32.1/ep). No component is truly dead but forward/upright are self-cancelling.",
+    "training_dynamics": "No temporal snapshots available — training dynamics unknown. Final policy shows agent learned forward locomotion (+329.7/ep) but cannot maintain upright posture, suggesting the upright signal never shaped behavior effectively before forward locomotion emerged and dominated.",
+    "signal_quality": "The upright penalty signal is reachable (100% active rate) but ineffective: the agent experiences the penalty without escaping it. height_penalty's safe zone [0.35,0.85] is rarely violated (41% active), so its signal is weak. No early-terminal episodes — failures are mid-run collapses, not immediate falls.",
+    "confidence": "medium"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 745
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 1958
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 3,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 982
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Score -383.1, 14/20 terminated, ep_len 503.6. Forward (+329.7/ep) and upright_penalty (-367.1/ep) are nearly equal magnitude and opposite sign — they cancel almost perfectly. Score range [-1658.2, 9.2] shows high variance with catastrophic tails.",
+        "component_anomalies": "upright_penalty at 47.4% signed share dominates negative side, forward at 42.5% dominates positive. These two alone account for ~90% of reward magnitude. height_penalty is near-dead (active 41%, -1.57/ep). lateral_penalty modest (-32.1/ep). No component is truly dead but forward/upright are self-cancelling.",
+        "training_dynamics": "No temporal snapshots available — training dynamics unknown. Final policy shows agent learned forward locomotion (+329.7/ep) but cannot maintain upright posture, suggesting the upright signal never shaped behavior effectively before forward locomotion emerged and dominated.",
+        "signal_quality": "The upright penalty signal is reachable (100% active rate) but ineffective: the agent experiences the penalty without escaping it. height_penalty's safe zone [0.35,0.85] is rarely violated (41% active), so its signal is weak. No early-terminal episodes — failures are mid-run collapses, not immediate falls.",
+        "confidence": "medium"
+      },
+      "signal_valid": true
+    }
+  ],
+  "signal_produced": true
+}

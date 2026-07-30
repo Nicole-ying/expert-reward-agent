@@ -1,0 +1,57 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "eval_score=-442.5, 5/20 terminated (25%), ep_len=837. Generated reward +0.518/step but original env reward -0.827/step. Shaped reward is positive while true objective is negative — the agent is rewarded for behavior the environment penalizes.",
+    "component_anomalies": "gated_forward dominates at 63.2% signed share (64.4% magnitude). Gate is closed ~18-39% of steps (per-step nonzero=61%, ep-level active=81.6%). height_penalty is dead: 19.4% active rate, near-zero contribution. upright_bonus 22.5% share is secondary.",
+    "training_dynamics": "No temporal dynamics data available. 0/20 episodes are early-terminal (<150 steps), meaning terminations occur mid-run. Fixed eval seeds show wide score range [-1622, -1.1].",
+    "signal_quality": "The gate_lower=0.3 threshold may be too strict: 39% of per-step observations have gate=0, killing the forward progress signal. The agent achieves positive shaped reward (+0.518) despite poor true performance (-0.827), indicating the reward components don't align with the environment's success metric.",
+    "confidence": "medium"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 745
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 1801
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 985
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Eval score=-442.53 (range: -1621 to -1.14), 5/20 terminated (25%), ep_len=837. Generated reward per episode sums to ~+998 (gated_forward=736, upright_bonus=262), but original_env_reward=-0.83/step drives the negative eval. Shaped reward is strongly positive yet misaligned with true objective.",
+        "component_anomalies": "height_penalty nearly dead: active_rate=19.4%, episode_sum_mean=-0.16 — the quadratic hinge with w_h=0.5 rarely triggers. gated_forward active_rate=81.6% means gate=0 in 18.4% of steps, killing forward signal. upright_bonus always active (100%) and contributes 22.5% signed share — a substantial posture subsidy independent of locomotion.",
+        "training_dynamics": "No early-termination episodes (<150 steps). All terminations occur later, consistent with eventual falls. The policy learns to generate forward velocity when upright (gated_forward dominates at 63.2% signed share) but the gate threshold at up_z=0.3 creates a dead zone where no progress incentive exists, leaving 25% of episodes to drift into termination.",
+        "signal_quality": "Gate cliff at up_z=0.3: below this, all forward progress reward vanishes. No smooth incentive to recover posture once the gate closes. Height penalty is too low-magnitude (mean=-0.0004/step) to matter. Lateral penalty is mild (mean=-0.02/step) and may not deter sideways drift that precedes falls. The strong upright_bonus (0.5*up_z) may be exploited by standing still.",
+        "confidence": "medium"
+      },
+      "validation_errors": [
+        "signal too long (1361 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "eval_score=-442.5, 5/20 terminated (25%), ep_len=837. Generated reward +0.518/step but original env reward -0.827/step. Shaped reward is positive while true objective is negative — the agent is rewarded for behavior the environment penalizes.",
+        "component_anomalies": "gated_forward dominates at 63.2% signed share (64.4% magnitude). Gate is closed ~18-39% of steps (per-step nonzero=61%, ep-level active=81.6%). height_penalty is dead: 19.4% active rate, near-zero contribution. upright_bonus 22.5% share is secondary.",
+        "training_dynamics": "No temporal dynamics data available. 0/20 episodes are early-terminal (<150 steps), meaning terminations occur mid-run. Fixed eval seeds show wide score range [-1622, -1.1].",
+        "signal_quality": "The gate_lower=0.3 threshold may be too strict: 39% of per-step observations have gate=0, killing the forward progress signal. The agent achieves positive shaped reward (+0.518) despite poor true performance (-0.827), indicating the reward components don't align with the environment's success metric.",
+        "confidence": "medium"
+      },
+      "signal_valid": true
+    }
+  ],
+  "signal_produced": true
+}
