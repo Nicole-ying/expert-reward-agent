@@ -1,57 +1,63 @@
-# Experiment rerun and ablation audit
+# 实验重跑与消融实验审计
 
-The existing package is sufficient to reproduce the paper-v4 main condition
-and the current ablations. Before replacing numbers in the manuscript, rerun
-every compared search method with the same five search lineages, maximum ten
-completed reward evaluations per lineage, PPO budget, evaluation episodes, and
-stopping threshold.
+当前投稿包已经包含复现 paper-v4 主实验和现有消融实验所需的代码。正式替换论文数值之前，所有被比较的方法必须采用相同的实验条件：5 条独立搜索谱系（seeds 0–4）、每条谱系最多 10 次完整奖励评估、相同的 PPO 训练预算、评估回合数和任务达标阈值。
 
-## Required comparison set
+## 一、必须运行的对比实验
 
-| Condition | Question answered | Entry point |
+| 实验条件 | 要回答的问题 | 运行入口 |
 |---|---|---|
-| CREATE | Full closed-loop agent | `scripts/run_paper_v4.sh` |
-| Independent generation | Prompt- and budget-matched search without repair | `scripts/run_independent_baseline.sh` |
-| Score-only feedback | Is the native score alone enough to diagnose repair? | `scripts/run_ablation_score_only_v4.sh` |
-| Coarse feedback | Do component means substitute for structured evidence? | `scripts/run_ablation_eureka_feedback_v4.sh` |
-| Unconstrained editing | Does removing the bounded edit contract destabilize repair? | `scripts/run_ablation_unconstrained_v4.sh` |
-| Native-reward PPO | Environment-reward reference, not an LLM search baseline | `scripts/run_official_baseline.sh` |
+| CREATE | 完整闭环奖励编辑 Agent 的表现如何？ | `scripts/run_paper_v4.sh` |
+| 独立奖励生成 | 在相同提示与训练预算下，不进行修复的搜索效果如何？ | `scripts/run_independent_baseline.sh` |
+| 仅分数反馈 | 只给原生任务分数，是否足以诊断奖励问题？ | `scripts/run_ablation_score_only_v4.sh` |
+| 粗粒度反馈 | 只给奖励分量均值，能否替代 CREATE 的结构化训练证据？ | `scripts/run_ablation_eureka_feedback_v4.sh` |
+| 无约束编辑 | 取消受限编辑规则后，奖励修复是否会变得不稳定？ | `scripts/run_ablation_unconstrained_v4.sh` |
+| 原生奖励 PPO | 使用环境官方奖励训练时的参考性能；它不是 LLM 奖励搜索 baseline | `scripts/run_official_baseline.sh` |
 
-## Important interpretation rule
+## 二、现有消融实验的解释边界
 
-The current `unconstrained` condition removes the complete reflection contract,
-so it jointly changes target scope and edit hierarchy. It is valid as a system
-ablation but does **not** isolate the causal contribution of single-target
-editing from L1/L2/L3 hierarchy. If compute permits, add two follow-up
-conditions before making a component-level causal claim:
+当前 `unconstrained` 条件移除了完整的反思与编辑约束，因此它同时改变了两个因素：
 
-1. structured evidence + single target + no L1/L2/L3 declaration;
-2. structured evidence + L1/L2/L3 declaration + multiple allowed targets.
+- 是否只允许修改一个主要目标；
+- 是否要求声明 L1 参数微调、L2 结构重构或 L3 奖励重设计。
 
-Until those runs exist, the paper should claim that structured evidence and
-bounded revision are jointly important, rather than assigning the gain to one
-subcomponent.
+所以，这个实验可以说明“取消整套受限编辑机制后，系统可靠性下降”，但不能单独证明性能下降究竟来自取消单目标规则，还是来自取消 L1/L2/L3 编辑层级。
 
-## Baseline requirement
+如果今晚算力允许，建议额外补两个拆分实验：
 
-The native-reward PPO reference measures the task's standard reward, but it is
-not a fair replacement for a reward-search baseline. The included search
-baseline is prompt- and budget-matched independent reward generation: the same
-task context and LLM, a fresh reward at every evaluation, no lineage memory,
-and no training-evidence-conditioned repair. Record successful lineages,
-trainings-to-threshold, selected reward scores, and the final fixed validation
-protocol for both methods.
+1. 保留结构化证据和单目标约束，但不要求声明 L1/L2/L3；
+2. 保留结构化证据和 L1/L2/L3 层级，但允许一次修改多个目标。
 
-## Outputs to retain
+在这两个实验完成以前，论文应表述为：**结构化训练证据与受限奖励修改共同提高了修复可靠性**。不要把提升单独归因于某一个尚未被独立控制的子机制。
 
-- per-iteration reward source and validation report;
-- PPO configuration and random seed;
-- native evaluation mean and dispersion;
-- structured component statistics and training trace;
-- diagnosis, declared edit level, primary target, and memory record;
-- best archive and the evaluation at which it first crossed threshold;
-- TensorBoard event files under `runs/env_001/tensorboard/`.
+## 三、Baseline 应该怎样理解
 
-TensorBoard event files are machine-readable and can be converted into aligned
-CSV tables and publication figures; retain them together with each run's JSON
-summaries rather than copying values manually.
+原生奖励 PPO 只用于说明任务在官方奖励下能够达到的参考性能，不能替代奖励搜索 baseline。
+
+已经提供的独立生成 baseline 与 CREATE 使用相同的任务上下文、LLM 配置、初始奖励生成流程和 PPO 预算。区别是：它每次独立生成一个新奖励，不读取上一轮训练证据，不保留奖励谱系记忆，也不针对当前奖励进行修复。因此，它能够更公平地检验：在相同训练成本下，持续修复一条奖励谱系是否优于不断重新生成互不相关的候选奖励。
+
+两种方法都应该记录：
+
+- 成功达到阈值的搜索谱系数；
+- 每条成功谱系首次达标所需的策略训练次数；
+- 每条谱系最终选中奖励的原生任务得分；
+- 选中奖励在统一独立测试种子上的最终结果。
+
+## 四、每次实验必须保留的文件
+
+- 每轮生成或修改后的奖励源代码；
+- 奖励代码验证报告；
+- PPO 配置、训练 seed 和训练预算；
+- 原生评估均值、标准差或其他离散程度统计；
+- 奖励分量统计和训练轨迹；
+- Agent 的诊断、编辑等级、主要修改目标和预测；
+- 持久化记忆中的“诊断—修改—结果”记录；
+- Best Archive 及其首次达到阈值的评估轮次；
+- `runs/env_001/tensorboard/` 下的 TensorBoard event 文件。
+
+## 五、结果统计与论文更新原则
+
+TensorBoard event 文件可以直接解析为 CSV、训练曲线和论文图片，不需要手工抄数。JSON 结果、TensorBoard 日志和奖励代码必须共同保留，以便核对图表中的每一个数值。
+
+论文只报告到首次达到任务阈值为止的搜索过程。达到阈值后额外进行的探索不能替换 Best Archive，也不计入 trainings-to-threshold。最终的独立测试只在奖励选择完成后进行，测试种子不参与奖励编辑。
+
+如果新实验结果与现稿不同，应同时更新摘要、正文分析、表格、图、图注和结论，不能只替换某一张表中的数字。
