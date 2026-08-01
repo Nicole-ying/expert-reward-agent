@@ -20,6 +20,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 FRAMEWORK_ROOT = SCRIPT_DIR.parent
@@ -67,13 +69,19 @@ def strip_environment_heading(response: str) -> str:
     return text.strip()
 
 
-def compose_environment_card(task_spec: str, analysis: str) -> str:
+def extract_task_description(task_spec: str) -> str:
+    parsed = yaml.safe_load(task_spec) or {}
+    description = parsed.get("task_description")
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError("task_spec must contain a non-empty task_description string")
+    return description.strip()
+
+
+def compose_environment_card(task_description: str, analysis: str) -> str:
     return (
         "# Environment Semantics Card\n\n"
-        "## 0. Original anonymized task specification\n\n"
-        "```yaml\n"
-        f"{task_spec.strip()}\n"
-        "```\n\n"
+        "## 0. Original anonymized task description\n\n"
+        f"{task_description.strip()}\n\n"
         f"{strip_environment_heading(analysis)}\n"
     )
 
@@ -119,7 +127,12 @@ def save_prompt_record(path: Path, system_prompt: str, user_prompt: str) -> None
     )
 
 
-def build_environment_user_prompt(task_spec: str, masked_step: str) -> str:
+def build_environment_user_prompt(task_spec: str, masked_step: str, reward_clip: float | None) -> str:
+    clip_line = (
+        "Runtime total-reward clipping: disabled."
+        if reward_clip is None
+        else f"Runtime total-reward clipping: [-{float(reward_clip)}, +{float(reward_clip)}] after compute_reward returns."
+    )
     return (
         "# ANONYMIZED_TASK_SPEC\n\n"
         f"{task_spec.strip()}\n\n"
@@ -133,6 +146,7 @@ def build_environment_user_prompt(task_spec: str, masked_step: str) -> str:
         "- info[\"terminated\"]: bool\n"
         "- info[\"truncated\"]: bool\n"
         "- info[\"done\"]: bool(terminated or truncated)\n\n"
+        f"{clip_line}\n\n"
         "Forbidden:\n"
         "- original_reward and the official environment reward\n"
         "- bare variables terminated, truncated, or done\n"
@@ -235,10 +249,12 @@ def run(args: argparse.Namespace) -> Path:
     masked_step_path = resolve_from_root(args.masked_step or cfg["inputs"]["masked_step_path"])
 
     task_spec = read_text(task_spec_path)
+    task_description = extract_task_description(task_spec)
     masked_step = read_text(masked_step_path)
     environment_system = read_text(SCRIPT_DIR / "01_environment_semantics_prompt.md")
     reward_system = read_text(SCRIPT_DIR / "02_initial_reward_generator_prompt.md")
-    environment_user = build_environment_user_prompt(task_spec, masked_step)
+    reward_clip = cfg.get("training", {}).get("reward_clip", 20.0)
+    environment_user = build_environment_user_prompt(task_spec, masked_step, reward_clip)
 
     llm_cfg = cfg["llm"]
     env_model = args.env_model or args.model or llm_cfg["model_env"]
@@ -308,7 +324,7 @@ def run(args: argparse.Namespace) -> Path:
                 f"Environment card is incomplete; missing sections {missing}. "
                 "No reward-generation calls were made. Inspect environment/raw_response.md."
             )
-        environment_card = compose_environment_card(task_spec, environment_response)
+        environment_card = compose_environment_card(task_description, environment_response)
         write_text(environment_card_path, environment_card)
 
     custom_context = resolve_from_root(args.expert_context_file) if args.expert_context_file else None

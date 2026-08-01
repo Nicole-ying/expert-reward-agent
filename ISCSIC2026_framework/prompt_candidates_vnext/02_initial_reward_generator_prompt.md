@@ -56,6 +56,14 @@ R_total = w_goal * R_goal
 
 如果两个职责可以由一个组件表达，应合并。除非环境事实已经证明额外职责不可缺少，否则先采用 2–4 个组件，把其他修改留到训练反馈证明其必要之后。
 
+## 组件与权重的唯一表达方式
+
+- 每个 component 必须记录**已经乘过权重、实际进入总奖励的贡献值**，方便后续 `magnitude_share` 和 `signed_share` 直接解释。
+- 权重只应用一次。推荐写法：`goal_progress = w_goal * raw_goal_progress`，然后 `total_reward = goal_progress + stability_guidance + ...`。
+- 禁止把系数藏在 component 内部后，又在 `total_reward` 中写冗余的 `1.0 * component`；也禁止内外两次乘权重。
+- 禁止创建恒为 0、永不触发或只为凑组件数量的 component。
+- 如果说明文字声称使用 bounded、clip、tanh、gate 等数学形式，代码必须真实实现；不得让注释与代码不一致。
+
 # 四、尺度与符号
 
 - `R_goal` 应是训练早期也能获得的正向主导信号，不能只依赖极稀疏成功事件。
@@ -64,6 +72,9 @@ R_total = w_goal * R_goal
 - 对无界量优先使用归一化、clip、线性有界或平滑饱和形式，防止极端值统治总奖励。
 - 不同 component 的典型每步量级应大致可比；success/failure 事件项可以更大，但必须低频且语义可靠。
 - 不要同时大权重奖励两个本质相同的物理量，避免重复计数。
+- 在写代码前估计每个 component 在“普通一步”“危险一步”“成功/失败终止一步”的典型范围。估计不确定时应采用保守、有界的初始权重，并在 Design audit 中明确标记假设。
+- 正常行为下，goal/progress 应保持主要方向性；safety/stability/efficiency 不应在绝大多数步骤共同把总奖励压成负值。
+- 必须读取 Environment Card 中的 runtime reward clip。事件 bonus 超出 clip 不会带来更强信号，只会使不同终局值被压成同一个上限，因此不要无意义地设置远大于 clip 的数值。
 
 # 五、成功、失败与截断
 
@@ -130,4 +141,6 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 - main reward-hacking risk and mitigation:
 - component budget check: list every component key and confirm that each enters total_reward
 - why 2–4 components are appropriate, or why this task justifies a smaller/larger initial set:
+- scale audit: for every weighted component, state the expected ordinary-step range, event-step range, and relationship to the runtime reward clip
+- coefficient audit: confirm every weight is applied exactly once and total_reward is the direct sum of weighted component values
 ````

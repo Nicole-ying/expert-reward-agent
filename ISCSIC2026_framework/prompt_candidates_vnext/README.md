@@ -22,15 +22,15 @@ task spec + masked step source
 
 Initial Reward Generator 默认推荐 2–4 个实际进入 `total_reward` 的具名 component。该范围是初始复杂度预算：便于控制尺度、解释训练反馈并进行后续单目标修复，而不是绝对合法性限制。偏离范围时必须说明任务依据以及为什么不能采用更简单的 2–4 组件设计。
 
-最终 Environment Card 应由控制器与 LLM 共同组装：控制器把匿名任务描述原样写入第 0 节，避免 LLM 二次改写；Environment Analyzer 生成第 1–8 节。第 0–5 节是共享任务接口，包括任务原文、最小任务类型、observation 表、action 表、终止/截断和合法信号，Reflection Agent 每轮只读取这些部分。第 6–8 节包含主进展骨架、失败模式和初始 reward brief，只提供给 Initial Reward Generator，避免反思阶段重复注入初始化建议。
+最终 Environment Card 应由控制器与 LLM 共同组装：控制器只提取 `task_description` 原文写入第 0 节，不复制整份 YAML，避免与后续 observation/action/termination 表格重复；Environment Analyzer 生成第 1–8 节。第 0–5 节是共享任务接口，包括任务原文、最小任务类型、observation 表、action 表、终止/截断和合法信号，Reflection Agent 每轮只读取这些部分。第 6–8 节包含主进展骨架、失败模式和初始 reward brief，只提供给 Initial Reward Generator，避免反思阶段重复注入初始化建议。
 
 建议的组装形式：
 
 ```text
 # Environment Semantics Card
 
-## 0. Original anonymized task specification
-{controller inserts task description verbatim}
+## 0. Original anonymized task description
+{controller inserts only task_description verbatim}
 
 {Environment Analyzer output: sections 1–8}
 ```

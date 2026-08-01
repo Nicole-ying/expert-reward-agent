@@ -72,8 +72,12 @@
 
 ## 已实施的脚本修复
 
+- 最终环境卡第 0 节只保留 `task_description` 原文，不再复制与后续表格重复的整份 YAML。
 - Environment User Prompt 注入真实 reward interface contract。
 - 明确结束标志必须通过 `info` 访问，禁止裸变量。
+- 将 runtime reward clip 写入接口契约，要求事件 bonus 按实际 clip 设计。
+- 统一 component 表达：component 保存已经加权的真实贡献，权重只应用一次，`total_reward` 直接求和。
+- 要求逐项估计正常步/事件步尺度，禁止注释声称 bounded/tanh 而代码没有实现。
 - 环境卡缺少任一第 1–8 节时停止生成。
 - validator 检测未定义名称。
 - validator 拒绝嵌套/额外函数。
