@@ -117,5 +117,5 @@
 - detectable success reward:
 - necessary safety/stability guidance:
 - detectable failure penalty:
-- components recommended: 2–4 unless a further component is strictly necessary
+- initial component budget: exactly 2–4; additional responsibilities must wait for evidence-driven repair
 ```

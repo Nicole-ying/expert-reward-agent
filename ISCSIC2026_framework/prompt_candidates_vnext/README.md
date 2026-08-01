@@ -19,6 +19,8 @@ task spec + masked step source
 
 默认不再向初始生成器注入大段通用专家骨架目录。只有环境语义存在无法从源码解决的歧义时，才按需检索一条针对性知识，而不是整包注入。
 
+Initial Reward Generator 对组件数量使用硬约束：`components` 必须恰好包含 2–4 个实际进入 `total_reward` 的具名项；超过四项的职责留给后续训练证据驱动的修复。
+
 最终 Environment Card 应由控制器与 LLM 共同组装：控制器把匿名任务描述原样写入第 0 节，避免 LLM 二次改写；Environment Analyzer 生成第 1–8 节。第 0–5 节是共享任务接口，包括任务原文、最小任务类型、observation 表、action 表、终止/截断和合法信号，Reflection Agent 每轮只读取这些部分。第 6–8 节包含主进展骨架、失败模式和初始 reward brief，只提供给 Initial Reward Generator，避免反思阶段重复注入初始化建议。
 
 建议的组装形式：

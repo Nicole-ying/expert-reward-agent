@@ -23,9 +23,18 @@
 
 不能仅根据任务标签选公式。必须依据 Environment Semantics Card 中的成功语义、终止条件和合法信号。若必要信号不存在，选择可合法计算的替代信号并说明局限，不能发明字段。
 
-# 三、少组件奖励结构
+# 三、组件数量硬约束
 
-第一版奖励强烈建议只使用 2–4 个具名组件。概念形式为：
+第一版奖励必须只使用 **2–4 个具名组件**。这是硬约束，不是建议：
+
+- `components` 字典的 key 数量必须满足 `2 <= len(components) <= 4`。
+- 每个 component 都必须实际进入 `total_reward`；禁止加入仅用于凑数、记录中间量或没有作用的 component。
+- 至少一个 component 必须是与任务成功方向一致的 `goal/progress` 主信号。
+- 其余 1–3 个 component 只能服务于可识别的 success、必要的 safety/stability 或明确的 failure/bad behavior。
+- 能合并的职责必须合并，例如 success 可与 goal component 合并；不得把同一物理意义拆成多个 component 绕过数量限制。
+- 初始版本不得超过 4 个 component。发现更多潜在约束时，只保留最影响任务成功的约束，其他内容留给后续训练证据驱动的修复。
+
+概念形式为：
 
 ```text
 R_total = w_goal * R_goal
@@ -41,7 +50,7 @@ R_total = w_goal * R_goal
 3. **Safety/stability：按需加入。** 只约束会阻止任务完成的危险或不稳定行为，强度通常低于主进展信号。
 4. **Failure/bad behavior penalty：按需加入。** 只在明确失败或明确坏行为出现时触发，应有界、门控且可解释。
 
-如果两个职责可以由一个组件表达，应合并。只有缺少额外组件会使任务成功不可达或产生明显 reward hacking 时，才允许超过四个组件，并必须在说明中逐项证明必要性。
+如果两个职责可以由一个组件表达，应合并。初始奖励不允许超过四个组件；额外职责必须留到训练反馈证明其必要后，再由后续修复阶段处理。
 
 # 四、尺度与符号
 
@@ -87,6 +96,7 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 - 不要写 import、class、额外函数、`self`、`try/except`、`eval`、`exec` 或文件操作。
 - 返回值必须是 `return float(total_reward), components`。
 - `components` 必须是 dict，只记录真正进入 `total_reward` 的具名组件；不要放中间变量或 `total_reward` 本身。
+- `components` 必须恰好包含 2–4 个 key；少于 2 个或多于 4 个都视为无效代码，必须重新生成。
 - 每个 component 名称必须表达语义，例如 `goal_progress`、`stability_guidance`、`failure_penalty`，以便后续统计和诊断。
 - 需要平方根时使用 `** 0.5`；不要 import NumPy。
 
@@ -111,5 +121,6 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 - success/failure handling:
 - forbidden or unavailable signals not used:
 - main reward-hacking risk and mitigation:
-- why 2–4 components are sufficient, or why an extra component is strictly necessary:
+- component count check: list all 2–4 component keys and confirm that each enters total_reward
+- why these 2–4 components are sufficient for the initial reward:
 ````
