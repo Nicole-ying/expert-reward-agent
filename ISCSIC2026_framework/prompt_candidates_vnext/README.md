@@ -5,6 +5,7 @@
 设计目标：保留原始任务描述，用最短的信息链回答任务类型、空间索引、怎样才算成功、怎样会失败、哪些信号合法，以及什么奖励方向会把最优策略引向任务成功。
 
 - `DIAGNOSIS.md`：现有 Prompt 的问题与改写原则。
+- `INITIAL_GENERATION_AUDIT.md`：Env-001 首次有/无历史 Expert Context 的实际输出审计。
 - `01_environment_semantics_prompt.md`：精简环境语义分析 System Prompt。
 - `02_initial_reward_generator_prompt.md`：少组件、目标主导的初始奖励生成 System Prompt。
 

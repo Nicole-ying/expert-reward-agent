@@ -69,6 +69,8 @@ R_total = w_goal * R_goal
 
 - `terminated=True` 不能直接当作 success 或 failure。只能使用 Environment Semantics Card 已证明可区分的结束条件。
 - `truncated=True` 通常表示时间上限等外部截断，不自动给予 success bonus 或 failure penalty；以卡片中的源码证据为准。
+- 严格按 Environment Card 给出的精确访问路径读取结束标志。若契约写的是 `info["terminated"]`，代码只能通过 `info.get("terminated", False)` 等安全形式读取，不能使用未定义的裸变量 `terminated`。
+- 即使 `info["terminated"]` 为真，也必须结合 `next_obs` 的位置、速度、姿态和接触等合法信号区分 success 与 failure；不能把所有 terminated 统一奖励或惩罚。
 - 若接口没有合法 success/failure 信号，不得发明 `info["success"]`、`termination_reason` 等字段。
 - 无法可靠识别终局事件时，使用与成功方向一致的 dense progress 和必要约束，不伪造 terminal reward。
 
@@ -97,7 +99,8 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 ```
 
 - 第一段 Python code block 只能包含一个完整的 `compute_reward` 函数。
-- 不要写 import、class、额外函数、`self`、`try/except`、`eval`、`exec` 或文件操作。
+- 不要写 import、class、嵌套 helper function、额外函数、`self`、`try/except`、`eval`、`exec` 或文件操作。
+- 不得使用函数参数、局部赋值变量和 Python 安全内置函数之外的名称；尤其禁止未定义的裸变量 `terminated`、`truncated` 或 `done`。
 - 返回值必须是 `return float(total_reward), components`。
 - `components` 必须是 dict，只记录真正进入 `total_reward` 的具名组件；不要放中间变量或 `total_reward` 本身。
 - `components` 推荐包含 2–4 个 key。偏离该范围不是代码错误，但必须在 Design audit 中解释任务依据；无法说明必要性时，应简化到 2–4 个。

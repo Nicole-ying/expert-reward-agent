@@ -124,8 +124,83 @@ def build_environment_user_prompt(task_spec: str, masked_step: str) -> str:
         "# ANONYMIZED_TASK_SPEC\n\n"
         f"{task_spec.strip()}\n\n"
         "# MASKED_STEP_SOURCE\n\n"
-        f"```python\n{masked_step.strip()}\n```\n"
+        f"```python\n{masked_step.strip()}\n```\n\n"
+        "# REWARD_INTERFACE_CONTRACT\n\n"
+        "```text\n"
+        "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n\n"
+        "Runtime-accessible inputs:\n"
+        "- obs, action, next_obs, training_progress\n"
+        "- info[\"terminated\"]: bool\n"
+        "- info[\"truncated\"]: bool\n"
+        "- info[\"done\"]: bool(terminated or truncated)\n\n"
+        "Forbidden:\n"
+        "- original_reward and the official environment reward\n"
+        "- bare variables terminated, truncated, or done\n"
+        "- undeclared info fields\n\n"
+        "The termination boolean does not expose its cause. Distinguish success/failure only by combining "
+        "info[\"terminated\"] with legal state evidence.\n"
+        "```\n"
     )
+
+
+def missing_environment_sections(text: str) -> list[int]:
+    return [index for index in range(1, 9) if not re.search(rf"(?m)^## {index}\.\s", text)]
+
+
+def undefined_names(code: str) -> list[str]:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    functions = [node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    if not functions:
+        return []
+    function = functions[0]
+    defined = {arg.arg for candidate in functions for arg in candidate.args.args}
+    defined.update(
+        node.id for node in ast.walk(function) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+    )
+    defined.update(node.name for node in ast.walk(function) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)))
+    safe_builtins = {
+        "abs", "all", "any", "bool", "dict", "float", "int", "isinstance", "len",
+        "list", "max", "min", "range", "round", "sum", "tuple",
+    }
+    loaded = {
+        node.id for node in ast.walk(function) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+    }
+    return sorted(loaded - defined - safe_builtins)
+
+
+def extra_function_names(code: str) -> list[str]:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    return [
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name != "compute_reward"
+    ]
+
+
+def audit_reward_code(code: str) -> tuple[dict[str, object], list[str]]:
+    validation = validate_code(code)
+    keys = component_keys(code)
+    missing_names = undefined_names(code)
+    helpers = extra_function_names(code)
+    if missing_names:
+        validation["errors"].append(f"Undefined names: {', '.join(missing_names)}")
+    if helpers:
+        validation["errors"].append(f"Extra or nested functions are forbidden: {', '.join(helpers)}")
+    validation["valid"] = not validation["errors"]
+    validation["component_keys"] = keys
+    validation["component_count"] = len(keys)
+    validation["component_budget_2_to_4"] = 2 <= len(keys) <= 4
+    if keys and not validation["component_budget_2_to_4"]:
+        validation["warnings"].append(
+            "Initial reward falls outside the recommended 2–4 component budget; inspect the design justification."
+        )
+    return validation, keys
 
 
 def build_reward_user_prompt(environment_card: str, expert_context: str | None) -> str:
@@ -165,25 +240,30 @@ def run(args: argparse.Namespace) -> Path:
     reward_system = read_text(SCRIPT_DIR / "02_initial_reward_generator_prompt.md")
     environment_user = build_environment_user_prompt(task_spec, masked_step)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_root = resolve_from_root(args.output_root) / (args.run_name or timestamp)
-    output_root.mkdir(parents=True, exist_ok=False)
-
-    write_text(output_root / "inputs/task_spec_anonymized.yaml", task_spec)
-    write_text(output_root / "inputs/masked_step_source.py", masked_step)
-    save_prompt_record(
-        output_root / "environment/prompt_record.md",
-        environment_system,
-        environment_user,
-    )
-    write_json(
-        output_root / "environment/prompt_stats.json",
-        prompt_stats(environment_system, environment_user),
-    )
-
     llm_cfg = cfg["llm"]
     env_model = args.env_model or args.model or llm_cfg["model_env"]
     reward_model = args.reward_model or args.model or llm_cfg["model_reward"]
+    if args.resume_run:
+        output_root = resolve_from_root(args.resume_run)
+        if not output_root.is_dir():
+            raise FileNotFoundError(f"Resume directory does not exist: {output_root}")
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_root = resolve_from_root(args.output_root) / (args.run_name or timestamp)
+        output_root.mkdir(parents=True, exist_ok=False)
+
+        write_text(output_root / "inputs/task_spec_anonymized.yaml", task_spec)
+        write_text(output_root / "inputs/masked_step_source.py", masked_step)
+        save_prompt_record(
+            output_root / "environment/prompt_record.md",
+            environment_system,
+            environment_user,
+        )
+        write_json(
+            output_root / "environment/prompt_stats.json",
+            prompt_stats(environment_system, environment_user),
+        )
+
     manifest = {
         "config": str(config_path),
         "task_spec": str(task_spec_path),
@@ -192,6 +272,7 @@ def run(args: argparse.Namespace) -> Path:
         "reward_model": reward_model,
         "expert_mode": args.expert_mode,
         "dry_run": args.dry_run,
+        "resumed": bool(args.resume_run),
     }
     write_json(output_root / "manifest.json", manifest)
 
@@ -203,16 +284,32 @@ def run(args: argparse.Namespace) -> Path:
         return output_root
 
     client = DeepSeekClient(api_key_env=args.api_key_env, base_url=args.base_url or llm_cfg["base_url"])
-    environment_response = client.chat(
-        model=env_model,
-        system_prompt=environment_system,
-        user_prompt=environment_user,
-        temperature=args.env_temperature,
-        max_tokens=args.env_max_tokens,
-    )
-    write_text(output_root / "environment/raw_response.md", environment_response)
-    environment_card = compose_environment_card(task_spec, environment_response)
-    write_text(output_root / "environment/environment_card.md", environment_card)
+    environment_card_path = output_root / "environment/environment_card.md"
+    if args.resume_run:
+        if not environment_card_path.exists():
+            raise FileNotFoundError(f"Resume run has no environment card: {environment_card_path}")
+        environment_card = read_text(environment_card_path)
+    else:
+        environment_response = client.chat(
+            model=env_model,
+            system_prompt=environment_system,
+            user_prompt=environment_user,
+            temperature=args.env_temperature,
+            max_tokens=args.env_max_tokens,
+        )
+        write_text(output_root / "environment/raw_response.md", environment_response)
+        missing = missing_environment_sections(environment_response)
+        write_json(
+            output_root / "environment/validation.json",
+            {"complete": not missing, "missing_sections": missing},
+        )
+        if missing:
+            raise RuntimeError(
+                f"Environment card is incomplete; missing sections {missing}. "
+                "No reward-generation calls were made. Inspect environment/raw_response.md."
+            )
+        environment_card = compose_environment_card(task_spec, environment_response)
+        write_text(environment_card_path, environment_card)
 
     custom_context = resolve_from_root(args.expert_context_file) if args.expert_context_file else None
     variants = reward_variants(args.expert_mode, custom_context)
@@ -226,26 +323,25 @@ def run(args: argparse.Namespace) -> Path:
         if expert_context:
             write_text(variant_dir / "expert_context.md", expert_context)
 
-        response = client.chat(
-            model=reward_model,
-            system_prompt=reward_system,
-            user_prompt=reward_user,
-            temperature=args.reward_temperature,
-            max_tokens=args.reward_max_tokens,
-        )
-        write_text(variant_dir / "raw_response.md", response)
-        code = extract_code(response)
-        write_text(variant_dir / "reward_v1.py", code + ("\n" if code else ""))
-        validation = validate_code(code)
-        keys = component_keys(code)
-        validation["component_keys"] = keys
-        validation["component_count"] = len(keys)
-        validation["component_budget_2_to_4"] = 2 <= len(keys) <= 4
-        if keys and not validation["component_budget_2_to_4"]:
-            validation["warnings"].append(
-                "Initial reward falls outside the recommended 2–4 component budget; inspect the design justification."
+        validation_path = variant_dir / "validation.json"
+        reward_path = variant_dir / "reward_v1.py"
+        response_path = variant_dir / "raw_response.md"
+        if args.resume_run and validation_path.exists() and reward_path.exists() and response_path.exists():
+            validation, keys = audit_reward_code(read_text(reward_path))
+            write_json(validation_path, validation)
+        else:
+            response = client.chat(
+                model=reward_model,
+                system_prompt=reward_system,
+                user_prompt=reward_user,
+                temperature=args.reward_temperature,
+                max_tokens=args.reward_max_tokens,
             )
-        write_json(variant_dir / "validation.json", validation)
+            write_text(response_path, response)
+            code = extract_code(response)
+            write_text(reward_path, code + ("\n" if code else ""))
+            validation, keys = audit_reward_code(code)
+            write_json(validation_path, validation)
         comparison.append(
             {
                 "variant": name,
@@ -292,6 +388,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--masked-step")
     parser.add_argument("--output-root", default="runs/vnext_initial_ab")
     parser.add_argument("--run-name")
+    parser.add_argument("--resume-run", help="Resume an existing output directory and skip completed stages.")
     parser.add_argument("--expert-mode", choices=["card_only", "historical_expert", "both"], default="both")
     parser.add_argument("--expert-context-file")
     parser.add_argument("--model")

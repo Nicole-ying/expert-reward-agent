@@ -48,7 +48,10 @@
 
 - 列出每个 reward-relevant observation index 的名称、物理含义以及它属于 `obs` 还是 `next_obs`。
 - 说明 action 各维度/离散动作的含义。
-- 只允许使用接口中明确存在的 `obs`、`next_obs`、`action` 和 `info` 字段。
+- 区分“环境 step 的返回值”和“compute_reward 实际可访问的参数”。信号是否可用于 reward，只由输入中的 `REWARD_INTERFACE_CONTRACT` 决定，不能因为它出现在 step source 中就假设存在同名局部变量。
+- 只允许使用接口契约中明确存在的 `obs`、`next_obs`、`action` 和 `info` 字段。
+- 若接口契约声明结束标志位于 `info`，必须写成精确访问形式，例如 `info["terminated"]` 或 `info.get("terminated", False)`；不得把它写成裸变量 `terminated`。
+- `info["terminated"]` 只能说明发生了 MDP 终止，不能单独区分 crash、out-of-bounds 或 settled；终止原因必须结合合法状态信号判断。
 - 明确禁止 `original_reward`、官方 reward、未声明的 `info` 字段、未声明的 observation slice 和任何只能靠环境名称猜测的变量。
 - 如果 success/failure 无法从合法信号可靠区分，必须明确写出，不能发明 flag。
 
