@@ -32,11 +32,10 @@
 - 不要把 benchmark 名称作为任务类型依据；只能根据目标、动力学形态、动作类型、可用信号和终止机制判断。
 
 允许：
-- 可以输出 reward roles，但这些是”奖励职责”，不是具体公式或固定组件名；
+- 可以输出 reward roles，但这些是“奖励职责”，不是具体公式或固定组件名；
 - 可以说明某个职责需要哪些信号；
 - 可以说明某个职责为什么当前环境不该使用；
 - 可以给出候选 formula operator 名称，如 dense_state_signal、bounded_signal、quadratic_penalty，但不要写最终代码。
-- 终止条件即使无法从 info 直接读取，仍可通过观测信号间接推断。例如：(a) 摔倒/坠毁可从 hull_angle 突变、body 位置骤降、或 contact 信号组合推断；(b) 到达终点可从 agent 持续前进中 episode 突然 truncated 且未检测到摔倒信号推断；(c) 出界可从位置坐标超出合理范围推断。应在”可用于奖励函数的信号”和”role_to_signal_mapping”中列出这些间接可用的推断路径，标注为”derived_possible”。
 
 7 类任务类型只能选一个。选择原则：识别任务的核心目标，附属优化（省燃料、快点到、动作小等）不是多目标。只有当多个目标权重相当、彼此冲突且无法明确区分主次时，才选 multi_objective_task。
 - survival_balance_task: 核心是保持存活/平衡/不倒塌，没有明确到达目标。
@@ -56,62 +55,6 @@
 - staged_manipulation: 机械臂/物体操作具有阶段目标。
 - safety_constrained_progress: 进度目标受强安全约束限制。
 - sparse_event_exploration: 稀疏事件驱动、需要探索。
-
-骨架选择推理框架：
-在进行奖励职责拆解之前，你必须先完成主信号骨架的推理。这个推理不依赖任何具体环境经验，只依赖任务描述和观测空间。
-
-### 步骤 1：识别"成功"在观测空间中的投影
-- 阅读 termination 条件：什么事件导致成功终止或任务完成？
-- 从 observation space 中找到与"成功/接近成功"相关的维度。
-- 如果成功不是显式信号，能否从观测维度间接推断？例如：距离坐标原点越来越近、前进速度持续为正、身体高度保持在安全区间。
-
-### 步骤 2：根据 task type 确定主信号算子族
-这一步不是选具体公式，是选定主信号的基本数学形态。选择原则由任务类型的核心问题决定：
-
-- **navigation_goal_reaching**（核心问题："离目标更近了吗？"）
-  主信号算子族：delta(distance) 或 improvement
-  → 衡量连续两步之间距离目标的减少量。
-  → 避免使用 proximity（状态值，与目标距离的单调函数）作为唯一主信号：proximity 允许 agent 停在一个较好但不完成任务的中间状态持续得分（悬停陷阱）。
-  → 如果 delta 不可用（如目标坐标未知），用 sparse terminal event。
-
-- **locomotion_continuous_control**（核心问题："在朝正确方向前进吗？"）
-  主信号算子族：forward_velocity 或 velocity × health_gate
-  → 存在明确的前进轴时，沿该轴的速度分量是第一候选。
-  → 如果 agent 容易跌倒（高维身体、多关节），velocity 应乘以 survival/health gate，使得 unhealthy 状态下的 forward reward 减少或归零。
-  → 如果只有存活时间没有方向（如 balance 任务），不应使用 velocity。
-
-- **survival_balance_task**（核心问题："还活着/还站着吗？"）
-  主信号算子族：survival_time 或 health × time
-  → 不存在"进度"概念的场景下，存活本身是成功。
-  → 辅助信号来自健康/平衡的维持：身体倾角在安全区内给正分，超出给惩罚。
-  → 不要强行构造一个不存在的前进或到达信号。
-
-- **sparse_exploration**（核心问题："发现新东西了吗？"）
-  主信号算子族：sparse event bonus + exploration bonus
-  → 环境提供的原始奖励极其稀疏时，不需要 dense 主信号。
-  → 探索奖励应该是暂时性的，最终会被稀疏事件奖励取代。
-
-- **manipulation_grasping**（核心问题："物体到目标了吗？"）
-  主信号算子族：delta(distance_to_target) + sparse grasp/release event
-  → 接近阶段用 delta，抓取/释放阶段用稀疏事件。
-
-- **autonomous_driving_safety**（核心问题："安全地前进吗？"）
-  主信号算子族：velocity × safety_gate
-  → 与 locomotion 类似但有更强的安全约束。gate 必须在安全边界被突破时迅速归零。
-
-### 步骤 3：辅助信号设计原则
-- **penalty 用 hinge 不用 quadratic**：只在超出安全边界时惩罚，不惩罚安全区内的正常行为。例如身体倾角在 ±0.2rad 内不罚，超出才罚。
-- **gate 用于保护主信号**：当主信号在某种状态下不可靠（例如 agent 跌倒后 forward_velocity 失去意义），用 gate 抑制主信号而非添加独立 penalty。
-- **能量/动作效率**：仅在任务描述中明确要求"高效""省燃料""节能"时添加。不要每环境都加——这是附属优化，不是主目标。
-- **终端事件**：当观测空间允许推断成功/失败时，可以添加终端 bonus/penalty。但必须标注为 derived_possible（间接推断），并且写出推断所依赖的观测信号链。
-
-### 步骤 4：自检
-完成骨架选择后，用以下问题自检你的选择是否合理：
-1. 如果 agent 静止不动，主信号是正、零、还是负？合理的答案应该与任务的"进步"定义一致。
-2. 如果 agent 完成了任务（成功终止），主信号还有没有继续给正分的空间？如果答案是"有"，说明你的主信号可能被悬停收割。
-3. agent 能否在随机探索过程中偶然触发主信号的梯度？如果主信号需要满足 3 个以上条件才非零，说明信号太稀疏。
-
-以上推理结果写入输出中的 `expert_task_profile` 和 `reward_role_decomposition` 部分，不要照抄本段文字。
 
 奖励职责拆解原则：
 - 先判断任务需要哪些 reward roles，再由可用信号映射到可能数学形式；

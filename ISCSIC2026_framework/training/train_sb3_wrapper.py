@@ -25,61 +25,6 @@ def _parse_schedule_value(value):
     return linear_schedule
 
 
-class ConvergenceEarlyStopCallback(BaseCallback):
-    """Stop training when explained_variance has converged.
-
-    Convergence criteria:
-      1. Rolling mean of explained_variance > threshold (default 0.9)
-      2. Rolling std < stability threshold for N consecutive checks (default 10)
-      3. Minimum training steps completed (safety: avoid false convergence)
-    """
-
-    def __init__(self, ev_threshold=0.93, stability_window=10, stability_std=0.01,
-                 min_steps=500_000, check_freq=10_000, verbose=1):
-        super().__init__()
-        self.ev_threshold = ev_threshold
-        self.stability_window = stability_window
-        self.stability_std = stability_std
-        self.min_steps = min_steps
-        self.check_freq = check_freq
-        self.verbose = verbose
-        self._ev_history = []
-
-    def _on_step(self):
-        if self.n_calls % self.check_freq != 0:
-            return True
-        # Access explained_variance from the logger (BaseCallback provides self.logger)
-        logger = getattr(self, 'logger', None) or getattr(self.model, 'logger', None)
-        if logger is None:
-            return True
-        ntv = getattr(logger, 'name_to_value', {})
-        if 'train/explained_variance' not in ntv:
-            return True
-        ev = ntv['train/explained_variance']
-        if ev is None or ev == 0.0:
-            return True
-        self._ev_history.append(ev)
-        # Keep only recent history
-        if len(self._ev_history) > self.stability_window * 2:
-            self._ev_history = self._ev_history[-self.stability_window * 2:]
-
-        if len(self._ev_history) < self.stability_window:
-            return True
-        if self.num_timesteps < self.min_steps:
-            return True
-
-        recent = self._ev_history[-self.stability_window:]
-        recent_mean = sum(recent) / len(recent)
-        recent_std = (sum((x - recent_mean) ** 2 for x in recent) / len(recent)) ** 0.5
-
-        if recent_mean > self.ev_threshold and recent_std < self.stability_std:
-            if self.verbose:
-                print(f"\n[ConvergenceEarlyStop] Converged at {self.num_timesteps:,} steps "
-                      f"(ev_mean={recent_mean:.4f}, ev_std={recent_std:.4f})")
-            return False  # Stop training
-        return True
-
-
 class RewardComponentStatsCallback(BaseCallback):
     def __init__(self):
         super().__init__()
@@ -180,15 +125,12 @@ class RewardComponentStatsCallback(BaseCallback):
         }
 
 
-def _make_env(env_id, reward_fn, max_progress_steps, seed, rank, monitor_dir, reward_clip, error_fallback, env_kwargs=None):
+def _make_env(env_id, reward_fn, max_progress_steps, seed, rank, monitor_dir, reward_clip, error_fallback):
     """Module-level env factory for SubprocVecEnv (must be picklable)."""
     import gymnasium as gym
     from training.reward_wrapper import RewardOverrideWrapper
     from stable_baselines3.common.monitor import Monitor
-    if env_kwargs:
-        env = gym.make(env_id, **env_kwargs)
-    else:
-        env = gym.make(env_id)
+    env = gym.make(env_id)
     env.reset(seed=seed + rank)
     env.action_space.seed(seed + rank)
     info_keywords = ()
@@ -209,12 +151,12 @@ def _make_env(env_id, reward_fn, max_progress_steps, seed, rank, monitor_dir, re
     return env
 
 
-def build_env_fns(env_id, reward_fn, max_progress_steps, seed, n_envs, monitor_dir, reward_clip, error_fallback, env_kwargs=None):
+def build_env_fns(env_id, reward_fn, max_progress_steps, seed, n_envs, monitor_dir, reward_clip, error_fallback):
     """Return list of env factory functions for SubprocVecEnv."""
     from functools import partial
     fns = []
     for rank in range(n_envs):
-        fns.append(partial(_make_env, env_id, reward_fn, max_progress_steps, seed, rank, str(monitor_dir), reward_clip, error_fallback, env_kwargs))
+        fns.append(partial(_make_env, env_id, reward_fn, max_progress_steps, seed, rank, str(monitor_dir), reward_clip, error_fallback))
     return fns
 
 
@@ -226,7 +168,6 @@ def evaluate_model_on_original_env(
     eval_seed_offset=10000,
     reward_fn=None,
     observation_normalizer=None,
-    env_kwargs=None,
 ):
     """Evaluate using a fixed set of seeds for reproducibility and paired comparison.
 
@@ -244,10 +185,7 @@ def evaluate_model_on_original_env(
                        eval_seed_offset + 0, eval_seed_offset + 1, ..., eval_seed_offset + eval_episodes - 1.
                        Parent and child should use the same eval_seed_offset for paired comparison.
     """
-    if env_kwargs:
-        env = gym.make(env_id, **env_kwargs)
-    else:
-        env = gym.make(env_id)
+    env = gym.make(env_id)
     episode_rewards = []
     episode_lengths = []
     episode_terminated = []  # True = terminated (env-defined end), False = truncated (time limit)
@@ -622,7 +560,6 @@ def main():
     reward_clip = train_cfg.get("reward_clip", 20.0)
     error_fallback = train_cfg.get("error_fallback", "zero")
     max_progress_steps = int(train_cfg.get("max_training_steps_for_progress", total_timesteps))
-    env_kwargs = train_cfg.get("env_kwargs", None)
 
     env_fns = build_env_fns(
         train_cfg["runner_env_id"],
@@ -633,7 +570,6 @@ def main():
         monitor_dir,
         reward_clip,
         error_fallback,
-        env_kwargs,
     )
     env = SubprocVecEnv(env_fns)
     normalize_obs = bool(train_cfg.get("normalize_obs", False))
@@ -691,22 +627,7 @@ def main():
     if train_cfg.get("tensorboard_log"):
         from pathlib import Path as _Path
         _Path(train_cfg["tensorboard_log"]).mkdir(parents=True, exist_ok=True)
-        import time as _time
-    _train_start = _time.time()
-
-    callbacks = [component_callback]
-    if train_cfg.get("early_stop_convergence", False):
-        ev_callback = ConvergenceEarlyStopCallback(
-            ev_threshold=float(train_cfg.get("early_stop_ev_threshold", 0.93)),
-            stability_window=int(train_cfg.get("early_stop_stability_window", 10)),
-            stability_std=float(train_cfg.get("early_stop_stability_std", 0.01)),
-            min_steps=int(train_cfg.get("early_stop_min_steps", 500_000)),
-        )
-        callbacks.append(ev_callback)
-
-    model.learn(total_timesteps=total_timesteps, tb_log_name=tb_log_name, callback=callbacks)
-    _train_sec = _time.time() - _train_start
-    print(f"Training duration: {_train_sec/60:.1f} min ({_train_sec:.0f} sec)")
+    model.learn(total_timesteps=total_timesteps, tb_log_name=tb_log_name, callback=component_callback)
     model.save(str(save_dir / "model.zip"))
     vec_normalize_path = None
     if vec_normalize is not None:
@@ -726,7 +647,6 @@ def main():
         eval_seed_offset=eval_seed_offset,
         reward_fn=reward_fn,
         observation_normalizer=vec_normalize if normalize_obs else None,
-        env_kwargs=env_kwargs,
     )
     env.close()
     component_summary = component_callback.summary()
@@ -752,7 +672,6 @@ def main():
             "vecnormalize_path": str(vec_normalize_path) if vec_normalize_path else None,
         },
         "external_eval": eval_result,
-        "train_duration_sec": round(_train_sec, 1),
         "component_summary": component_summary,
     }
     (save_dir / "train_config_used.yaml").write_text(yaml.safe_dump(summary, allow_unicode=True, sort_keys=False), encoding="utf-8")

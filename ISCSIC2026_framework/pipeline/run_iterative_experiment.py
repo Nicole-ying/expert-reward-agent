@@ -3,17 +3,14 @@ import ast
 import hashlib
 import json
 import os
-import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 from .common import load_config
 
 
 def run_cmd(cmd):
-    cmd = [sys.executable if arg == "python" else arg for arg in cmd]
     print("\n$ " + " ".join(cmd), flush=True)
     subprocess.run(cmd, check=True)
 
@@ -25,18 +22,6 @@ def pad_iter(i):
 def validate_rounds(rounds):
     if rounds < 1:
         raise ValueError("iteration.total_rounds must be >= 1")
-
-
-def _agent_recommended_level3(gen_run_name, run_root):
-    """Check if the reflection agent diagnosed Level 3 in its last response."""
-    resp_path = Path(run_root) / gen_run_name / "response_records" / "agent_reflection.md"
-    if not resp_path.exists():
-        return False
-    resp_text = resp_path.read_text(encoding="utf-8")
-    m = re.search(r"\*\*level\*\*:\s*Level\s*(\d)", resp_text, re.IGNORECASE)
-    if m and int(m.group(1)) == 3:
-        return True
-    return bool(re.search(r"Level\s*3", resp_text, re.IGNORECASE))
 
 
 def validate_output_path_length(cfg, prefix, seed, rounds):
@@ -263,11 +248,10 @@ def code_signature(path):
 
 
 def skeleton_fingerprint(reward_path):
-    """Extract the component-key set from a reward.py as a skeleton fingerprint.
+    """Extract the main signal type from a reward.py as a coarse skeleton fingerprint.
 
-    Uses the sorted tuple of component dictionary keys so that different
-    component sets are treated as different skeletons, even when they share
-    generic words like "velocity" or "forward".
+    Instead of exact component names (which change when LLM renames things),
+    this classifies the main signal into one of a few semantic families.
     """
     try:
         tree = ast.parse(Path(reward_path).read_text(encoding="utf-8"))
@@ -279,25 +263,21 @@ def skeleton_fingerprint(reward_path):
             for key_node in node.keys:
                 if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str):
                     keys.add(key_node.value)
-    if not keys:
-        return None
-    return tuple(sorted(keys))
-
-
-def _first_iter_score(memory_path):
-    """Read the first iteration's score from the reward memory file."""
-    import re
-    mem = Path(memory_path)
-    if not mem.exists():
-        return None
-    for line in mem.read_text(encoding="utf-8").splitlines():
-        if line.startswith("|") and re.match(r"\|\s*1\s*\|", line):
-            cols = [c.strip() for c in line.split("|")]
-            try:
-                return float(cols[3])
-            except (ValueError, IndexError):
-                return None
-    return None
+    # Classify main signal family from component names
+    key_str = " ".join(sorted(keys)).lower()
+    if "progress_delta" in key_str or "progress_reward" in key_str:
+        family = "progress_delta_family"
+    elif "distance" in key_str:
+        family = "distance_family"
+    elif "potential" in key_str or "shaping" in key_str:
+        family = "potential_shaping_family"
+    elif "alive_bonus" in key_str or "survival" in key_str:
+        family = "alive_survival_family"
+    elif "forward" in key_str or "velocity" in key_str:
+        family = "forward_progress_family"
+    else:
+        family = "other:" + "+".join(sorted(keys))[:60]
+    return family
 
 
 def is_identical_reward(path_a, path_b):
@@ -715,31 +695,6 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             no_improve_count += 1
             continue
 
-        # Agent-driven Level 3 rebuild: if the agent diagnosed Level 3, re-run in rebuild mode
-        if use_reflection_agent and iteration_index > 1 and not force_fresh_restart:
-            if _agent_recommended_level3(paths["gen_run_name"], cfg["experiment"]["run_root"]):
-                print(">>> Agent recommended Level 3 rebuild. Re-running reflection in REBUILD MODE.")
-                rebuild_cmd = [
-                    "python", "-m", "pipeline.run_reflection_agent",
-                    "--config", config_path,
-                    "--previous-reward", str(previous_reward),
-                    "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
-                    "--train-run-dir", str(prev_paths["train_dir"]),
-                    "--memory", agent_memory_path,
-                    "--out-run-name", paths["gen_run_name"],
-                    "--reward-version", f"v{version}",
-                    "--rebuild",
-                ]
-                if best_reward and str(best_reward) != str(previous_reward):
-                    rebuild_cmd += ["--best-reward", str(best_reward)]
-                rebuild_cmd += mock_args
-                run_cmd(rebuild_cmd)
-                current_reward = reward_path_for(cfg, paths["gen_run_name"], version)
-                try:
-                    check_reward_valid(cfg, paths["gen_run_name"], version, True)
-                except (RuntimeError, FileNotFoundError) as exc:
-                    print(f"Rebuild produced invalid code: {exc}")
-
         # Check if current reward is identical to best (not just previous) — skip redundant training
         duplicate_match = find_identical_historical_reward(
             cfg, prefix, seed, iteration_index, current_reward
@@ -942,7 +897,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
         elif (
             (not solved_seen)
             and same_skeleton_count >= 4
-            and 0 < best_score < 0.05 * target_score
+            and 0 < best_score < 0.25 * target_score
             and no_improve_count >= 2
         ):
             decision = "same_skeleton_oscillation_fresh_restart"
@@ -951,11 +906,11 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             stuck_rounds = same_skeleton_count
             same_skeleton_count = 0
             no_improve_count = 0
-            print(f">>> Same skeleton for {stuck_rounds} rounds, best={best_score:.1f} positive but oscillating (<5% target). Fresh restart #{restart_count}. Seed offset +{restart_count * 100}.")
+            print(f">>> Same skeleton for {stuck_rounds} rounds, best={best_score:.1f} positive but oscillating. Fresh restart #{restart_count}. Seed offset +{restart_count * 100}.")
         elif (
             (not solved_seen)
             and no_improve_count >= patience_unsolved
-            and best_score >= 0.05 * target_score
+            and best_score >= 0.25 * target_score
         ):
             decision = "unsolved_high_achievement_continue_from_best"
             no_improve_count = 0
@@ -964,33 +919,12 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 f"{best_score / target_score:.1%} of target. Keep best-centered local search; no fresh restart."
             )
         elif (not solved_seen) and no_improve_count >= patience_unsolved:
-            # Check improvement ratio before triggering full restart.
-            # If best_score improved significantly over the very first attempt,
-            # the current direction has merit — keep searching locally.
-            first_score = _first_iter_score(memory_path)
-            if first_score is not None and first_score < 0 and best_score > 0:
-                improvement_ratio = (best_score - first_score) / max(0.01, abs(first_score))
-                if improvement_ratio > 2.0:
-                    decision = "unsolved_improving_continue_from_best"
-                    no_improve_count = 0
-                    print(
-                        f">>> Stagnation but best={best_score:.1f} is a {improvement_ratio:.1f}x "
-                        f"improvement over first={first_score:.1f}. Continue local search; no fresh restart."
-                    )
-                else:
-                    decision = "unsolved_stagnation_fresh_restart"
-                    force_fresh_restart = True
-                    restart_count += 1
-                    same_skeleton_count = 0
-                    no_improve_count = 0
-                    print(f">>> Unsolved stagnation after {patience_unsolved} iters. Fresh restart #{restart_count} (full regeneration, seed offset +{restart_count * 100}).")
-            else:
-                decision = "unsolved_stagnation_fresh_restart"
-                force_fresh_restart = True
-                restart_count += 1
-                same_skeleton_count = 0
-                no_improve_count = 0
-                print(f">>> Unsolved stagnation after {patience_unsolved} iters. Fresh restart #{restart_count} (full regeneration, seed offset +{restart_count * 100}).")
+            decision = "unsolved_stagnation_fresh_restart"
+            force_fresh_restart = True
+            restart_count += 1
+            same_skeleton_count = 0
+            no_improve_count = 0
+            print(f">>> Unsolved stagnation after {patience_unsolved} iters. Fresh restart #{restart_count} (full regeneration, seed offset +{restart_count * 100}).")
 
         new_lessons_arg = []
         if iteration_index > 1:

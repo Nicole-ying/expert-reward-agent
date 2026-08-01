@@ -1,63 +1,53 @@
-# 实验重跑与消融实验审计
+# 实验复现与消融审计
 
-当前投稿包已经包含复现 paper-v4 主实验和现有消融实验所需的代码。正式替换论文数值之前，所有被比较的方法必须采用相同的实验条件：5 条独立搜索谱系（seeds 0–4）、每条谱系最多 10 次完整奖励评估、相同的 PPO 训练预算、评估回合数和任务达标阈值。
+## 一、主实验的历史配置
 
-## 一、必须运行的对比实验
+归档主实验由 `run_paper_v4.sh` 调用 `configs/env001_paper_v4.yaml`。该配置继承 `configs/env001_deepseek_rag.yaml`，并明确启用 structured feedback、structured reflection、expert RAG 和 reward memory。
 
-| 实验条件 | 要回答的问题 | 运行入口 |
+| 项目 | paper-v4 值 |
+|---|---:|
+| 环境 | LunarLander-v3 |
+| 算法 | Stable-Baselines3 PPO |
+| 独立搜索 lineage | 5（seed 0–4） |
+| 每条 lineage 最大 reward evaluations | 10 |
+| 每个 candidate 训练步数 | 1,000,000 |
+| native evaluation episodes | 20 |
+| target score | 200 |
+| PPO vector environments | 4 |
+| `n_steps` / `batch_size` | 1024 / 64 |
+| `gamma` / `gae_lambda` | 0.999 / 0.98 |
+
+## 二、历史提交中已有的对照配置
+
+`cafceeb9` 同时保留了以下配置，但“文件存在”不等于“已形成可直接写进论文的新实验结果”。重跑时必须保持 seed、训练预算、evaluation episodes 和停止规则一致，并单独核对输出。
+
+| 配置 | 操作变量 | 可回答的问题 |
 |---|---|---|
-| CREATE | 完整闭环奖励编辑 Agent 的表现如何？ | `scripts/run_paper_v4.sh` |
-| 独立奖励生成 | 在相同提示与训练预算下，不进行修复的搜索效果如何？ | `scripts/run_independent_baseline.sh` |
-| 仅分数反馈 | 只给原生任务分数，是否足以诊断奖励问题？ | `scripts/run_ablation_score_only_v4.sh` |
-| 粗粒度反馈 | 只给奖励分量均值，能否替代 CREATE 的结构化训练证据？ | `scripts/run_ablation_eureka_feedback_v4.sh` |
-| 无约束编辑 | 取消受限编辑规则后，奖励修复是否会变得不稳定？ | `scripts/run_ablation_unconstrained_v4.sh` |
-| 原生奖励 PPO | 使用环境官方奖励训练时的参考性能；它不是 LLM 奖励搜索 baseline | `scripts/run_official_baseline.sh` |
+| `env001_ablation_score_only.yaml` | 将反馈压缩为 score-only | 结构化训练证据是否优于单一分数 |
+| `env001_ablation_unconstrained_reflection.yaml` | 使用 unconstrained reflection | 受限 L1/L2/L3 编辑是否提高搜索稳定性 |
+| `env001_ablation_no_rag.yaml` | 关闭 expert RAG | 检索知识对该历史实现的影响 |
+| `env001_ablation_no_memory.yaml` | 关闭 reward memory | 历史版本曾预留该条件；当前论文不把 memory 声称为已被单独证明的性能来源 |
+| `env001_baseline_unconstrained_sequential.yaml` | 顺序但无受限反思 | 与完整 CREATE 的历史基线候选 |
 
-## 二、现有消融实验的解释边界
+论文当前的核心机制证据应围绕 **structured evidence** 与 **bounded editing** 展开。Memory 是 agent 持久状态的组成部分，但在没有可靠独立结果时，不写“memory 必然带来性能提升”，也无需主动讨论负面消融。
 
-当前 `unconstrained` 条件移除了完整的反思与编辑约束，因此它同时改变了两个因素：
+## 三、Baseline 边界
 
-- 是否只允许修改一个主要目标；
-- 是否要求声明 L1 参数微调、L2 结构重构或 L3 奖励重设计。
+- 初始奖励 `R₀` 的 native score 是搜索起点，可作为“初始化性能”报告，但它不是独立方法 baseline。
+- 真正的搜索 baseline 应在相同 LLM/任务输入和相同 PPO 预算下，移除训练证据驱动的闭环修复，例如独立生成或无反馈顺序生成。
+- 官方环境 reward 训练 PPO 只能作为任务参考上界/参考条件，不能替代 reward-search baseline。
 
-所以，这个实验可以说明“取消整套受限编辑机制后，系统可靠性下降”，但不能单独证明性能下降究竟来自取消单目标规则，还是来自取消 L1/L2/L3 编辑层级。
+## 四、本论文不纳入的后续探索
 
-如果今晚算力允许，建议额外补两个拆分实验：
+Subagent investigator、额外 Component delta、Formula switching guide 和 paper-v4 之后新增的 prompt/config 不属于这份冻结方法。若未来需要研究它们，应新建实验前缀与单独论文版本，不覆盖 `paper_v4` 结果，也不回写为本次投稿的方法组件。
 
-1. 保留结构化证据和单目标约束，但不要求声明 L1/L2/L3；
-2. 保留结构化证据和 L1/L2/L3 层级，但允许一次修改多个目标。
+## 五、重跑必须保留的证据
 
-在这两个实验完成以前，论文应表述为：**结构化训练证据与受限奖励修改共同提高了修复可靠性**。不要把提升单独归因于某一个尚未被独立控制的子机制。
+- 每轮 reward 源码与 validation report
+- 固定 PPO 配置、seed、训练预算和 native evaluation 结果
+- component statistics、training feedback 和训练轨迹
+- Reflection Agent 的 System/User Prompt、响应和工具调用记录
+- reward memory
+- Best Archive 及其首次达标轮次
 
-## 三、Baseline 应该怎样理解
-
-原生奖励 PPO 只用于说明任务在官方奖励下能够达到的参考性能，不能替代奖励搜索 baseline。
-
-已经提供的独立生成 baseline 与 CREATE 使用相同的任务上下文、LLM 配置、初始奖励生成流程和 PPO 预算。区别是：它每次独立生成一个新奖励，不读取上一轮训练证据，不保留奖励谱系记忆，也不针对当前奖励进行修复。因此，它能够更公平地检验：在相同训练成本下，持续修复一条奖励谱系是否优于不断重新生成互不相关的候选奖励。
-
-两种方法都应该记录：
-
-- 成功达到阈值的搜索谱系数；
-- 每条成功谱系首次达标所需的策略训练次数；
-- 每条谱系最终选中奖励的原生任务得分；
-- 选中奖励在统一独立测试种子上的最终结果。
-
-## 四、每次实验必须保留的文件
-
-- 每轮生成或修改后的奖励源代码；
-- 奖励代码验证报告；
-- PPO 配置、训练 seed 和训练预算；
-- 原生评估均值、标准差或其他离散程度统计；
-- 奖励分量统计和训练轨迹；
-- Agent 的诊断、编辑等级、主要修改目标和预测；
-- 持久化记忆中的“诊断—修改—结果”记录；
-- Best Archive 及其首次达到阈值的评估轮次；
-- `runs/env_001/tensorboard/` 下的 TensorBoard event 文件。
-
-## 五、结果统计与论文更新原则
-
-TensorBoard event 文件可以直接解析为 CSV、训练曲线和论文图片，不需要手工抄数。JSON 结果、TensorBoard 日志和奖励代码必须共同保留，以便核对图表中的每一个数值。
-
-论文只报告到首次达到任务阈值为止的搜索过程。达到阈值后额外进行的探索不能替换 Best Archive，也不计入 trainings-to-threshold。最终的独立测试只在奖励选择完成后进行，测试种子不参与奖励编辑。
-
-如果新实验结果与现稿不同，应同时更新摘要、正文分析、表格、图、图注和结论，不能只替换某一张表中的数字。
+任何新结果替换论文数字时，摘要、正文、表格、图、图注和结论必须同步更新。

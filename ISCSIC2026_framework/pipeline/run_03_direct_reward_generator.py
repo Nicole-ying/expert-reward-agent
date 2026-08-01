@@ -55,24 +55,8 @@ def extract_code(md):
     m = re.search(r"```python\s*(.*?)```", md, flags=re.S)
     if m:
         return m.group(1).strip()
-    # Try any code fence (``` without language specifier)
-    m = re.search(r"```\s*\n(.*?)```", md, flags=re.S)
-    if m and "def compute_reward" in m.group(1):
-        return m.group(1).strip()
-    # Fallback: find def compute_reward and extract only Python lines from there
-    idx = md.find("def compute_reward")
-    if idx >= 0:
-        code = md[idx:]
-        # Strip leading markdown/comment lines that aren't valid Python
-        lines = code.split("\n")
-        clean = []
-        for line in lines:
-            # Stop at markdown headers or non-code content after the function
-            if line.startswith("```") or line.startswith("## ") or line.startswith("---"):
-                if clean and "def compute_reward" in "\n".join(clean):
-                    break
-            clean.append(line)
-        return "\n".join(clean).strip()
+    if "def compute_reward" in md:
+        return md.strip()
     return ""
 
 
