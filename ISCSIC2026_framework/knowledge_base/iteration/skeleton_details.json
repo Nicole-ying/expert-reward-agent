@@ -1,0 +1,50 @@
+{
+  "progress_delta_reward": {
+    "math_form": "delta = d(current, goal) - d(next, goal); reward = delta * scale",
+    "design_rationale": "每一步向目标靠近即奖励，天然有正有负。比 distance_reward 更直接反映动作效果，不会像 distance_reward 那样远距离数值爆炸。",
+    "pitfalls": "目标附近易震荡（delta 正负交替）；若 scale 过大可能主导所有信号。",
+    "recommended_with": "配合 clip(delta, -0.5, 0.5) 或改用 proximity=1/(1+5*dist)。scale 需要根据环境尺度和最终策略统计验证。对同为dense逐步信号的早期学习阶段，可用 penalty/progress 约0.1（主学习信号约为惩罚10倍）作为v6经验起点，再由外部行为验证；不适用于事件奖励或不同时间语义的组件。"
+  },
+  "distance_reward": {
+    "math_form": "reward = -coeff * d(current, goal)",
+    "design_rationale": "密集 process 引导，使 agent 倾向于呆在目标附近。",
+    "pitfalls": "会让 agent 接近目标但不完成（没有鼓励停下），不关心速度和姿态。远距离时数值可能过大。",
+    "recommended_with": "只作小权重 anchor（coeff < 0.1），不与 progress_delta 同时大权重使用。或用 bounded 形式 1/(1+5*dist) 代替。"
+  },
+  "stability_penalty": {
+    "math_form": "penalty = -(λv·|v| + λa·|angle| + λω·|ω|)",
+    "design_rationale": "抑制高速和大幅角速度，促进稳定接近。",
+    "pitfalls": "权重过大会让 agent 不敢动。对可比的dense信号，|ratio_to_progress|超过约0.5是经验预警，约0.1可作为轻约束起点，但必须结合最终策略累计量、行为和跨轮结果验证；三个子项中 speed_penalty 最容易主导。",
+    "recommended_with": "可距离门控：penalty *= max(0, 1-dist/gate_radius)。可用连续乘积形式代替线性。λv/λa/λω 通常在 0.01~0.1 范围。"
+  },
+  "soft_landing_proxy": {
+    "math_form": "连续乘积: near_factor * slow_factor * upright_factor * [contact_factor]",
+    "design_rationale": "用连续函数替代二值条件，提供密集梯度信号。每个因子在 0~1 之间，乘积天然 bounded。",
+    "pitfalls": "contact factor 权重过高会引发 contact hacking。阈值设置不当会导致触发率为 0 或恒为 1。",
+    "recommended_with": "每个因子用 bounded 形式 max(0, 1-dimension/threshold)。threshold 取环境特征范围的 15~30%。乘积整体乘以小系数（0.5~2.0）。"
+  },
+  "potential_based_shaping": {
+    "math_form": "F = γ * Φ(next_obs) - Φ(obs)",
+    "design_rationale": "唯一保证最优策略不变的塑形方式（Ng 1999）。天然抗震荡，因为 agent 优化的是势能差而非瞬时 delta。",
+    "pitfalls": "Φ 定义错误会误导学习。需要明确可计算的势能函数。γ 通常接近 1.0。",
+    "recommended_with": "用 Φ=-distance 实现 progress_delta 的无偏版本。用 Φ=-(distance + speed + abs(angle)) 可同时引导接近+减速+稳定。"
+  },
+  "gated_reward": {
+    "math_form": "if unsafe_condition: penalty; else: task_reward",
+    "design_rationale": "在安全条件不满足时施加强约束，适合有明确危险状态的任务。",
+    "pitfalls": "门控太严导致 agent 学不到任何行为。早期训练应避免使用。",
+    "recommended_with": "只在极端危险状态激活（如速度 > 最大允许值 2 倍）。初期训练可禁用，后期逐步启用。"
+  },
+  "bounded_proximity_reward": {
+    "math_form": "reward = 1.0 / (1.0 + k * dist_to_target)",
+    "design_rationale": "自动 bounded 在 [0,1]，不需要猜系数。靠近时自动饱和，不产生数值爆炸。天然防震荡。",
+    "pitfalls": "k 值决定衰减速度，k 太大则远处信号太弱。",
+    "recommended_with": "k 取 2~10 使初始距离处 reward≈0.1~0.3。可作为 progress_delta 的替代或补充。"
+  },
+  "continuous_product_shaping": {
+    "math_form": "quality = Π max(0, 1 - |dimension - target| / threshold)",
+    "design_rationale": "多个维度的连续乘积。每个维度 0~1，乘积保证所有维度都满足时才高分。有梯度，不稀疏。",
+    "pitfalls": "阈值太小会导致永远为 0。维度太多时乘积衰减过快。",
+    "recommended_with": "2~4 个维度，每个 threshold 取环境特征典型范围的 20~40%。整体乘以 0.5~3.0 的系数。"
+  }
+}

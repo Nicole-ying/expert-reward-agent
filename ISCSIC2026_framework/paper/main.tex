@@ -19,7 +19,8 @@
 \setlength{\abovecaptionskip}{3pt}
 \setlength{\belowcaptionskip}{0pt}
 
-\title{CREATE: Training-Evidence-Guided Reward Repair for Reinforcement Learning}
+\title{CREATE: A Closed-Loop Reward Editing Agent with Training Evidence for
+Reinforcement Learning}
 
 \author{\IEEEauthorblockN{Anonymous Authors}
 \IEEEauthorblockA{Anonymous Submission}}
@@ -33,25 +34,23 @@ reinforcement-learning run, yet most reward-search methods use that run only
 to rank or replace candidates. We introduce
 \textbf{CREATE}, a \textbf{C}losed-loop \textbf{R}eward \textbf{E}diting
 \textbf{A}gent with \textbf{T}raining \textbf{E}vidence, which treats each run
-as an observation for repairing the active reward lineage. CREATE combines
-native-task outcomes with component activation and magnitude statistics,
-stores diagnoses and edit outcomes in persistent memory, and applies one
-severity-gated intervention while a best archive protects the returned
-solution. Experiments on discrete and continuous Gymnasium control tasks show
-that CREATE reliably repairs initially unsuccessful rewards and that the
-selected rewards remain effective on independent test seeds. Mechanism
-ablations show that component-level evidence and single-target editing are
-complementary: feedback must localize the failure, and the action must preserve
-attribution to one change. Repair traces reveal two distinct routes to
-improvement---L1 scale correction for a sound reward form and L2 structural
-refactoring for unreachable or exploitable components. These results support
-closed-loop diagnosis as a more informative use of policy-training outcomes
-than repeated prompting alone.
+as an observation for self-repairing the active reward lineage. Reward
+self-evolution here means fixed language-model weights but evolving reward
+code, diagnostic memory, and archived incumbents under external training
+feedback. CREATE combines native outcomes with component activation and
+magnitude statistics, records diagnoses and edits in persistent memory, and
+applies one severity-gated intervention while a best archive prevents
+regression. On discrete and continuous Gymnasium tasks, CREATE repairs all
+tested initially unsuccessful lineages, and selected rewards remain effective
+on independent test seeds. Ablations indicate that structured evidence and
+constrained revision are jointly important; traces reveal L1 scale correction
+and L2 structural refactoring. These results support agentic reward
+self-evolution through closed-loop diagnosis and bounded repair.
 \end{abstract}
 
 \begin{IEEEkeywords}
 reinforcement learning, reward design, large language models, language agents,
-learning-based control
+reward self-evolution, learning-based control
 \end{IEEEkeywords}
 
 \section{Introduction}
@@ -83,15 +82,17 @@ the active reward lineage. Persistent memory conditions the diagnosis; the
 trainer and environment execute the selected edit; and a best archive protects
 earlier solutions when a later experiment regresses. Thus, ``agent'' denotes a
 closed observation--memory--action--transition loop, not merely repeated LLM
-calls.
+calls. We use \emph{self-evolution} in a precise artifact-level sense: the LLM
+weights remain fixed while the reward lineage evolves through externally
+evaluated, memory-conditioned self-repair.
 
-Taken together, the paper reframes reward design as repair at the
-policy-training timescale rather than repeated one-shot generation. The
-resulting formulation separates the generated reward used for learning from
-the native objective used for evaluation, equips the diagnostic agent with
-severity-gated and component-bounded actions, and tests the complete loop with
-budget-matched search, mechanism ablations, independent test episodes, and
-evidence-level case analysis on two control benchmarks.
+Taken together, the paper reframes reward design as agentic self-repair at the
+policy-training timescale. It separates the generated reward used for learning
+from the native objective used for evaluation and makes each verified
+$R_t\!\rightarrow\!R_{t+1}$ transition one step of controlled reward
+self-evolution. We test this loop with budget-matched search, mechanism
+ablations, independent test episodes, and evidence-level cases on two control
+benchmarks.
 
 \section{Related Work}
 \subsection{Reward Specification and Misspecification}
@@ -150,7 +151,8 @@ failure; severity gates the L1/L2/L3 action space; program checks reject
 invalid edits before training; and a best-so-far archive protects the returned
 solution. The distinguishing claim is therefore not that an LLM can revise a
 reward, but that training evidence, bounded action, persistent state, and
-external transition jointly form an auditable reward-repair agent.
+external transition jointly form an auditable, self-repairing reward-editing
+agent.
 
 \section{CREATE}
 \subsection{Task Interface and Agent State}
@@ -470,10 +472,13 @@ initial rewards are close to threshold; seed 4 is therefore the stronger
 transfer example, while LunarLander provides the cleaner mechanism ablations.
 
 \section{Discussion and Conclusion}
-CREATE supports a narrow claim: a failed policy-training run can guide repair
-of the reward that produced it. Component statistics localize the defect,
-native evaluation prevents self-grading, bounded actions preserve attribution,
-and the archive protects a successful incumbent.
+The central finding is that a failed policy-training run can become a
+structured observation for self-repair and controlled reward evolution.
+Component statistics localize the defect, native evaluation prevents
+self-grading, bounded actions preserve attribution, memory connects successive
+edits, and the archive protects the incumbent. CREATE therefore realizes
+reward-program self-evolution through a persistent agent, not autonomous
+adaptation of the underlying LLM.
 
 Evidence remains limited to PPO, two benchmarks, and five searches per task.
 Prompt-matched baselines, factorized edit ablations, more RL algorithms, and

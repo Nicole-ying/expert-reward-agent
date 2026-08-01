@@ -1,0 +1,98 @@
+{
+  "source_file": "03_任务类型到奖励骨架的决策树.md",
+  "route_count": 7,
+  "routes": [
+    {
+      "route_id": "survival_balance_task",
+      "name_zh": "生存/平衡类任务",
+      "heading_pattern": "生存",
+      "recommended_skeletons": [
+        "alive_bonus",
+        "terminal_failure_penalty",
+        "stability_penalty",
+        "energy_penalty",
+        "action_smoothness_penalty"
+      ]
+    },
+    {
+      "route_id": "navigation_goal_reaching",
+      "name_zh": "导航/到达目标类任务",
+      "heading_pattern": "导航",
+      "recommended_skeletons": [
+        "terminal_success_reward",
+        "terminal_failure_penalty",
+        "time_penalty",
+        "distance_reward",
+        "progress_delta_reward",
+        "potential_based_shaping",
+        "gated_reward"
+      ]
+    },
+    {
+      "route_id": "locomotion_continuous_control",
+      "name_zh": "机器人行走/连续运动控制类任务",
+      "heading_pattern": "机器人行走",
+      "recommended_skeletons": [
+        "forward_progress_reward",
+        "terminal_failure_penalty",
+        "energy_penalty",
+        "alive_bonus",
+        "action_smoothness_penalty",
+        "stability_penalty"
+      ]
+    },
+    {
+      "route_id": "manipulation_grasping",
+      "name_zh": "机械臂抓取/操作类任务",
+      "heading_pattern": "机械臂",
+      "recommended_skeletons": [
+        "terminal_success_reward",
+        "event_reward",
+        "progress_delta_reward",
+        "distance_reward",
+        "energy_penalty",
+        "action_smoothness_penalty",
+        "gated_reward"
+      ]
+    },
+    {
+      "route_id": "autonomous_driving_safety",
+      "name_zh": "自动驾驶/安全关键任务",
+      "heading_pattern": "自动驾驶",
+      "recommended_skeletons": [
+        "progress_delta_reward",
+        "terminal_failure_penalty",
+        "gated_reward",
+        "action_smoothness_penalty",
+        "energy_penalty",
+        "event_reward",
+        "weighted_sum_reward"
+      ]
+    },
+    {
+      "route_id": "sparse_exploration",
+      "name_zh": "稀疏探索类任务",
+      "heading_pattern": "稀疏探索",
+      "recommended_skeletons": [
+        "terminal_success_reward",
+        "event_reward",
+        "progress_delta_reward",
+        "potential_based_shaping",
+        "intrinsic_exploration_reward",
+        "dynamic_curriculum_reward"
+      ]
+    },
+    {
+      "route_id": "multi_objective_task",
+      "name_zh": "多目标任务",
+      "heading_pattern": "多目标",
+      "recommended_skeletons": [
+        "weighted_sum_reward",
+        "gated_reward",
+        "dynamic_curriculum_reward",
+        "learned_preference_reward"
+      ]
+    }
+  ],
+  "policy": "Environment Analyzer must choose exactly one route_id from this list. Generation RAG retrieves exactly that route section from 03."
+}

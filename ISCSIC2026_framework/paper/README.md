@@ -3,7 +3,8 @@
 This directory contains the complete LaTeX source for the five-page ISCSIC
 2026 submission draft:
 
-> **CREATE: Training-Evidence-Guided Reward Repair for Reinforcement Learning**
+> **CREATE: A Closed-Loop Reward Editing Agent with Training Evidence for
+> Reinforcement Learning**
 
 ## Contents
 
