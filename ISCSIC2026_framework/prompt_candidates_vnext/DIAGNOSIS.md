@@ -32,6 +32,14 @@
   → 代码验证与训练
 ```
 
+环境卡仍然需要保留任务目标与类型、observation space、action space 和 episode-ending analysis，因为这些是 Reflection Agent 判断组件语义、失败行为和可修改信号的稳定接口。优化方式不是删除这些事实，而是删除重复改写和复杂画像：任务描述由控制器原样注入，不经过 LLM；observation/action 用表格归一化；结束模式按源码逐条分类。
+
+为避免初始化建议污染后续诊断，环境卡分为两层：
+
+- 第 0 节：控制器原样注入的匿名任务描述。
+- 第 1–5 节：LLM 整理的最小任务类型、success semantics、observation/action、结束语义和合法信号。初始生成和每轮反思都可读取。
+- 第 6–8 节：主骨架建议、失败模式和初始 reward brief。只供 Initial Reward Generator 使用。
+
 骨架选择只保留最小必要规则：
 
 - 有明确目标状态或目标位置：优先 potential difference / distance delta，使每步优化方向与接近目标一致。
