@@ -117,5 +117,5 @@
 - detectable success reward:
 - necessary safety/stability guidance:
 - detectable failure penalty:
-- initial component budget: exactly 2–4; additional responsibilities must wait for evidence-driven repair
+- initial component budget: recommend 2–4 for interpretability and later repair; justify any necessary deviation
 ```
