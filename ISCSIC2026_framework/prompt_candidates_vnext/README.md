@@ -33,3 +33,32 @@ Initial Reward Generator 默认推荐 2–4 个实际进入 `total_reward` 的�
 
 {Environment Analyzer output: sections 1–8}
 ```
+
+## 本地串联与 Expert Context 对照
+
+使用项目的 Python 环境，从 `ISCSIC2026_framework` 目录运行：
+
+```bash
+python prompt_candidates_vnext/run_initial_reward_ab.py --expert-mode both
+```
+
+脚本只调用一次 Environment Analyzer，并基于同一张环境卡生成两份奖励：
+
+- `card_only`：只读取精简 Environment Card。
+- `historical_expert`：读取同一张卡，并附加 paper-v4 的历史固定 Expert Schema Context。
+
+输出位于 `runs/vnext_initial_ab/<timestamp>/`，包含完整 Prompt Record、环境卡、两份原始响应、提取后的 `reward_v1.py`、静态验证和 `comparison.md`。这只能比较代码与设计质量；是否提升策略表现仍需在相同 PPO 预算下训练和 native evaluation。
+
+只组装 Prompt、不调用 API：
+
+```bash
+python prompt_candidates_vnext/run_initial_reward_ab.py --expert-mode both --dry-run
+```
+
+如要测试自己整理的精简专家知识，可额外传入：
+
+```bash
+python prompt_candidates_vnext/run_initial_reward_ab.py \
+  --expert-mode card_only \
+  --expert-context-file path/to/context.md
+```
