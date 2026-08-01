@@ -34,7 +34,9 @@ an agent, not autonomous model self-improvement.
 - `scripts/`: five-seed experiment entry points.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the method-to-code map and
-[EXPERIMENT_PLAN.md](EXPERIMENT_PLAN.md) before rerunning the ablations.
+[EXPERIMENT_PLAN.md](EXPERIMENT_PLAN.md) before rerunning the ablations. The
+complete bilingual System/User prompt audit is in
+[PROMPTS_BILINGUAL.md](PROMPTS_BILINGUAL.md).
 
 ## Setup and main run
 
