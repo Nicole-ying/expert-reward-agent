@@ -305,11 +305,21 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environm
 
     if component_delta:
         parts.append(component_delta)
+    else:
+        parts.append("# 4. 组件逐项对比\n（第一轮反思，无历史对比）")
 
     parts.append(f"# 5. 本轮训练反馈\n{feedback_md}")
 
     if research_signal:
-        parts.append(f"# 5.5. Subagent 调研信号（基于训练数据的自动诊断）\n{research_signal}")
+        parts.append(f"# 5.5. Subagent 调研信号（训练过程诊断）\n{research_signal}")
+
+    if best_code:
+        parts.append(
+            "# 5.6. 历史最佳奖励函数代码\n"
+            "如果当前轮次得分严重低于历史最佳得分，应基于此最佳代码做最小修改，"
+            "而不是从当前失败代码出发。\n"
+            f"```python\n{best_code.strip()}\n```"
+        )
 
     environment_summary = _environment_summary(environment_card_md)
     if environment_summary:
