@@ -1,0 +1,67 @@
+env_id: Env_006
+env_name: null
+environment_name_policy:
+  hide_true_name: true
+  do_not_mention_known_benchmark_name: true
+  do_not_mention_gym_or_gymnasium_id: true
+
+task_description: |
+  A two-legged agent moves forward across rough ground as far and as efficiently
+  as possible. The terrain includes ladders, tree stumps, pits, and uneven
+  surfaces. The agent receives LIDAR range measurements of the ground ahead to
+  anticipate upcoming obstacles. Each hip and knee joint is independently
+  torque-controlled. The episode ends when the agent falls over or when it
+  reaches the far end of the terrain. Reaching the end, avoiding falls, and
+  minimizing unnecessary joint torque are all desirable. The agent must learn
+  to walk stably on irregular ground, using the LIDAR readings to adjust its
+  gait before encountering obstacles.
+
+action_space:
+  type: Box
+  shape: [4]
+  bounds: [-1.0, 1.0]
+  actions:
+    0: {name: hip_1_torque, meaning: torque applied to first hip joint}
+    1: {name: knee_1_torque, meaning: torque applied to first knee joint}
+    2: {name: hip_2_torque, meaning: torque applied to second hip joint}
+    3: {name: knee_2_torque, meaning: torque applied to second knee joint}
+
+observation_space:
+  type: Box
+  shape: [24]
+  fields:
+    - {index: 0, name: hull_angle, meaning: angle of the body hull}
+    - {index: 1, name: hull_angular_velocity, meaning: angular velocity of the hull}
+    - {index: 2, name: horizontal_speed, meaning: horizontal velocity of the center of mass}
+    - {index: 3, name: vertical_speed, meaning: vertical velocity of the center of mass}
+    - {index: 4, name: joint_0_angle, meaning: angle of hip joint 1}
+    - {index: 5, name: joint_0_speed, meaning: angular speed of hip joint 1}
+    - {index: 6, name: joint_1_angle, meaning: angle of knee joint 1}
+    - {index: 7, name: joint_1_speed, meaning: angular speed of knee joint 1}
+    - {index: 8, name: joint_2_angle, meaning: angle of hip joint 2}
+    - {index: 9, name: joint_2_speed, meaning: angular speed of hip joint 2}
+    - {index: 10, name: joint_3_angle, meaning: angle of knee joint 2}
+    - {index: 11, name: joint_3_speed, meaning: angular speed of knee joint 2}
+    - {index: 12, name: leg_1_ground_contact, meaning: first leg ground contact indicator}
+    - {index: 13, name: leg_2_ground_contact, meaning: second leg ground contact indicator}
+    - {index: 14, name: lidar_1, meaning: first lidar rangefinder measurement (terrain height ahead)}
+    - {index: 15, name: lidar_2, meaning: second lidar rangefinder measurement}
+    - {index: 16, name: lidar_3, meaning: third lidar rangefinder measurement}
+    - {index: 17, name: lidar_4, meaning: fourth lidar rangefinder measurement}
+    - {index: 18, name: lidar_5, meaning: fifth lidar rangefinder measurement}
+    - {index: 19, name: lidar_6, meaning: sixth lidar rangefinder measurement}
+    - {index: 20, name: lidar_7, meaning: seventh lidar rangefinder measurement}
+    - {index: 21, name: lidar_8, meaning: eighth lidar rangefinder measurement}
+    - {index: 22, name: lidar_9, meaning: ninth lidar rangefinder measurement}
+    - {index: 23, name: lidar_10, meaning: tenth lidar rangefinder measurement}
+
+termination_conditions:
+  - body_fallen_over
+  - reached_end_of_terrain
+
+interface_constraints:
+  forbidden_signals:
+    - original_reward
+    - official_reward
+  allowed_info_fields: []
+  info_is_empty: true

@@ -5,33 +5,33 @@ All evaluations use the same fixed seed set for reproducible paired comparison.
 
 - eval_episodes: 20
 - eval_seed_offset: 10000
-- mean_eval_reward: 228.998179
-- mean_episode_length: 533.650000
-- min_eval_reward: 127.305833
-- max_eval_reward: 302.714498
-- termination: 14 terminated, 6 truncated
+- mean_eval_reward: 141.859009
+- mean_episode_length: 960.500000
+- min_eval_reward: -56.757472
+- max_eval_reward: 185.622308
+- termination: 1 terminated, 19 truncated
 
 ## Episodes
 
 | episode | eval_seed | reward | length | end |
 |---:|---:|---:|---:|---|
-| 0 | 10000 | 149.585778 | 1000 | truncated |
-| 1 | 10001 | 270.481461 | 357 | terminated |
-| 2 | 10002 | 283.395252 | 374 | terminated |
-| 3 | 10003 | 130.915375 | 1000 | truncated |
-| 4 | 10004 | 249.159020 | 338 | terminated |
-| 5 | 10005 | 127.305833 | 1000 | truncated |
-| 6 | 10006 | 277.139787 | 287 | terminated |
-| 7 | 10007 | 262.664758 | 353 | terminated |
-| 8 | 10008 | 236.681043 | 320 | terminated |
-| 9 | 10009 | 287.801732 | 295 | terminated |
-| 10 | 10010 | 302.714498 | 549 | terminated |
-| 11 | 10011 | 289.215291 | 284 | terminated |
-| 12 | 10012 | 147.348611 | 1000 | truncated |
-| 13 | 10013 | 173.383423 | 1000 | truncated |
-| 14 | 10014 | 256.771241 | 315 | terminated |
-| 15 | 10015 | 242.619543 | 323 | terminated |
-| 16 | 10016 | 235.611781 | 289 | terminated |
-| 17 | 10017 | 158.972559 | 1000 | truncated |
-| 18 | 10018 | 258.297901 | 296 | terminated |
-| 19 | 10019 | 239.898694 | 293 | terminated |
+| 0 | 10000 | 146.866652 | 1000 | truncated |
+| 1 | 10001 | 166.423726 | 1000 | truncated |
+| 2 | 10002 | 185.622308 | 1000 | truncated |
+| 3 | 10003 | 133.927416 | 1000 | truncated |
+| 4 | 10004 | 143.417968 | 1000 | truncated |
+| 5 | 10005 | 130.303769 | 1000 | truncated |
+| 6 | 10006 | 156.945949 | 1000 | truncated |
+| 7 | 10007 | 162.149557 | 1000 | truncated |
+| 8 | 10008 | 128.764768 | 1000 | truncated |
+| 9 | 10009 | 167.948992 | 1000 | truncated |
+| 10 | 10010 | 182.792956 | 1000 | truncated |
+| 11 | 10011 | 169.472086 | 1000 | truncated |
+| 12 | 10012 | -56.757472 | 210 | terminated |
+| 13 | 10013 | 183.388575 | 1000 | truncated |
+| 14 | 10014 | 144.696684 | 1000 | truncated |
+| 15 | 10015 | 131.321359 | 1000 | truncated |
+| 16 | 10016 | 122.131925 | 1000 | truncated |
+| 17 | 10017 | 163.884299 | 1000 | truncated |
+| 18 | 10018 | 147.413014 | 1000 | truncated |
+| 19 | 10019 | 126.465640 | 1000 | truncated |

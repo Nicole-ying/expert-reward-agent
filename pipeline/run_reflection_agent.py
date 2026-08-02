@@ -591,7 +591,6 @@ def run_reflection_agent(
                     memory_path=str(memory_path) if Path(memory_path).exists() else "",
                     client=client,
                     model=llm_cfg.get("model_investigator", llm_cfg.get("model_reflection", llm_cfg["model_reward"])),
-                    max_turns=int(subagent_cfg.get("max_turns", 3)),
                 )
                 if result.get("research_signal_text"):
                     research_signal = result["research_signal_text"]

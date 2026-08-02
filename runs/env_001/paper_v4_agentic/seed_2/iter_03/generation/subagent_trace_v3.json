@@ -1,0 +1,49 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "20/20 episodes terminate early (crash), score range [-125, -93], mean=-110.2. Generated reward components are dominated by proximity_delta (83.6% signed share, episode sum +56.0). The original env_reward per step is -1.40, and the -100 crash penalty overwhelms the ~+47 total generated reward per episode.",
+    "component_anomalies": "orientation_penalty is functionally dead: magnitude share only 0.7%, episode sum -0.45. velocity_danger is modest (12.8% share, -8.55/episode) but insufficient to prevent crash trajectories. Only proximity_delta provides meaningful gradient, creating a \"rush-to-target-then-crash\" policy.",
+    "mechanism_hypothesis": "The agent cannot learn controlled landing because the reward surface has no meaningful gradient for stability or velocity regulation. orientation_penalty (w_ang=5.0) is 100x too small to shape behavior. velocity_danger (w_vel=0.15) doesn't scale up near touchdown. The agent optimizes the only salient signal — proximity_delta — and careens into the pad.",
+    "decision_implication": "KEEP proximity_delta as-is (it works). PATCH orientation_penalty: increase w_ang by 20-50x so its magnitude rivals proximity_delta. PATCH velocity_danger: add landing-zone amplification (e.g., inverse-square distance) so penalty spikes near touchdown. Consider a terminal survival bonus to counter the -100 crash penalty.",
+    "confidence": "high"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 620
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 2019
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 884
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "20/20 episodes terminate early (crash), score range [-125, -93], mean=-110.2. Generated reward components are dominated by proximity_delta (83.6% signed share, episode sum +56.0). The original env_reward per step is -1.40, and the -100 crash penalty overwhelms the ~+47 total generated reward per episode.",
+        "component_anomalies": "orientation_penalty is functionally dead: magnitude share only 0.7%, episode sum -0.45. velocity_danger is modest (12.8% share, -8.55/episode) but insufficient to prevent crash trajectories. Only proximity_delta provides meaningful gradient, creating a \"rush-to-target-then-crash\" policy.",
+        "mechanism_hypothesis": "The agent cannot learn controlled landing because the reward surface has no meaningful gradient for stability or velocity regulation. orientation_penalty (w_ang=5.0) is 100x too small to shape behavior. velocity_danger (w_vel=0.15) doesn't scale up near touchdown. The agent optimizes the only salient signal — proximity_delta — and careens into the pad.",
+        "decision_implication": "KEEP proximity_delta as-is (it works). PATCH orientation_penalty: increase w_ang by 20-50x so its magnitude rivals proximity_delta. PATCH velocity_danger: add landing-zone amplification (e.g., inverse-square distance) so penalty spikes near touchdown. Consider a terminal survival bonus to counter the -100 crash penalty.",
+        "confidence": "high"
+      },
+      "signal_valid": true
+    }
+  ],
+  "signal_produced": true
+}

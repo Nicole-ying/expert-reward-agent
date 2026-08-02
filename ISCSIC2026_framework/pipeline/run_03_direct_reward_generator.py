@@ -101,7 +101,7 @@ def _has_components_dict_assignment(tree):
     return False
 
 
-def validate_code(code):
+def validate_code(code, environment_card_md=None):
     errors = []
     warnings = []
     exact_sig = "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):"
@@ -143,6 +143,21 @@ def validate_code(code):
     except Exception as e:
         errors.append(f"代码无法编译: {e}")
 
+    # The runtime contract permits exactly one function: top-level compute_reward.
+    # Reject helper or nested functions even when the generated code compiles.
+    function_defs = [
+        node for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    if len(function_defs) != 1 or function_defs[0].name != "compute_reward":
+        function_names = [node.name for node in function_defs]
+        errors.append(
+            "Single-function contract violated: expected only top-level "
+            f"compute_reward, found {function_names}."
+        )
+    if any(isinstance(node, ast.Lambda) for node in ast.walk(tree)):
+        errors.append("Single-function contract violated: lambda helpers are not allowed.")
+
     if not _has_components_dict_assignment(tree):
         errors.append("没有发现 components/reward_components/reward_terms 字典赋值")
 
@@ -152,6 +167,35 @@ def validate_code(code):
     if "total_reward" not in code and "reward" not in code:
         warnings.append("未发现明显的 total_reward/reward 变量名")
 
+    if environment_card_md:
+        boundary_match = re.search(
+            r"(?mis)^###\s+Operational terminal decision boundary\s*(.*?)(?=^###\s|^##\s|\Z)",
+            environment_card_md,
+        )
+        boundary = boundary_match.group(1).lower() if boundary_match else ""
+        has_reliable_terminal_label = False
+        for line in boundary.splitlines():
+            if not line.lstrip().startswith("|"):
+                continue
+            cells = [cell.strip().strip("`").lower() for cell in line.strip().strip("|").split("|")]
+            if len(cells) < 4:
+                continue
+            decision, reliability = cells[0], cells[2]
+            if ("success" in decision or "failure" in decision) and reliability in {"exact", "derived_reliable"}:
+                has_reliable_terminal_label = True
+                break
+        reads_episode_end = re.search(
+            r"info\s*(?:\.get\(\s*['\"](?:terminated|truncated|done)['\"]|\[\s*['\"](?:terminated|truncated|done)['\"]\s*\])",
+            code,
+        ) is not None
+        if boundary and not has_reliable_terminal_label and reads_episode_end:
+            errors.append(
+                "Terminal evidence boundary violated: the Environment Card provides no exact or "
+                "derived_reliable terminal label, so initial reward code must not branch on "
+                "terminated/truncated/done. Express any permitted heuristic as mild continuous "
+                "state shaping without claiming a binary episode outcome."
+            )
+
     return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
 
 
@@ -160,15 +204,45 @@ def run(config_path, run_name, mock=False, seed=0, validation_retry=None):
     run_dir = Path(cfg["experiment"]["run_root"]) / run_name
     system_prompt = read_text(cfg["prompts"]["reward_generator"])
     env_md = read_text(run_dir / "environment_card.md")
-    expert_md = read_text(run_dir / "expert_reward_context.md")
+    use_expert_context = bool(cfg.get("initial_generation", {}).get("use_expert_context", True))
+    expert_md = read_text(run_dir / "expert_reward_context.md") if use_expert_context else ""
+    train_cfg = cfg.get("training", {})
+    reward_clip = train_cfg.get("reward_clip", 20.0)
+    episode_step_limit = train_cfg.get("episode_step_limit")
+    if episode_step_limit is None:
+        try:
+            import gymnasium as gym
+            episode_step_limit = gym.spec(train_cfg["runner_env_id"]).max_episode_steps
+        except Exception:
+            episode_step_limit = None
+    clip_line = (
+        "- total-reward clipping: disabled"
+        if reward_clip is None
+        else f"- total-reward clipping after compute_reward returns: [-{float(reward_clip)}, +{float(reward_clip)}]"
+    )
+    step_line = (
+        "- maximum episode steps: unknown; use a conservative accumulation bound"
+        if episode_step_limit is None
+        else f"- maximum episode steps: {int(episode_step_limit)}"
+    )
 
     user_parts = [
         "# environment_card.md",
         env_md,
         "",
-        "# expert_reward_context.md",
-        expert_md,
+        "# Authoritative Reward Runtime Contract",
+        clip_line,
+        step_line,
+        "- this contract overrides missing or conflicting statements in the Environment Card",
+        "- design event magnitudes and scale audit using the effective post-clip reward seen by PPO",
     ]
+    if expert_md:
+        user_parts += [
+            "",
+            "# Optional Expert Context (advisory only)",
+            "Use this only after the Environment Card determines task semantics and legal signals.",
+            expert_md,
+        ]
     if cfg.get("context", {}).get("include_masked_step_in_reward_generator", False):
         user_parts += ["", "# masked_step_source.py", read_text(cfg["inputs"]["masked_step_path"])]
     # Read restart context if present (from fresh restart)
@@ -182,7 +256,8 @@ def run(config_path, run_name, mock=False, seed=0, validation_retry=None):
             "",
             "# Validation repair",
             f"具体错误：{validation_retry}",
-            "只修复代码合规问题，不重新分析环境，不改变原定奖励设计。直接输出完整合规的compute_reward函数。",
+            "只修复验证指出的合规问题，不重新分析环境。若错误来自终局证据边界，必须删除非法的二元终局逻辑，"
+            "并仅在环境卡允许时把同一职责改写为温和、连续、有界的状态 shaping；这属于合规修复。直接输出完整合规的compute_reward函数。",
             "# Invalid previous draft",
             failed_draft,
         ]
@@ -207,7 +282,7 @@ def run(config_path, run_name, mock=False, seed=0, validation_retry=None):
         )
 
     code = extract_code(out_md)
-    validation = validate_code(code)
+    validation = validate_code(code, environment_card_md=env_md)
 
     write_text(run_dir / "reward_v1.md", out_md)
     write_text(run_dir / "reward_v1.py", code)

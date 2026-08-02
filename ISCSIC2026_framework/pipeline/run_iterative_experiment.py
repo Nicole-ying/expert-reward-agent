@@ -212,6 +212,82 @@ def check_reward_valid(cfg, gen_run_name, version, stop_on_invalid):
         raise RuntimeError(f"Reward v{version} failed validation: {details} (record: {path})")
 
 
+def archive_rejected_candidate(
+    cfg,
+    gen_run_name,
+    version,
+    rejection_type,
+    reason,
+    metadata=None,
+):
+    """Preserve every rejected draft instead of letting a retry overwrite it."""
+    generation_dir = Path(cfg["experiment"]["run_root"]) / gen_run_name
+    archive_root = generation_dir / "rejected_attempts"
+    archive_root.mkdir(parents=True, exist_ok=True)
+    attempt = len([path for path in archive_root.iterdir() if path.is_dir()]) + 1
+    attempt_dir = archive_root / f"attempt_{attempt:02d}_{rejection_type}"
+    attempt_dir.mkdir(parents=True, exist_ok=False)
+
+    reward_path = reward_path_for(cfg, gen_run_name, version)
+    reward_md_path = reward_md_path_for(cfg, gen_run_name, version)
+    validation_path = validation_path_for(cfg, gen_run_name, version)
+    for source in (reward_path, reward_md_path, validation_path):
+        if source.exists():
+            shutil.copy2(source, attempt_dir / source.name)
+
+    record = {
+        "rejection_type": rejection_type,
+        "reason": str(reason),
+        "reward_version": version,
+        "reward_path": str(reward_path),
+    }
+    if reward_path.exists():
+        record["code_signature"] = code_signature(reward_path)
+    if metadata:
+        record.update(metadata)
+    (attempt_dir / "rejection.json").write_text(
+        json.dumps(record, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return attempt_dir
+
+
+def validate_candidate_with_retries(
+    cfg,
+    gen_run_name,
+    version,
+    retry_command_factory,
+    stage,
+    max_attempts=3,
+):
+    """Validate a candidate and feed the newest exact error back on every retry.
+
+    ``retry_command_factory`` receives ``(error_text, retry_number)``.  Keeping
+    this loop shared is important: candidates produced by duplicate recovery and
+    fresh regeneration must obey the same contract as ordinary candidates.
+    """
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            check_reward_valid(cfg, gen_run_name, version, True)
+            return True, None
+        except (RuntimeError, FileNotFoundError) as exc:
+            last_error = str(exc)
+            print(f"{stage} validation failed (attempt {attempt}/{max_attempts}): {exc}")
+            archive_rejected_candidate(
+                cfg,
+                gen_run_name,
+                version,
+                "validation",
+                last_error,
+                {"stage": stage, "validation_attempt": attempt},
+            )
+            if attempt == max_attempts:
+                break
+            run_cmd(retry_command_factory(last_error, attempt))
+    return False, last_error
+
+
 def read_training_score(train_dir):
     summary_path = Path(train_dir) / "training_summary.json"
     if not summary_path.exists():
@@ -407,7 +483,17 @@ def write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_
     (exp_root / "experiment_summary.md").write_text(text, encoding="utf-8")
 
 
-def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timesteps=None, eval_episodes=None, mock=None, seed=0, resume_from=None):
+def run_iterative_experiment(
+    config_path,
+    prefix=None,
+    rounds=None,
+    total_timesteps=None,
+    eval_episodes=None,
+    mock=None,
+    seed=0,
+    resume_from=None,
+    frozen_context_dir=None,
+):
     cfg = load_config(config_path)
     iter_cfg = cfg.get("iteration", {})
     train_cfg = cfg.get("training", {})
@@ -426,6 +512,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     cards_top_k = int(iter_cfg.get("cards_top_k", 4))
 
     target_score = float(iter_cfg.get("target_score", 200.0))
+    stop_immediately_when_solved = bool(iter_cfg.get("stop_immediately_when_solved", False))
     min_improvement = float(iter_cfg.get("min_meaningful_improvement", 5.0))
     stop_after_solved_drop = bool(iter_cfg.get("stop_after_solved_drop", True))
     stop_when_solved_and_identical = bool(iter_cfg.get("stop_when_solved_and_identical", True))
@@ -540,17 +627,22 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
     print(f"cards_path      : {cards_path}")
     print(f"cards_top_k     : {cards_top_k}")
     print(f"mock_llm        : {use_mock}")
+    print(f"frozen_context  : {frozen_context_dir or 'generated once for this experiment'}")
 
     for iteration_index in range(start_iter, rounds + 1):
         version = iteration_index
         paths = build_paths(cfg, prefix, iteration_index, seed)
         mock_args = ["--mock"] if use_mock else []
+        # Capture provenance before clearing the one-shot restart flag. Validation
+        # retries must repair the draft through the same generator that produced it;
+        # otherwise a fresh draft can be paired with stale reflection evidence.
+        is_fresh_generation = iteration_index == 1 or force_fresh_restart
 
         print("\n" + "-" * 60)
         print(f"Iteration {iteration_index}/{rounds}")
         print("-" * 60)
 
-        if iteration_index == 1 or force_fresh_restart:
+        if is_fresh_generation:
             if force_fresh_restart:
                 print(">>> Fresh restart: injecting failed-skeleton context into generation")
                 version = 1
@@ -562,11 +654,20 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             else:
                 version = iteration_index
             force_fresh_restart = False
+            context_source = (
+                str(frozen_context_dir)
+                if frozen_context_dir
+                else (
+                    str(build_paths(cfg, prefix, 1, seed)["gen_dir"])
+                    if iteration_index > 1 else None
+                )
+            )
             run_cmd([
                 "python", "-m", "pipeline.run_direct_generation_pipeline",
                 "--config", config_path,
                 "--run-name", paths["gen_run_name"],
                 "--seed", str(seed + restart_count * 100),
+                *(["--reuse-context-from", context_source] if context_source else []),
                 *mock_args,
             ])
             current_reward = reward_path_for(cfg, paths["gen_run_name"], 1)
@@ -639,55 +740,51 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                     write_experiment_summary(cfg, prefix, seed, stopped_reason, best_iter, best_score, target_score, rounds_completed)
                     return
 
-        # Validate, with retries if invalid
-        valid = False
-        for retry in range(3):
-            try:
-                check_reward_valid(cfg, paths["gen_run_name"], version, True)
-                valid = True
-                break
-            except (RuntimeError, FileNotFoundError) as e:
-                print(f"Reward validation failed (retry {retry+1}/3): {e}")
-                if retry == 2:
-                    break
-                # Retry: re-run the same LLM call with validation errors
-                if iteration_index == 1 or force_fresh_restart:
-                    cmd = [
-                        "python", "-m", "pipeline.run_direct_generation_pipeline",
-                        "--config", config_path,
-                        "--run-name", paths["gen_run_name"],
-                        "--seed", str(seed + restart_count * 100 + retry),
-                        "--validation-retry", str(e),
-                        *mock_args,
-                    ]
-                elif use_reflection_agent:
-                    cmd = [
-                        "python", "-m", "pipeline.run_reflection_agent",
-                        "--config", config_path,
-                        "--previous-reward", str(previous_reward),
-                        "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
-                        "--train-run-dir", str(prev_paths["train_dir"]),
-                        "--memory", agent_memory_path,
-                        "--out-run-name", paths["gen_run_name"],
-                        "--reward-version", f"v{version}",
-                        "--validation-retry", str(e),
-                    ]
-                    if best_reward and str(best_reward) != str(previous_reward):
-                        cmd += ["--best-reward", str(best_reward)]
-                    cmd += mock_args
-                else:
-                    cmd = [
-                        "python", "-m", "pipeline.run_05_reward_revision",
-                        "--config", config_path,
-                        "--previous-reward", str(previous_reward),
-                        "--iteration-context", str(paths["context_path"]),
-                        "--out-run-name", paths["gen_run_name"],
-                        "--reward-version", f"v{version}",
-                    ]
-                    if best_reward and str(best_reward) != str(previous_reward):
-                        cmd += ["--best-reward", str(best_reward)]
-                    cmd += mock_args
-                run_cmd(cmd)
+        # Validate every source of candidate through one shared repair loop.
+        def ordinary_validation_retry(error_text, retry_number):
+            if is_fresh_generation:
+                return [
+                    "python", "-m", "pipeline.run_direct_generation_pipeline",
+                    "--config", config_path,
+                    "--run-name", paths["gen_run_name"],
+                    "--seed", str(seed + restart_count * 100 + retry_number),
+                    "--validation-retry", error_text,
+                    *mock_args,
+                ]
+            if use_reflection_agent:
+                cmd = [
+                    "python", "-m", "pipeline.run_reflection_agent",
+                    "--config", config_path,
+                    "--previous-reward", str(previous_reward),
+                    "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
+                    "--train-run-dir", str(prev_paths["train_dir"]),
+                    "--memory", agent_memory_path,
+                    "--out-run-name", paths["gen_run_name"],
+                    "--reward-version", f"v{version}",
+                    "--validation-retry", error_text,
+                ]
+                if best_reward and str(best_reward) != str(previous_reward):
+                    cmd += ["--best-reward", str(best_reward)]
+                return cmd + mock_args
+            cmd = [
+                "python", "-m", "pipeline.run_05_reward_revision",
+                "--config", config_path,
+                "--previous-reward", str(previous_reward),
+                "--iteration-context", str(paths["context_path"]),
+                "--out-run-name", paths["gen_run_name"],
+                "--reward-version", f"v{version}",
+            ]
+            if best_reward and str(best_reward) != str(previous_reward):
+                cmd += ["--best-reward", str(best_reward)]
+            return cmd + mock_args
+
+        valid, _ = validate_candidate_with_retries(
+            cfg,
+            paths["gen_run_name"],
+            version,
+            ordinary_validation_retry,
+            "candidate",
+        )
         if not valid:
             print("Invalid code after 3 retries. Skipping iteration, forcing fresh restart next.")
             force_fresh_restart = True
@@ -701,9 +798,32 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
         )
         if duplicate_match:
             duplicate_resolved = False
+            latest_rejection = None
             if use_reflection_agent and iteration_index > 1:
                 for retry in range(max_identical_retries):
                     duplicate_iter, duplicate_path = duplicate_match
+                    duplicate_reason = (
+                        f"The candidate duplicated historical iter {duplicate_iter} "
+                        f"({duplicate_path}). Retry {retry + 1}: generate a materially "
+                        "different reward function."
+                    )
+                    if latest_rejection:
+                        duplicate_reason += (
+                            " The immediately preceding replacement was also rejected "
+                            f"before training for this exact reason: {latest_rejection}"
+                        )
+                    archive_rejected_candidate(
+                        cfg,
+                        paths["gen_run_name"],
+                        version,
+                        "duplicate",
+                        duplicate_reason,
+                        {
+                            "stage": "historical_duplicate",
+                            "matching_iteration": duplicate_iter,
+                            "matching_reward_path": str(duplicate_path),
+                        },
+                    )
                     print(
                         f"Revision is identical to historical iter {duplicate_iter}; requesting a new reward "
                         f"({retry + 1}/{max_identical_retries})."
@@ -717,19 +837,39 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                         "--memory", agent_memory_path,
                         "--out-run-name", paths["gen_run_name"],
                         "--reward-version", f"v{version}",
-                        "--duplicate-retry",
-                        f"The previous generation duplicated iter {duplicate_iter} ({duplicate_path}). "
-                        f"Retry {retry + 1}: generate a materially different reward function.",
+                        "--duplicate-retry", duplicate_reason,
                     ]
                     if best_reward and str(best_reward) != str(previous_reward):
                         duplicate_cmd += ["--best-reward", str(best_reward)]
                     duplicate_cmd += mock_args
                     run_cmd(duplicate_cmd)
                     current_reward = reward_path_for(cfg, paths["gen_run_name"], version)
-                    try:
-                        check_reward_valid(cfg, paths["gen_run_name"], version, True)
-                    except (RuntimeError, FileNotFoundError) as exc:
-                        print(f"Duplicate retry produced invalid code: {exc}")
+
+                    def duplicate_validation_retry(error_text, _retry_number):
+                        cmd = [
+                            "python", "-m", "pipeline.run_reflection_agent",
+                            "--config", config_path,
+                            "--previous-reward", str(previous_reward),
+                            "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
+                            "--train-run-dir", str(prev_paths["train_dir"]),
+                            "--memory", agent_memory_path,
+                            "--out-run-name", paths["gen_run_name"],
+                            "--reward-version", f"v{version}",
+                            "--validation-retry", error_text,
+                        ]
+                        if best_reward and str(best_reward) != str(previous_reward):
+                            cmd += ["--best-reward", str(best_reward)]
+                        return cmd + mock_args
+
+                    valid_duplicate, validation_error = validate_candidate_with_retries(
+                        cfg,
+                        paths["gen_run_name"],
+                        version,
+                        duplicate_validation_retry,
+                        "duplicate-retry candidate",
+                    )
+                    if not valid_duplicate:
+                        latest_rejection = validation_error
                         continue
                     duplicate_match = find_identical_historical_reward(
                         cfg, prefix, seed, iteration_index, current_reward
@@ -737,40 +877,100 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                     if not duplicate_match:
                         duplicate_resolved = True
                         break
+                    latest_rejection = (
+                        f"AST duplicate of iter {duplicate_match[0]} "
+                        f"({duplicate_match[1]})"
+                    )
 
             if not duplicate_resolved and duplicate_match:
                 print("Duplicate persisted after retries. Fresh-regenerating within the same iteration.")
-                restart_count += 1
                 gen_dir = Path(cfg["experiment"]["run_root"]) / paths["gen_run_name"]
                 gen_dir.mkdir(parents=True, exist_ok=True)
-                (gen_dir / "restart_context.md").write_text(
-                    build_restart_context(restart_memory_path, target_score), encoding="utf-8"
-                )
-                run_cmd([
-                    "python", "-m", "pipeline.run_direct_generation_pipeline",
-                    "--config", config_path,
-                    "--run-name", paths["gen_run_name"],
-                    "--seed", str(seed + restart_count * 100),
-                    *mock_args,
-                ])
-                version = 1
-                current_reward = reward_path_for(cfg, paths["gen_run_name"], version)
-                try:
-                    check_reward_valid(cfg, paths["gen_run_name"], version, True)
-                except (RuntimeError, FileNotFoundError) as exc:
-                    print(f"Fresh duplicate recovery produced invalid code: {exc}")
-                    stopped_reason = "stop_duplicate_recovery_invalid_keep_best"
-                    write_experiment_summary(
-                        cfg, prefix, seed, stopped_reason, best_iter, best_score,
-                        target_score, rounds_completed,
+                fresh_recovery_attempts = max(2, max_identical_retries)
+                archive_current_duplicate = True
+                for fresh_attempt in range(1, fresh_recovery_attempts + 1):
+                    duplicate_iter, duplicate_path = duplicate_match
+                    rejection_reason = (
+                        latest_rejection
+                        or f"AST duplicate of iter {duplicate_iter} ({duplicate_path})"
                     )
-                    return
-                duplicate_match = find_identical_historical_reward(
-                    cfg, prefix, seed, iteration_index, current_reward
-                )
-                if duplicate_match:
-                    stopped_reason = "stop_duplicate_after_fresh_restart_keep_best"
-                    print("Fresh regeneration is still identical. Stop without redundant training.")
+                    if archive_current_duplicate:
+                        archive_rejected_candidate(
+                            cfg,
+                            paths["gen_run_name"],
+                            version,
+                            "duplicate_recovery",
+                            rejection_reason,
+                            {
+                                "stage": "fresh_duplicate_recovery",
+                                "matching_iteration": duplicate_iter,
+                                "matching_reward_path": str(duplicate_path),
+                                "fresh_attempt": fresh_attempt,
+                            },
+                        )
+                    restart_context = build_restart_context(restart_memory_path, target_score)
+                    restart_context += (
+                        "\n# Candidate rejection from the current iteration\n\n"
+                        f"- rejected_reason: {rejection_reason}\n"
+                        f"- matching_iteration: {duplicate_iter}\n"
+                        f"- matching_reward_path: {duplicate_path}\n\n"
+                        "Generate a new executable reward hypothesis. Do not repeat the "
+                        "rejected AST, and obey the single-function contract.\n"
+                    )
+                    (gen_dir / "restart_context.md").write_text(
+                        restart_context, encoding="utf-8"
+                    )
+                    restart_count += 1
+                    run_cmd([
+                        "python", "-m", "pipeline.run_direct_generation_pipeline",
+                        "--config", config_path,
+                        "--run-name", paths["gen_run_name"],
+                        "--seed", str(seed + restart_count * 100),
+                        "--reuse-context-from", str(
+                            frozen_context_dir or build_paths(cfg, prefix, 1, seed)["gen_dir"]
+                        ),
+                        *mock_args,
+                    ])
+                    is_fresh_generation = True
+                    version = 1
+                    current_reward = reward_path_for(cfg, paths["gen_run_name"], version)
+
+                    def fresh_validation_retry(error_text, retry_number):
+                        return [
+                            "python", "-m", "pipeline.run_direct_generation_pipeline",
+                            "--config", config_path,
+                            "--run-name", paths["gen_run_name"],
+                            "--seed", str(seed + restart_count * 100 + retry_number),
+                            "--validation-retry", error_text,
+                            *mock_args,
+                        ]
+
+                    valid_fresh, validation_error = validate_candidate_with_retries(
+                        cfg,
+                        paths["gen_run_name"],
+                        version,
+                        fresh_validation_retry,
+                        "fresh duplicate-recovery candidate",
+                    )
+                    if not valid_fresh:
+                        latest_rejection = validation_error
+                        archive_current_duplicate = False
+                        continue
+                    duplicate_match = find_identical_historical_reward(
+                        cfg, prefix, seed, iteration_index, current_reward
+                    )
+                    if not duplicate_match:
+                        duplicate_resolved = True
+                        break
+                    latest_rejection = (
+                        f"Fresh candidate remained an AST duplicate of iter "
+                        f"{duplicate_match[0]} ({duplicate_match[1]})"
+                    )
+                    archive_current_duplicate = True
+
+                if not duplicate_resolved:
+                    stopped_reason = "stop_candidate_recovery_exhausted_keep_best"
+                    print("Candidate recovery exhausted without a valid non-duplicate reward.")
                     write_experiment_summary(
                         cfg, prefix, seed, stopped_reason, best_iter, best_score,
                         target_score, rounds_completed,
@@ -779,8 +979,22 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
 
         if best_reward and is_identical_reward(best_reward, current_reward):
             for retry in range(max_identical_retries):
-                if iteration_index == 1 or force_fresh_restart or not use_reflection_agent:
+                if is_fresh_generation or not use_reflection_agent:
                     break
+                best_duplicate_reason = (
+                    f"The candidate is an AST duplicate of the archived best reward "
+                    f"from iter {best_iter}. Retry {retry + 1}: use the best reward as "
+                    "the baseline, diagnose the evidence, and make one material "
+                    "component-level intervention; do not return the same code."
+                )
+                archive_rejected_candidate(
+                    cfg,
+                    paths["gen_run_name"],
+                    version,
+                    "duplicate_best",
+                    best_duplicate_reason,
+                    {"stage": "best_duplicate", "matching_iteration": best_iter},
+                )
                 print(
                     f"Revision is identical to best (iter {best_iter}); "
                     f"requesting a local modification ({retry + 1}/{max_identical_retries})."
@@ -795,15 +1009,34 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                     "--out-run-name", paths["gen_run_name"],
                     "--reward-version", f"v{version}",
                     "--best-reward", str(best_reward),
-                    "--duplicate-retry",
-                    "生成代码与历史 best 完全相同。请以 best 为基线完成诊断，并只修改一个目标组件；不得原样返回 best。",
+                    "--duplicate-retry", best_duplicate_reason,
                     *mock_args,
                 ])
                 current_reward = reward_path_for(cfg, paths["gen_run_name"], version)
-                try:
-                    check_reward_valid(cfg, paths["gen_run_name"], version, True)
-                except (RuntimeError, FileNotFoundError) as e:
-                    print(f"Best-revision retry produced invalid code: {e}")
+
+                def best_validation_retry(error_text, _retry_number):
+                    return [
+                        "python", "-m", "pipeline.run_reflection_agent",
+                        "--config", config_path,
+                        "--previous-reward", str(previous_reward),
+                        "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
+                        "--train-run-dir", str(prev_paths["train_dir"]),
+                        "--memory", agent_memory_path,
+                        "--out-run-name", paths["gen_run_name"],
+                        "--reward-version", f"v{version}",
+                        "--best-reward", str(best_reward),
+                        "--validation-retry", error_text,
+                        *mock_args,
+                    ]
+
+                valid_best_revision, _ = validate_candidate_with_retries(
+                    cfg,
+                    paths["gen_run_name"],
+                    version,
+                    best_validation_retry,
+                    "best-revision candidate",
+                )
+                if not valid_best_revision:
                     continue
                 if not is_identical_reward(best_reward, current_reward):
                     break
@@ -878,7 +1111,11 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 decision = "target_solved_no_improvement"
 
         stop_now = False
-        if solved_seen and stop_after_solved_drop and current_score < target_score:
+        if stop_immediately_when_solved and current_score >= target_score:
+            decision = "target_solved_stop_keep_best"
+            stopped_reason = decision
+            stop_now = True
+        elif solved_seen and stop_after_solved_drop and current_score < target_score:
             decision = "stop_after_solved_drop_keep_best"
             stopped_reason = decision
             stop_now = True
@@ -981,6 +1218,7 @@ def main():
     ap.add_argument("--eval-episodes", type=int, default=None)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume-from", type=int, default=None)
+    ap.add_argument("--frozen-context-from", default=None)
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
 
@@ -994,6 +1232,7 @@ def main():
         mock=mock,
         seed=args.seed,
         resume_from=args.resume_from,
+        frozen_context_dir=args.frozen_context_from,
     )
 
 

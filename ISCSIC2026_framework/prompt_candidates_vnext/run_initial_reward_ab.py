@@ -56,6 +56,15 @@ def resolve_from_root(value: str | Path) -> Path:
     return path if path.is_absolute() else FRAMEWORK_ROOT / path
 
 
+def resolve_prompt_file(prompt_dir: Path, candidates: tuple[str, ...]) -> Path:
+    for name in candidates:
+        path = prompt_dir / name
+        if path.is_file():
+            return path
+    expected = ", ".join(candidates)
+    raise FileNotFoundError(f"Prompt directory {prompt_dir} contains none of: {expected}")
+
+
 def strip_environment_heading(response: str) -> str:
     """Avoid two top-level card headings after controller composition."""
     text = response.strip()
@@ -127,11 +136,21 @@ def save_prompt_record(path: Path, system_prompt: str, user_prompt: str) -> None
     )
 
 
-def build_environment_user_prompt(task_spec: str, masked_step: str, reward_clip: float | None) -> str:
+def build_environment_user_prompt(
+    task_spec: str,
+    masked_step: str,
+    reward_clip: float | None,
+    episode_step_limit: int | None,
+) -> str:
     clip_line = (
         "Runtime total-reward clipping: disabled."
         if reward_clip is None
         else f"Runtime total-reward clipping: [-{float(reward_clip)}, +{float(reward_clip)}] after compute_reward returns."
+    )
+    step_limit_line = (
+        "Configured maximum episode steps: unknown."
+        if episode_step_limit is None
+        else f"Configured maximum episode steps: {int(episode_step_limit)}."
     )
     return (
         "# ANONYMIZED_TASK_SPEC\n\n"
@@ -146,7 +165,12 @@ def build_environment_user_prompt(task_spec: str, masked_step: str, reward_clip:
         "- info[\"terminated\"]: bool\n"
         "- info[\"truncated\"]: bool\n"
         "- info[\"done\"]: bool(terminated or truncated)\n\n"
+        "Runtime episode-limit semantics:\n"
+        "- the masked raw-step may return truncated=False, but gym.make can add an outer TimeLimit wrapper\n"
+        "- therefore info[\"truncated\"] may become True at the configured episode-step limit\n"
+        "- treat truncation as budget exhaustion, not automatically as success or failure\n\n"
         f"{clip_line}\n\n"
+        f"{step_limit_line}\n\n"
         "Forbidden:\n"
         "- original_reward and the official environment reward\n"
         "- bare variables terminated, truncated, or done\n"
@@ -217,8 +241,30 @@ def audit_reward_code(code: str) -> tuple[dict[str, object], list[str]]:
     return validation, keys
 
 
-def build_reward_user_prompt(environment_card: str, expert_context: str | None) -> str:
-    parts = [environment_card.strip()]
+def build_reward_user_prompt(
+    environment_card: str,
+    expert_context: str | None,
+    reward_clip: float | None,
+    episode_step_limit: int | None,
+) -> str:
+    clip_line = (
+        "- total-reward clipping: disabled"
+        if reward_clip is None
+        else f"- total-reward clipping after compute_reward returns: [-{float(reward_clip)}, +{float(reward_clip)}]"
+    )
+    step_limit_line = (
+        "- maximum episode steps: unknown; use a conservative accumulation bound"
+        if episode_step_limit is None
+        else f"- maximum episode steps: {int(episode_step_limit)}"
+    )
+    parts = [
+        environment_card.strip(),
+        "# Authoritative Reward Runtime Contract\n"
+        f"{clip_line}\n"
+        f"{step_limit_line}\n"
+        "- this contract overrides any missing or conflicting statement in the Environment Card\n"
+        "- design event magnitudes and the scale audit using the effective post-clip reward seen by PPO",
+    ]
     if expert_context:
         parts.extend(
             [
@@ -247,14 +293,38 @@ def run(args: argparse.Namespace) -> Path:
     cfg = load_config(config_path)
     task_spec_path = resolve_from_root(args.task_spec or cfg["inputs"]["task_spec_path"])
     masked_step_path = resolve_from_root(args.masked_step or cfg["inputs"]["masked_step_path"])
+    prompt_dir = resolve_from_root(args.prompt_dir)
+    environment_prompt_path = resolve_prompt_file(
+        prompt_dir,
+        ("01_environment_semantics_prompt.md", "01_environment_analyzer_prompt.md"),
+    )
+    reward_prompt_path = resolve_prompt_file(
+        prompt_dir,
+        ("02_initial_reward_generator_prompt.md", "02_reward_generator_prompt.md"),
+    )
 
     task_spec = read_text(task_spec_path)
     task_description = extract_task_description(task_spec)
     masked_step = read_text(masked_step_path)
-    environment_system = read_text(SCRIPT_DIR / "01_environment_semantics_prompt.md")
-    reward_system = read_text(SCRIPT_DIR / "02_initial_reward_generator_prompt.md")
-    reward_clip = cfg.get("training", {}).get("reward_clip", 20.0)
-    environment_user = build_environment_user_prompt(task_spec, masked_step, reward_clip)
+    environment_system = read_text(environment_prompt_path)
+    reward_system = read_text(reward_prompt_path)
+    train_cfg = cfg.get("training", {})
+    reward_clip = train_cfg.get("reward_clip", 20.0)
+    episode_step_limit = train_cfg.get("episode_step_limit")
+    if episode_step_limit is None:
+        try:
+            import gymnasium as gym
+
+            env_spec = gym.spec(train_cfg["runner_env_id"])
+            episode_step_limit = env_spec.max_episode_steps
+        except Exception:
+            episode_step_limit = None
+    environment_user = build_environment_user_prompt(
+        task_spec,
+        masked_step,
+        reward_clip,
+        episode_step_limit,
+    )
 
     llm_cfg = cfg["llm"]
     env_model = args.env_model or args.model or llm_cfg["model_env"]
@@ -284,6 +354,9 @@ def run(args: argparse.Namespace) -> Path:
         "config": str(config_path),
         "task_spec": str(task_spec_path),
         "masked_step": str(masked_step_path),
+        "prompt_dir": str(prompt_dir),
+        "environment_prompt": str(environment_prompt_path),
+        "reward_prompt": str(reward_prompt_path),
         "env_model": env_model,
         "reward_model": reward_model,
         "expert_mode": args.expert_mode,
@@ -332,7 +405,12 @@ def run(args: argparse.Namespace) -> Path:
     comparison = []
     for name, expert_context in variants.items():
         variant_dir = output_root / "rewards" / name
-        reward_user = build_reward_user_prompt(environment_card, expert_context)
+        reward_user = build_reward_user_prompt(
+            environment_card,
+            expert_context,
+            reward_clip,
+            episode_step_limit,
+        )
         save_prompt_record(variant_dir / "prompt_record.md", reward_system, reward_user)
         stats = prompt_stats(reward_system, reward_user)
         write_json(variant_dir / "prompt_stats.json", stats)
@@ -342,10 +420,18 @@ def run(args: argparse.Namespace) -> Path:
         validation_path = variant_dir / "validation.json"
         reward_path = variant_dir / "reward_v1.py"
         response_path = variant_dir / "raw_response.md"
-        if args.resume_run and validation_path.exists() and reward_path.exists() and response_path.exists():
+        reuse_completed = bool(
+            args.resume_run
+            and validation_path.exists()
+            and reward_path.exists()
+            and response_path.exists()
+        )
+        if reuse_completed:
             validation, keys = audit_reward_code(read_text(reward_path))
             write_json(validation_path, validation)
-        else:
+            if args.retry_invalid and not validation["valid"]:
+                reuse_completed = False
+        if not reuse_completed:
             response = client.chat(
                 model=reward_model,
                 system_prompt=reward_system,
@@ -402,9 +488,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default="configs/env001_paper_v4.yaml")
     parser.add_argument("--task-spec")
     parser.add_argument("--masked-step")
+    parser.add_argument("--prompt-dir", default="prompt_candidates_vnext")
     parser.add_argument("--output-root", default="runs/vnext_initial_ab")
     parser.add_argument("--run-name")
     parser.add_argument("--resume-run", help="Resume an existing output directory and skip completed stages.")
+    parser.add_argument(
+        "--retry-invalid",
+        action="store_true",
+        help="When resuming, regenerate only reward variants whose saved code fails validation.",
+    )
     parser.add_argument("--expert-mode", choices=["card_only", "historical_expert", "both"], default="both")
     parser.add_argument("--expert-context-file")
     parser.add_argument("--model")

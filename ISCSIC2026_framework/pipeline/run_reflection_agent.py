@@ -29,7 +29,14 @@ def _environment_summary(environment_card_md):
     """
     if not environment_card_md:
         return ""
-    wanted = {1, 3, 4, 5, 7}
+    # The rebuilt submission card uses sections 1-5 for raw facts and 6-8 for
+    # initial-generation advice. Historical paper-v4 cards used section 3 for
+    # observations and section 7 for legal signals. Support both layouts while
+    # keeping role choices and predicted fixes out of reflection.
+    if re.search(r"(?m)^## 2\.\s+Observation", environment_card_md):
+        wanted = {1, 2, 3, 4, 5}
+    else:
+        wanted = {1, 3, 4, 5, 7}
     sections = re.split(r"(?=^## \d+\.)", environment_card_md, flags=re.MULTILINE)
     selected = []
     for section in sections:

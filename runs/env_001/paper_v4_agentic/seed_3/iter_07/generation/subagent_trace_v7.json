@@ -1,0 +1,55 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "Automatic fallback after 5 turns without submit. Raw data: [inspect_component_dynamics]: (no monitor snapshots — training may not have completed)\n[inspect_previous_reward]: def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0",
+    "component_anomalies": "Subagent exhausted turns without explicit submission.",
+    "training_dynamics": "No temporal analysis available.",
+    "signal_quality": "No signal quality assessment available.",
+    "confidence": "low"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 745
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 984
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 3,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 2068
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Score=266.0 (20/20 terminated, len=284). Progress dominates at +27.5/ep (56.1% signed share, 94.9% active). Landing quality is +11.75/ep (24.0% share) but fires only 14.3% of steps — dual-contact gating makes it a sparse terminal bonus. Engine cost (-4.84/ep, 85.1% active) and attitude penalty (-4.11/ep, 100% active) are the main drags.",
+        "component_anomalies": "landing_velocity_penalty is near-dead: -0.31/ep, 0.6% share, only 10.8% active despite w_land_vel=10.0. It shares the same dual-contact gate as landing_quality, so it never gets traction. landing_quality is the #2 positive contributor but fires on only ~1 in 7 steps — concentrated entirely at touchdown.",
+        "training_dynamics": "No temporal dynamics available — component_dynamics returned no monitor snapshots. Only final-policy snapshot is observable. Cannot assess whether progress dominance grew over training or whether landing signals strengthened/weakened across checkpoints.",
+        "signal_quality": "Sparsity is the main reachability issue: landing_quality (14.3% active) and landing_velocity_penalty (10.8% active) are gated behind dual-leg contact, which happens only near successful landings. The velocity penalty has no signal power to shape approach behavior. attitude_penalty is always-on (100%) but has only modest magnitude (-8.4% share), so it's a background cost rather than a shaping signal.",
+        "confidence": "medium"
+      },
+      "validation_errors": [
+        "signal too long (1303 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 5,
+      "fallback_signal": true
+    }
+  ],
+  "signal_produced": true
+}

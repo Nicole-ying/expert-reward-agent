@@ -13,7 +13,7 @@ import argparse
 import traceback
 from pathlib import Path
 from .common import load_config
-from .run_iterative_experiment import run_iterative_experiment
+from .run_iterative_experiment import build_paths, run_iterative_experiment
 
 
 def main():
@@ -25,6 +25,7 @@ def main():
     ap.add_argument("--eval-episodes", type=int, default=None)
     ap.add_argument("--start-seed", type=int, default=None)
     ap.add_argument("--num-seeds", type=int, default=None)
+    ap.add_argument("--frozen-context-from", default=None)
     ap.add_argument("--mock", action="store_true")
     args = ap.parse_args()
 
@@ -39,6 +40,8 @@ def main():
     start_seed = int(args.start_seed if args.start_seed is not None else ms_cfg.get("start_seed", 0))
     num_seeds = int(args.num_seeds if args.num_seeds is not None else ms_cfg.get("num_seeds", 10))
     mock = True if args.mock else None
+    prefix = args.prefix or cfg["iteration"]["experiment_prefix"]
+    frozen_context_dir = args.frozen_context_from
 
     print("=" * 60)
     print("Multi-seed iterative experiment")
@@ -64,7 +67,13 @@ def main():
                 eval_episodes=args.eval_episodes,
                 mock=mock,
                 seed=s,
+                frozen_context_dir=frozen_context_dir,
             )
+            if frozen_context_dir is None:
+                candidate = build_paths(cfg, prefix, 1, s)["gen_dir"]
+                if (candidate / "environment_card.md").exists():
+                    frozen_context_dir = str(candidate)
+                    print(f"Frozen shared environment context: {frozen_context_dir}")
         except Exception as exc:
             prefix = args.prefix or cfg["iteration"]["experiment_prefix"]
             failure_path = Path(cfg["experiment"]["run_root"]) / prefix / f"seed_{s}" / "seed_failure.txt"
@@ -76,6 +85,11 @@ def main():
             print(f"SEED {s} FAILED: {exc}")
             print(f"Failure record: {failure_path}")
             print("Continuing with the next seed.")
+            if frozen_context_dir is None:
+                candidate = build_paths(cfg, prefix, 1, s)["gen_dir"]
+                if (candidate / "environment_card.md").exists():
+                    frozen_context_dir = str(candidate)
+                    print(f"Frozen shared environment context after seed failure: {frozen_context_dir}")
 
     print("\n" + "=" * 60)
     print("All seeds done.")

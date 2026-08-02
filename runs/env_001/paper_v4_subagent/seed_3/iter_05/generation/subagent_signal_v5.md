@@ -1,0 +1,11 @@
+# Subagent Research Signal
+
+**Key Findings**: Final eval reward 210.4, ep len 655.6, 55% termination. Success bonus (48.7%) and landing approach (31.7%) dominate episode rewards; progress only 15.1%. Penalties negligible.
+
+**Component Anomalies**: No dead components (>99% active except success_bonus 65.5%). No component >70% share. No self-cancelling high-magnitude components.
+
+**Training Dynamics**: No temporal snapshots provided. Unable to assess growth/decay or drift across checkpoints.
+
+**Signal Quality**: Success bonus sparse (active ~65.5% of steps) but effective. Original env reward negative (-0.301 per step) overridden by shaping. No dead gates or threshold failures observed.
+
+**Evidence Confidence**: `low`

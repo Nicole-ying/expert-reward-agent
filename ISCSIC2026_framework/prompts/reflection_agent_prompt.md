@@ -8,6 +8,10 @@
 - 不同时间语义不可直接比较：逐步差分、持续状态值、惩罚和稀疏事件bonus不能套同一个比例阈值。
 - 不得仅因任务描述出现“跳跃、着陆、抓取”等语义，就断言对应状态量是缺失奖励职责。新增职责必须有轨迹行为、终止分布、组件激活或历史干预结果支持；证据不足时明确写“未知”，优先保持best主结构并提出最小可证伪修改。
 - episode达到时间上限且失败终止很少时，首先判断现有主信号是否已经实现稳定行为、剩余差距是否来自效率或主目标强度；没有行为证据时，不为动作过程本身添加proxy。
+- 环境卡 `Operational terminal decision boundary` 中的可靠性和 permitted reward use 是硬证据边界。`heuristic_only` 只是待校准假设，不是真实 success/failure 标签。
+- 诊断终局组件时必须先读取逐 episode terminal audit，将其激活符号与同一 episode 的 native score、长度、结束类型和最终状态并列核对。不得从 `episode_sum_mean`、正激活次数或 `terminated` 次数直接推断成功次数。
+- 若终局启发式在低/负 native outcome 上给出正奖励，必须优先诊断假阳性；若长 episode 大量 truncated 且某组件占绝对主导，必须优先诊断 horizon/proxy farming。native score 的正负也只是对齐证据，不是精确成功标签。
+- 在环境不暴露精确结束原因时，不得把所有 `terminated` 无条件视为失败，也不得声称某个启发式阈值已识别真实成功；只能提出可由下一轮逐 episode 证据证伪的保守修改。
 
 # 唯一决策流程
 
@@ -86,7 +90,9 @@ Level 3可以更换主信号框架或重新组合少量组件。expert_reward_co
 
 - 禁止terminal_success_reward、terminal_failure_penalty、original_reward。
 - 只能使用环境事实摘要声明的obs、next_obs、action和info字段，不得发明字段、切片维度或新输入。
-- 第一个Python code block只能包含一个完整的`compute_reward`函数；不要写import、class、try/except或额外函数，不要使用self。
+- 第一个Python code block只能包含一个完整的顶层`compute_reward`函数；整个代码的AST中必须恰好只有这一个`FunctionDef`。
+- `compute_reward`函数体内严禁再定义局部/嵌套函数，严禁`def`、`async def`、`lambda`或任何辅助函数。即使同一计算需要对`obs`和`next_obs`执行两次，也必须在`compute_reward`函数体内显式内联展开，不得为了复用而抽取函数。
+- 不要写import、class、try/except，不要使用self。
 - 禁止eval/exec/open，禁止使用original_reward或原始环境reward。
 - 需要平方根时使用`** 0.5`，禁止import numpy。需要指数形式时使用`2.718281828 ** exponent`，或改用`1/(1+k*x)`、`max(0,1-x/D)`等无需库的bounded表达式。
 - 除Level 3重建外，每轮只修改一个目标组件，不顺带调整其他组件。

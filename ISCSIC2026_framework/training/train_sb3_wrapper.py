@@ -189,6 +189,8 @@ def evaluate_model_on_original_env(
     episode_rewards = []
     episode_lengths = []
     episode_terminated = []  # True = terminated (env-defined end), False = truncated (time limit)
+    episode_final_observations = []
+    episode_component_records = []
     component_episode_sums = {}
     component_episode_abs_sums = {}
     component_active_steps = {}
@@ -251,6 +253,11 @@ def evaluate_model_on_original_env(
         episode_rewards.append(total_reward)
         episode_lengths.append(length)
         episode_terminated.append(was_terminated)
+        try:
+            episode_final_observations.append([float(value) for value in obs])
+        except TypeError:
+            episode_final_observations.append([float(obs)])
+        episode_component_records.append(dict(episode_component_sums))
         known_names = set(component_episode_sums) | set(episode_component_sums)
         for name in known_names:
             component_episode_sums.setdefault(name, [0.0] * episode_id).append(
@@ -291,6 +298,8 @@ def evaluate_model_on_original_env(
         "episode_rewards": episode_rewards,
         "episode_lengths": episode_lengths,
         "episode_terminated": episode_terminated,
+        "episode_final_observations": episode_final_observations,
+        "episode_component_sums": episode_component_records,
         "mean_eval_reward": mean(episode_rewards) if episode_rewards else 0.0,
         "mean_episode_length": mean(episode_lengths) if episode_lengths else 0.0,
         "min_eval_reward": min(episode_rewards) if episode_rewards else 0.0,
@@ -337,6 +346,12 @@ def write_eval_result_md(path, eval_result):
         end_type = "terminated" if (i < len(term_flags) and term_flags[i]) else "truncated"
         eval_seed = eval_result.get("eval_seeds", [])[i] if i < len(eval_result.get("eval_seeds", [])) else "?"
         lines.append(f"| {i} | {eval_seed} | {_fmt_float(reward)} | {length} | {end_type} |")
+    final_observations = eval_result.get("episode_final_observations", [])
+    if final_observations:
+        lines.extend(["", "## Final observations", "", "Values are legal final-state observations; they do not reveal the exact termination cause.", "", "| episode | final_observation |", "|---:|---|"])
+        for i, observation in enumerate(final_observations):
+            compact = ", ".join(f"{float(value):.4f}" for value in observation)
+            lines.append(f"| {i} | `[{compact}]` |")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -478,6 +493,8 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
         name: item for name, item in component_eval.items()
         if name not in {"total_reward", "generated_reward", "original_env_reward"}
     }
+    episode_rewards = eval_result.get("episode_rewards", [])
+    episode_lengths = eval_result.get("episode_lengths", [])
     lines.extend([
         "",
         "## Final-policy reward composition",
@@ -502,8 +519,68 @@ def write_training_feedback_md(path, summary, eval_result, component_summary):
     if not visible_components:
         lines.append("| (no component data) | 0 | 0% | 0% | 0% |")
 
-    episode_rewards = eval_result.get("episode_rewards", [])
-    episode_lengths = eval_result.get("episode_lengths", [])
+    episode_component_sums = eval_result.get("episode_component_sums", [])
+    final_observations = eval_result.get("episode_final_observations", [])
+    term_flags = eval_result.get("episode_terminated", [])
+    eval_seeds = eval_result.get("eval_seeds", [])
+    component_names = sorted(visible_components)
+    lines.extend([
+        "",
+        "## Episode-level terminal audit",
+        "",
+        "This table aligns native outcome, ending type, final legal observation, and reward components "
+        "for the same episode. `terminated` does not disclose its exact cause, and native-score sign "
+        "is alignment evidence rather than a ground-truth success label.",
+        "",
+    ])
+    header = ["episode", "seed", "native score", "length", "end", "final obs"] + component_names
+    lines.append("| " + " | ".join(header) + " |")
+    lines.append("|" + "|".join(["---:", "---:", "---:", "---:", "---", "---"] + ["---:"] * len(component_names)) + "|")
+    for index, (reward, length) in enumerate(zip(episode_rewards, episode_lengths)):
+        end_type = "terminated" if index < len(term_flags) and term_flags[index] else "truncated"
+        seed_value = eval_seeds[index] if index < len(eval_seeds) else "?"
+        observation = final_observations[index] if index < len(final_observations) else []
+        observation_text = "[" + ", ".join(f"{float(value):.3f}" for value in observation) + "]"
+        record = episode_component_sums[index] if index < len(episode_component_sums) else {}
+        row = [str(index), str(seed_value), _fmt_float(reward), str(length), end_type, f"`{observation_text}`"]
+        row.extend(_fmt_float(record.get(name, 0.0)) for name in component_names)
+        lines.append("| " + " | ".join(row) + " |")
+
+    terminal_keywords = ("terminal", "success", "failure", "outcome", "event", "landing", "touchdown")
+    terminal_components = [name for name in component_names if any(token in name.lower() for token in terminal_keywords)]
+    lines.extend(["", "### Alignment warnings"])
+    if not episode_component_sums:
+        lines.append("- episode-level component records unavailable; do not infer terminal accuracy from aggregate means.")
+    for name in terminal_components:
+        positive_on_nonpositive = 0
+        negative_on_positive = 0
+        observed = 0
+        for index, reward in enumerate(episode_rewards):
+            if index >= len(episode_component_sums):
+                continue
+            value = float(episode_component_sums[index].get(name, 0.0))
+            observed += 1
+            positive_on_nonpositive += int(value > 1e-12 and reward <= 0.0)
+            negative_on_positive += int(value < -1e-12 and reward > 0.0)
+        lines.append(
+            f"- `{name}`: positive on non-positive native outcomes={positive_on_nonpositive}/{observed}; "
+            f"negative on positive native outcomes={negative_on_positive}/{observed}. "
+            "These are possible heuristic alignment errors, not verified classification errors."
+        )
+    truncated_count = termination.get("truncated", 0)
+    dominant = max(
+        visible_components.items(),
+        key=lambda pair: float(pair[1].get("magnitude_share", 0.0)),
+        default=None,
+    )
+    if dominant and episode_rewards and truncated_count / len(episode_rewards) >= 0.5 and float(dominant[1].get("magnitude_share", 0.0)) >= 0.8:
+        lines.append(
+            f"- possible horizon/proxy accumulation: {truncated_count}/{len(episode_rewards)} episodes truncated and "
+            f"`{dominant[0]}` accounts for {100.0 * float(dominant[1].get('magnitude_share', 0.0)):.1f}% of absolute reward magnitude."
+        )
+    if not terminal_components:
+        lines.append("- no terminal-like component name detected; use the episode table to inspect any semantically equivalent component.")
+
     early_count = sum(
         1 for reward, length in zip(episode_rewards, episode_lengths)
         if length < 150 and reward < -50

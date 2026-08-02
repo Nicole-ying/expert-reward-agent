@@ -1,8 +1,8 @@
 # Training Feedback
 
 ## Final-policy outcome
-score=228.998179, len=533.650000, terminated=14/20, truncated=6/20, reward_errors=0
-score_range=[127.305833, 302.714498]
+score=141.859009, len=960.500000, terminated=1/20, truncated=19/20, reward_errors=0
+score_range=[-56.757472, 185.622308]
 
 ## Final-policy reward composition
 
@@ -10,10 +10,10 @@ These statistics come from the same fixed evaluation episodes as `score`. Shares
 
 | component | episode_sum_mean | signed_share | magnitude_share | active_rate |
 |---|---:|---:|---:|---:|
-| soft_landing_bonus | 115.213899 | 93.0% | 93.0% | 43.5% |
-| velocity_damping | -6.832732 | -5.5% | 5.5% | 99.9% |
-| distance_progress | 1.387302 | 1.1% | 1.2% | 98.1% |
-| orientation_penalty | -0.410951 | -0.3% | 0.3% | 99.9% |
+| soft_landing_bonus | 379.242969 | 98.8% | 98.8% | 79.2% |
+| velocity_damping | -2.567614 | -0.7% | 0.7% | 100.0% |
+| distance_progress | 1.365832 | 0.4% | 0.4% | 100.0% |
+| orientation_penalty | -0.636153 | -0.2% | 0.2% | 100.0% |
 
 ## Evaluation distribution
 - fixed_eval_seeds: 10000..10019

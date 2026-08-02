@@ -1,0 +1,131 @@
+============================================================
+Config-driven iterative reward experiment
+============================================================
+config          : configs/env005_deepseek_rag.yaml
+prefix          : paper_ant_v7
+seed            : 2
+rounds          : 10
+start_iter      : 1
+target_score    : 2000.0
+total_timesteps : 1000000
+eval_episodes   : 20
+memory_path     : runs\env_005\paper_ant_v7\seed_2\memory\reward_memory.md
+cards_path      : knowledge_base/iteration/reward_misalignment_cards.md
+cards_top_k     : 4
+mock_llm        : False
+
+------------------------------------------------------------
+Iteration 1/10
+------------------------------------------------------------
+
+$ C:\ProgramData\miniconda3\python.exe -m pipeline.run_direct_generation_pipeline --config configs/env005_deepseek_rag.yaml --run-name paper_ant_v7/seed_2/iter_01/generation --seed 2
+runs\env_005\paper_ant_v7\seed_2\iter_01\generation\environment_card.md
+WARNING: environment_card.md ÷–Œ¥’“µΩ selected_route_id£¨ªÿÕÀµΩ unknown_task_route
+runs\env_005\paper_ant_v7\seed_2\iter_01\generation\expert_reward_context.md
+runs\env_005\paper_ant_v7\seed_2\iter_01\generation\reward_v1.py
+runs\env_005\paper_ant_v7\seed_2\iter_01\generation\reward_v1.md
+
+$ C:\ProgramData\miniconda3\python.exe -m training.train_sb3_wrapper --config configs/env005_deepseek_rag.yaml --reward runs\env_005\paper_ant_v7\seed_2\iter_01\generation\reward_v1.py --run-name paper_ant_v7/seed_2/iter_01/training --save-dir runs\env_005\paper_ant_v7\seed_2\iter_01\training --total-timesteps 1000000 --eval-episodes 20 --seed 2
+C:\ProgramData\miniconda3\Lib\site-packages\gymnasium\envs\registration.py:512: DeprecationWarning: [33mWARN: The environment Ant-v4 is out of date. You should consider upgrading to version `v5`.[0m
+  logger.deprecation(
+Process SpawnProcess-1:
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\site-packages\gymnasium\envs\mujoco\mujoco_env.py", line 12, in <module>
+    import mujoco
+ModuleNotFoundError: No module named 'mujoco'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\multiprocessing\process.py", line 313, in _bootstrap
+    self.run()
+    ~~~~~~~~^^
+  File "C:\ProgramData\miniconda3\Lib\multiprocessing\process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\site-packages\stable_baselines3\common\vec_env\subproc_vec_env.py", line 29, in _worker
+    env = _patch_env(env_fn_wrapper.var())
+                     ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Downloads\expert_eureka_env001_bridge_v9_direct_generator\expert_eureka_env001_bridge_v9_direct_generator\training\train_sb3_wrapper.py", line 133, in _make_env
+    env = gym.make(env_id)
+  File "C:\ProgramData\miniconda3\Lib\site-packages\gymnasium\envs\registration.py", line 696, in make
+    env_creator = load_env_creator(env_spec.entry_point)
+  File "C:\ProgramData\miniconda3\Lib\site-packages\gymnasium\envs\registration.py", line 544, in load_env_creator
+    mod = importlib.import_module(mod_name)
+  File "C:\ProgramData\miniconda3\Lib\importlib\__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1310, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 1023, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "C:\ProgramData\miniconda3\Lib\site-packages\gymnasium\envs\mujoco\__init__.py", line 1, in <module>
+    from gymnasium.envs.mujoco.mujoco_env import MujocoEnv
+  File "C:\ProgramData\miniconda3\Lib\site-packages\gymnasium\envs\mujoco\mujoco_env.py", line 14, in <module>
+    raise error.DependencyNotInstalled(
+        'MuJoCo is not installed, run `pip install "gymnasium[mujoco]"`'
+    ) from e
+gymnasium.error.DependencyNotInstalled: MuJoCo is not installed, run `pip install "gymnasium[mujoco]"`
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\multiprocessing\connection.py", line 328, in _recv_bytes
+    nread, err = ov.GetOverlappedResult(True)
+                 ~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+BrokenPipeError: [WinError 109] π‹µ¿“—Ω· ¯°£
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\Administrator\Downloads\expert_eureka_env001_bridge_v9_direct_generator\expert_eureka_env001_bridge_v9_direct_generator\training\train_sb3_wrapper.py", line 696, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\Administrator\Downloads\expert_eureka_env001_bridge_v9_direct_generator\expert_eureka_env001_bridge_v9_direct_generator\training\train_sb3_wrapper.py", line 574, in main
+    env = SubprocVecEnv(env_fns)
+  File "C:\ProgramData\miniconda3\Lib\site-packages\stable_baselines3\common\vec_env\subproc_vec_env.py", line 127, in __init__
+    observation_space, action_space = self.remotes[0].recv()
+                                      ~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\ProgramData\miniconda3\Lib\multiprocessing\connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "C:\ProgramData\miniconda3\Lib\multiprocessing\connection.py", line 337, in _recv_bytes
+    raise EOFError
+EOFError
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\Administrator\Downloads\expert_eureka_env001_bridge_v9_direct_generator\expert_eureka_env001_bridge_v9_direct_generator\pipeline\run_iterative_experiment.py", line 1067, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\Administrator\Downloads\expert_eureka_env001_bridge_v9_direct_generator\expert_eureka_env001_bridge_v9_direct_generator\pipeline\run_iterative_experiment.py", line 1054, in main
+    run_iterative_experiment(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        config_path=args.config,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+        resume_from=args.resume_from,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Downloads\expert_eureka_env001_bridge_v9_direct_generator\expert_eureka_env001_bridge_v9_direct_generator\pipeline\run_iterative_experiment.py", line 865, in run_iterative_experiment
+    run_cmd([
+    ~~~~~~~^^
+        "python", "-m", "training.train_sb3_wrapper",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+        "--seed", str(seed),
+        ^^^^^^^^^^^^^^^^^^^^
+    ])
+    ^^
+  File "C:\Users\Administrator\Downloads\expert_eureka_env001_bridge_v9_direct_generator\expert_eureka_env001_bridge_v9_direct_generator\pipeline\run_iterative_experiment.py", line 18, in run_cmd
+    subprocess.run(cmd, check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\subprocess.py", line 577, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['C:\\ProgramData\\miniconda3\\python.exe', '-m', 'training.train_sb3_wrapper', '--config', 'configs/env005_deepseek_rag.yaml', '--reward', 'runs\\env_005\\paper_ant_v7\\seed_2\\iter_01\\generation\\reward_v1.py', '--run-name', 'paper_ant_v7/seed_2/iter_01/training', '--save-dir', 'runs\\env_005\\paper_ant_v7\\seed_2\\iter_01\\training', '--total-timesteps', '1000000', '--eval-episodes', '20', '--seed', '2']' returned non-zero exit status 1.

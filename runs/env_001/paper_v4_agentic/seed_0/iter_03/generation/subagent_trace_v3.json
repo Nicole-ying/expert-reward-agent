@@ -1,0 +1,42 @@
+{
+  "turns_used": 4,
+  "signal": {
+    "key_findings": "1) Total reward (0.283) is almost entirely landing_contact_bonus (0.2834, 64.2% active), while progress_reward is negligible (0.0031, 100% active). 2) Only 3/20 episodes terminate (15%) despite high total reward; original_env_reward is negative (-0.0209). 3) x_boundary_penalty is dead (0% activation, mean 0.0) — the agent never exceeds |x|>1.2.",
+    "component_anomalies": "x_boundary_penalty: completely dead (0% nonzero_rate, 0.0 mean) — never triggers and contributes nothing to learning. landing_contact_bonus: dominates at ~100x the magnitude of progress_reward, likely drowning out the distance-minimization signal.",
+    "mechanism_hypothesis": "The landing_contact_bonus (0.3 × Σcontact × gate) overwhelms the progress_reward (1.0 × Δdistance), causing the agent to pursue ground contact wherever possible rather than steering toward the pad at (0,0). This explains high reward with low termination: the agent gets contact bonuses without actually reaching the target and completing the episode.",
+    "decision_implication": "PATCH landing_contact_bonus: reduce its coefficient from 0.3 to ~0.05 or make the gate sharper (e.g., gate² or require dist<0.3) so contact reward only matters very close to the pad. REMOVE x_boundary_penalty: it never fires, so it's dead weight in the reward function.",
+    "confidence": "medium"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 693
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 2222
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "1) Total reward (0.283) is almost entirely landing_contact_bonus (0.2834, 64.2% active), while progress_reward is negligible (0.0031, 100% active). 2) Only 3/20 episodes terminate (15%) despite high total reward; original_env_reward is negative (-0.0209). 3) x_boundary_penalty is dead (0% activation, mean 0.0) — the agent never exceeds |x|>1.2.",
+        "component_anomalies": "x_boundary_penalty: completely dead (0% nonzero_rate, 0.0 mean) — never triggers and contributes nothing to learning. landing_contact_bonus: dominates at ~100x the magnitude of progress_reward, likely drowning out the distance-minimization signal.",
+        "mechanism_hypothesis": "The landing_contact_bonus (0.3 × Σcontact × gate) overwhelms the progress_reward (1.0 × Δdistance), causing the agent to pursue ground contact wherever possible rather than steering toward the pad at (0,0). This explains high reward with low termination: the agent gets contact bonuses without actually reaching the target and completing the episode.",
+        "decision_implication": "PATCH landing_contact_bonus: reduce its coefficient from 0.3 to ~0.05 or make the gate sharper (e.g., gate² or require dist<0.3) so contact reward only matters very close to the pad. REMOVE x_boundary_penalty: it never fires, so it's dead weight in the reward function.",
+        "confidence": "medium"
+      },
+      "signal_valid": true
+    }
+  ]
+}

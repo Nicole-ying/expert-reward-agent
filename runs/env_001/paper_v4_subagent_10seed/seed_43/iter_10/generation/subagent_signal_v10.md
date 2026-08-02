@@ -1,0 +1,11 @@
+# Subagent Research Signal
+
+**Key Findings**: Eval score 174.6, 19/20 terminated, ep len 710.  Reward dominated by contact_success (97.9% share) despite active only 7.7% steps. Progress active 76.8% but contributes 2.1% share.
+
+**Component Anomalies**: contact_success dominating (>70% share) and rare (active 7.7%). angvel_penalty dead (mean -0.002, 1% active, 0% share). progress underweighted.
+
+**Training Dynamics**: No temporal snapshots; final policy relies on sparse contact_success with low active rate, no evidence of scaffold decay.
+
+**Signal Quality**: angvel_penalty dead gate. Progress signal present but overpowered. No coupling detected. Missing attractor for sustained progress.
+
+**Evidence Confidence**: `medium`

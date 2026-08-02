@@ -1,0 +1,291 @@
+# environment_card.md
+
+# 匿名环境理解卡片
+
+## 1. 任务目标
+该环境要求一个双足智能体在不规则地形（包含梯子、树桩、坑洼、不平表面）上尽可能远、尽可能高效地向前移动。  
+主目标：持续稳定地向前推进，最大化累计前进距离，同时抑制不必要的关节力矩（能量消耗）。  
+次目标：利用前方激光雷达扫描数据预判地形变化，主动调整步态以避免摔倒并适应障碍。  
+不应混淆的目标：环境中**没有指定的坐标点到达任务**，到达地形末端只是自然边界（可视为成功，但不需单独奖励学习）。核心是 locomotion 连续控制，不是稀疏目标导航。
+
+## 2. 任务类型选择
+selected_route_id: **locomotion_continuous_control**  
+confidence: high  
+reason: 任务描述明确要求向前移动越过连续粗糙地面，没有固定目标点，重要的是前进距离与稳定性，属于典型的连续运动控制问题。观测中包含关节状态与地形传感，动作是关节力矩，符合 locomotion 属性。
+
+**动力学子类型（dynamics_subtype）**：planar_bipedal_gait  
+（二维平面双足步行，双腿各有一个髋关节和一个膝关节，需要生成交替步态以在不平地上前进）
+
+## 3. 观察空间 observation_space
+- type: Box
+- shape: [24]
+- dtype: float32（推测，所有传感器和关节测量均为浮点）
+- obs[0]: hull_angle, 身体俯仰角；可用于稳定性奖励，reward_usable: true
+- obs[1]: hull_angular_velocity, 身体俯仰角速度；可用于惩罚快速倾斜，reward_usable: true
+- obs[2]: horizontal_speed, 质心水平速度；用于前进奖励，reward_usable: true
+- obs[3]: vertical_speed, 质心垂直速度；可用于跌落或弹跳检测，reward_usable: true
+- obs[4]: joint_0_angle (hip_1)，髋关节1角度；用于动作平滑或姿态约束，reward_usable: true
+- obs[5]: joint_0_speed (hip_1_speed)，髋关节1角速度；reward_usable: true
+- obs[6]: joint_1_angle (knee_1)，膝关节1角度；reward_usable: true
+- obs[7]: joint_1_speed (knee_1_speed)，reward_usable: true
+- obs[8]: joint_2_angle (hip_2)，reward_usable: true
+- obs[9]: joint_2_speed (hip_2_speed)，reward_usable: true
+- obs[10]: joint_3_angle (knee_2)，reward_usable: true
+- obs[11]: joint_3_speed (knee_2_speed)，reward_usable: true
+- obs[12]: leg_1_ground_contact, 腿1接地标志(0/1)；可用于步态接触奖励，reward_usable: true
+- obs[13]: leg_2_ground_contact, 腿2接地标志；reward_usable: true
+- obs[14]–obs[23]: lidar_1 至 lidar_10, 激光测距读数（前方地形高度信息）；可用于前瞻性步态调整，但直接作为奖励信号较难，reward_usable: true (但需配合使用)
+
+**全部信号均可用于奖励函数**，但不推荐直接使用 lidar 原始值作为奖励，而更适合作为状态特征。
+
+## 4. 动作空间 action_space
+- type: Box (连续)
+- shape: [4]
+- bounds: [-1.0, 1.0] (归一化力矩)
+- action_dim 0: hip_1_torque, 施加在第一个髋关节的力矩（归一化）
+- action_dim 1: knee_1_torque, 施加在第一个膝关节的力矩
+- action_dim 2: hip_2_torque, 施加在第二个髋关节的力矩
+- action_dim 3: knee_2_torque, 施加在第二个膝关节的力矩
+
+每个动作维度直接控制一个关节力矩，没有离散动作分支。
+
+## 5. step 与终止条件分析
+### 5.1 终止模式
+- **success‑like termination**: `reached_end_of_terrain` – 智能体到达地形末端，视为任务成功完成。
+- **failure‑like termination**: `body_fallen_over` – 身体摔倒（俯仰角过大或接触地面等内部判定），视为失败。
+- **ambiguous termination**: 无。终止仅由以上两个条件之一触发。
+- **truncation**: 源码中 `truncated` 硬编码为 `False`，因此没有时间截断；若环境实际有最大步数限制（常见于封装），则会被环境外层截断，但 step 调用不返回该信息。
+
+### 5.2 success/failure 信号可用性
+- explicit_success_flag_available: **false** (info 为空，无 `info["success"]` 等字段)
+- explicit_failure_flag_available: **false**
+- allowed_info_fields: [] （info 始终为空）
+- forbidden_or_uncertain_info_fields: 任何 `info` 字段均不可用
+- 终止原因无法直接从返回数据中读得，但可以通过**间接推断**获得：
+  - **摔倒推断**：若 `terminated=True` 且 `next_obs[0]` (hull_angle) 绝对值较大、`next_obs[3]` (vertical_speed) 出现大幅负值、`next_obs[1]` (hull_angular_velocity) 突发变化，且双腿接触标志可能同时为 0，则极有可能是摔倒。
+  - **到达终点推断**：若 `terminated=True` 且上述摔倒特征均未出现，hull_angle 保持较小、vertical_speed 接近 0、hull_angular_velocity 平缓，同时可能双腿接地，可推断为成功到达终点。注意，这种推断存在一定误判风险，需谨慎使用。
+
+因此，奖励函数中**不可依赖显式成功/失败标志**，可将推断结果作为条件信号使用（见后文 `role_to_signal_mapping` 中的 `derived_possible` 标注）。
+
+## 6. reward 函数接口契约
+函数签名：
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0)
+```
+
+允许使用：
+- `obs`: 上一步的观测（24维）
+- `action`: 上一步执行的动作（4维力矩）
+- `next_obs`: 当前步的观测（24维）
+- `info` 中**明确的允许字段**（本例允许字段为空，故 info 不可用）
+- `training_progress` 仅当 prompt 明确允许时才可用（此处未明确允许避免使用，但若需要也可作为辅助变量）。
+
+禁止使用：
+- `original_reward`
+- `official_reward`
+- 任何未声明的 info 字段
+- 未声明的 obs 切片
+
+## 7. 可用于奖励函数的信号
+- **position**: 无绝对位置，但可通过积分水平速度近似前进距离。
+- **velocity**: `horizontal_speed` (obs[2]) – 正向速度，用于前进奖励；`vertical_speed` (obs[3]) – 用于检测摔倒、异常跳跃；`hull_angular_velocity` (obs[1]) – 用于惩罚快速翻滚。
+- **orientation**: `hull_angle` (obs[0]) – 身体俯仰，惩罚倾斜。
+- **contact**: `leg_1_ground_contact` (obs[12]), `leg_2_ground_contact` (obs[13]) – 用于步态模式奖励（鼓励交替接触）。
+- **action/engine**: 动作力矩 `action[0..3]` – 用于能量效率惩罚（平方和）。
+- **other**:
+  - 关节角度/速度 (obs[4..11]) – 可用于关节限位或平滑性惩罚。
+  - lidar 读数 (obs[14..23]) – 原始地形高度信息，难以直接作为标量奖励，但可结合 `next_obs` 的稳定性变化形成衍生信号（实际很少直接使用）。
+  - **推断终止成功** (derived_possible): 基于 `next_obs` 中 hull_angle、vertical_speed、contact 等特征判断是否正常到达终点，可给出一次性终止奖励。
+
+## 8. 不确定或不可用的信号
+- 显式 `success` 标志：不可用
+- 显式 `failure` 标志：不可用
+- 绝对坐标（x 位置）：不可用
+- 累计前进距离（除非环境返回，实际无）：不可用
+- 地形全局信息（如剩余长度）：不可用
+- 其他 info 字段（如 reward components）：不可用
+- 原始奖励 `original_reward`：禁止使用
+- 训练进度 `training_progress`：未明确要求使用，谨慎使用
+
+## 9. 专家任务画像 expert_task_profile
+```yaml
+task_family: locomotion_continuous_control
+dynamics_subtype: planar_bipedal_gait
+control_type: continuous
+morphology:
+  body_type: bipedal_walker (two legs, each with hip and knee joints)
+  actuator_type: torque_controlled_motors (normalised range -1..1)
+  contact_structure: binary foot contacts (two feet)
+primary_objectives:
+  - maximise forward progression (integrated horizontal velocity)
+  - maintain upright stability (minimise hull tilt)
+  - minimise joint torque usage (energy efficiency)
+secondary_objectives:
+  - adapt gait to rough terrain using forward lidar scans
+  - achieve smooth, alternating step pattern
+main_failure_risks:
+  - falling over due to terrain obstacles or poor balance
+  - high energy, jerky actions that destabilise the robot
+  - failure to learn terrain-aware foot placement (lidar under‑
+
+
+
+# expert_reward_context.md
+
+# Expert Schema Context（非检索版）
+
+这份内容不是 RAG 检索结果，也不是按 benchmark 名称写死的奖励模板。它是给 Reward Generator 使用的固定专家 Schema：先读 environment_card.md 中的任务画像和奖励职责拆解，再从下面的小型公式算子库中选择合适数学形式。
+
+核心顺序必须是：
+
+```text
+环境事实 → 任务画像 → 奖励职责 reward roles → 职责-信号映射 → 公式算子 → reward code
+```
+
+---
+
+## 1. Expert Schema 使用规则
+
+- environment_card.md 中的任务画像和可用信号优先级最高。
+- 本文件只提供通用公式算子，不替代环境卡片。
+- 先选 role（任务需要什么类型的奖励信号），再选 signal（哪个观测维度承载这个 role），再选 formula operator（用什么数学形式表达），最后写代码。
+- 如果某个 role 需要的信号在观测空间中不可用，必须排除，不得硬写。
+- 如果任务画像与模板不完全一致，以 environment_card.md 的可用信号和禁止信号为准。
+- reward_v1 以主学习信号和必要的稳定/安全约束为重点。效率、能耗、复杂门控和动态权重可以在后续迭代中按需加入，但不应因"模板没列"而排除合理的设计。
+
+---
+
+## 2. 信号完备性自查清单
+
+在完成初始设计后，逐一检查以下信号类型是否被覆盖——不是每个任务都需要全部，但每一项的缺失应是有意选择：
+
+- **主进展信号**：agent 朝任务目标前进时是否获得正向反馈？该信号是否每步都有梯度？
+- **灾难性失败信号**：是否存在明确的终止惩罚（如摔倒、飞出边界）？如果观测中可推断失败状态，是否给予了足够强的负向信号？
+- **效率/代价信号**：连续动作空间中是否有能量消耗或控制代价约束？离散动作空间中是否有不必要的动作惩罚？
+- **任务完成信号**：终止条件中是否包含 success-like 条件？相应的观测是否可被用来构造任务完成的软近似信号？
+- **健康/稳定约束**：agent 是否因缺少姿态/速度/位置约束而产生不安全行为？
+
+---
+
+## 3. Formula Operator Library
+
+每个算子包含：数学形式、使用条件、适用证据。
+
+### 3.1 dense_state_signal
+数学形式：
+  - positive (线性): `w * signal`
+  - positive (凸化): `w * signal**2`
+  - penalty (二次): `-w * error**2`
+  - penalty (hinge): `-w * max(0, threshold - signal)` 或 `-w * max(0, signal - upper)`
+使用条件：该状态信号每步可观测，且与某项任务职责直接相关。
+适用证据：
+  - 凸化 → episode 长度正常但 score 停滞在低水平，且该信号的 episode_sum_mean 始终偏小（agent 满足于低水平稳态）。
+  - hinge → 约束组件的 active_rate≈100%（全时惩罚）但 terminated 率仍高，说明 agent 在安全范围内也被持续惩罚，需要只在越界时生效的 hinge。
+风险：线性正奖励在信号平台期无梯度；凸化权重过大可能诱导极端行为；hinge 的 threshold 需根据环境卡片的观测范围设定。
+
+### 3.2 improvement_delta
+数学形式：`old_measure - new_measure`（期望减少时）或 `next_value - current_value`（期望增加时）
+使用条件：obs 和 next_obs 中存在可比较的标量度量，该度量沿最优路径应单调变化。
+适用证据：有明确的进展度量（位置、距离、高度、角度等），且该度量的变化比瞬时速率更能反映真实进展。
+与 dense_state_signal 的选择：如果要鼓励"处于某种好状态"，用 `w * signal`。如果要鼓励"朝好方向改变"，用 delta。delta 的优势是 agent 无法在好状态上停滞不前，必须持续改善。适合：agent 当前的绝对状态值不能完全反映进展（如位置——站在原点不动 vs. 走到终点但位置绝对值可能相同）。
+注意：对观测中直接给出的速度信号（如 `horizontal_velocity`）不要做 delta——速度本身已经是变化率。对观测中的位置/角度/距离类信号优先考虑 delta。
+
+### 3.3 potential_based_shaping
+数学形式：`potential(next_obs) - potential(obs)`
+使用条件：(1) 任务有一个可量化的进展度量（如位置、距离、高度）；(2) 该度量沿最优路径应单调变化；(3) 能从观测中构造一个标量的 potential function。
+如何构造 potential：从观测中选择一个在任务完成时达到极值、且沿最优路径单调变化的信号（或信号组合）。potential 的计算只能依赖观测，不能依赖环境内部状态。
+与 improvement_delta 的关系：两者数学上等价。potential_based_shaping 的优势在于允许将多个信号编码到一个 potential 中（如同时考虑位置和姿态），而 improvement_delta 通常用于单个度量。
+风险：potential 若与任务目标不一致会系统性地误导策略。reward_v1 中如果存在天然的进展度量，优先使用 improvement_delta 的简单形式；当需要组合多个信号构造进展度量时，使用 potential_based_shaping。
+
+### 3.4 quadratic_penalty
+数学形式：`-w * error**2` 或 `-w * sum(action_i**2)`
+使用条件：约束信号连续可观测，惩罚不应压制主学习信号。用于轻量抑制——需要约束但不至于触发终止的行为。
+适用证据：某维度出现高频大幅波动或极端值但未触发终止。
+与 hinge 的选择：如果约束有明确的安全边界（如身体倾角超过 X 度必摔），用 hinge（3.1）。如果只是希望"越小越好"没有硬边界（如控制代价、小幅抖动），用 quadratic。
+风险：权重过大导致 agent 不敢行动。
+
+### 3.5 soft_health_gate
+数学形式：`main_reward * gate_factor`，gate_factor ∈ [0, 1] 在身体状态恶化时平滑衰减。
+  - 倒数门: `1 / (1 + k * abs(posture_error))`
+  - 线性衰减门: `max(0, min(1, (safe_bound - current) / margin))`
+使用条件：terminated 主要由健康/安全违规导致，且主奖励在失败回合中仍然显著为正。
+适用证据：terminated 率高（>50%）且主进展信号在失败回合的 episode_sum 仍 >0——agent 在"先冲后死"，需要在健康恶化时切断主奖励而非额外加罚。
+风险：gate 太严格抑制探索；衰减区间应设在"接近危险但尚未终止"的范围内。
+
+### 3.6 terminal_event
+数学形式：`if failure_condition: reward = -PENALTY`（硬覆盖 per-step 奖励），或 `if success_condition: reward = +BONUS`
+使用条件：(1) 存在可从观测推断的灾难性失败状态（如身体倾角超过阈值 + 接触地面）或任务完成状态；(2) 环境 info 为空因此无法直接读取终止原因。
+如何构造：不要依赖 info 字段判断终止原因。可从观测推断：摔倒 → hull_angle 突然偏转 + 身体位置急剧下降；到达终点 → 持续前进中 episode 突然终止（truncated）；出界 → 位置坐标超出有效范围。
+适用证据：agent 频繁触发某种终止模式，但当前奖励没有针对该模式提供差异化信号——比如所有终止回合 reward 都一样，agent 无法区分成功和失败。
+与 hinge/gate 的区别：hinge 在越界前提供连续梯度，gate 在恶化时衰减主信号。terminal_event 在事件发生的那一刻提供硬信号——没有梯度，但语义明确（"这就是你应该避免/追求的结果"）。
+
+### 3.7 action_efficiency
+数学形式：`-w * sum(|action_i|)` 或 `-w * sum(action_i**2)`
+使用条件：动作空间 ≥ 2 维连续控制，且任务包含隐含的效率需求（如 locomotion、manipulation）。
+适用证据：agent 学会完成任务但动作幅度异常大、能耗高——说明缺效率约束。通常系数较小（主信号 per-step 的 1-5%），避免压制探索。
+注意：离散动作空间通常不需要此算子，因为离散动作的选择隐含了代价。首次迭代可不加入，后续迭代若观察到无效动作频繁出现再考虑。
+
+### 3.8 joint_condition_proxy
+数学形式：`factor_1 * factor_2 * ...`（每个 factor 为连续 bounded 形式）或 `(f1 + f2 + ...) / n` 或 `(f1 * f2 * ...) ** (1/n)`
+使用条件：没有显式 success flag，但有连续信号可构造任务完成的软近似。
+适用证据：agent 能在各子条件分别取得进展但无法同时满足。
+风险：乘积塌缩（一个 factor→0 则整体→0）；用几何平均或算术平均可缓解。
+
+### 3.9 bounded_signal
+数学形式：`x / (1 + abs(x))` 或 `1 / (1 + k * abs(error))` 或 `max(0, 1 - abs(error) / threshold)`
+使用条件：原始信号可能过大、尺度不稳定，或信号容易被刷分。用于压缩极端值而非施加约束。
+与 hinge 的区别：bounded 是从两端压缩信号范围，hinge 是只在超出阈值时施加惩罚。如果目标是"值不应超过 X"，用 hinge；如果目标是"值不应该爆炸但无所谓具体范围"，用 bounded。
+
+### 3.10 preview_conditioned_reward
+数学形式：`main_reward * preview_factor`，preview_factor 基于观测中能反映**未来状态**的信号（如距离传感器、高度采样、前方地形探测），在不利前景下从 1 平滑衰减到下限。
+使用条件：(1) 观测中存在提供前方/未来信息的维度；(2) 该维度可以映射到"前景好/坏"的连续度量；(3) agent 的失败模式与"无法提前调整行为以应对即将到来的状态变化"相关。
+如何构造：从提供未来信息的观测中选择一个标量信号，设计一个在安全前景下接近 1、危险前景下接近下限（如 0.3-0.5）的衰减函数。下限不为零以避免完全抑制探索。
+适用证据：agent 在相似的瞬时状态下表现差异大（同样的速度/姿态，有时成功有时失败），说明当前状态本身不足以区分好坏——缺少关于"接下来会发生什么"的信息。
+与 soft_health_gate 的区别：gate 用当前的**身体状态**乘主奖励（"我已经歪了，别冲了"——被动响应）。preview 用**未来信息**乘主奖励（"前面是坑，别冲了"——主动预判）。两者可以共存：`main_reward * health_gate * preview_factor`。
+风险：preview 信号若有噪声会导致主奖励波动；衰减下限设太低会抑制必要探索。
+
+---
+
+## 4. 迭代修改时的算子切换指南
+
+以下映射帮助 reflection agent 从"训练反馈证据"定位到合适的算子变换。
+以数学语义和训练表现证据为准，不要求组件名完全匹配。
+
+| 当前形态 | 证据模式 | 目标算子 | 变换要点 |
+|---|---|---|---|
+| 线性正奖励 `w * signal` | score 停滞在低水平，signal 正值但偏小 | dense_state_signal (凸化) | 改用 `signal**2`，保持系数使量级可比 |
+| 全时二次惩罚 `-w * error**2` | 惩罚 active_rate≈100% 但 terminated 率仍高 | dense_state_signal (hinge) | 改 `max(0, threshold - signal)`，threshold 设在终止边界的60-80% |
+| 独立约束惩罚 + 高 terminated | terminated 主因是某状态越界，惩罚已加但无效 | soft_health_gate | 把该状态做成 gate 乘到主奖励上 |
+| 稀疏二值 proxy | active_rate < 5%，episode 很短 | joint_condition_proxy (连续化) | 把二值条件换成连续 bounded factor |
+| 乘积 proxy 经常塌缩为 0 | 多个 factor 中总有一个趋近 0 | joint_condition_proxy (几何平均) | 用 `(f1 * f2 * ...) ** (1/n)` 替代裸乘积 |
+| 缺少灾难性失败信号 | 终止率高且失败回合 reward 非负 | terminal_event | 从观测推断失败状态，加入硬覆盖惩罚 |
+| 缺少任务完成信号 | agent 持续前进但 episode 在无摔倒情况下终止 | terminal_event 或 improvement_delta | 用位置 delta 做正向奖励，或在确认可达终点时加入软完成 bonus |
+
+
+
+
+
+# Fresh Restart Evidence
+
+- target_score: 300.000
+- best_score_so_far: -18.010
+
+## Tried component structures
+
+| structure | attempts | best_score | latest_score | status |
+|---|---:|---:|---:|---|
+| action_efficiency_penalty + progress_reward + stability_penalty | 1 | -18.010 | -18.010 | unsolved |
+| action_efficiency_penalty + angular_velocity_penalty + progress_reward | 1 | -36.960 | -36.960 | unsolved |
+| action_efficiency_penalty + angular_velocity_penalty + progress_reward + vertical_velocity_penalty | 1 | -36.960 | -36.960 | unsolved |
+| action_efficiency_penalty + angular_velocity_penalty + progress_reward + stability_penalty | 1 | -50.600 | -50.600 | unsolved |
+
+## Previous interventions
+
+- No structured intervention fields were available in the historical responses.
+
+## Restart instruction
+
+The previous search has stagnated. Propose a materially different design hypothesis, not merely a renamed or trivially rescaled copy.
+Compare the tried structures and their scores before choosing the next direction.
+If you continue a previous structure family, state what new evidence justifies it and change its mathematical mechanism or temporal semantics.
+Expert skeletons are design primitives and risk hints, not a closed candidate list. You may combine, transform, or create a new signal using only declared environment inputs.

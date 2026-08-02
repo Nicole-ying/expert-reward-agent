@@ -1,0 +1,11 @@
+# Subagent Research Signal
+
+**Key Findings**: Mean score 2.304, terminated 20/20, len 506.35. Reward dominated by contact_reward (87.5% signed share) despite only 5.8% active. Progress active 99.8% but tiny mean (0.0305). Angle_penalty always negative, landing_reward weak.
+
+**Component Anomalies**: contact_reward: sparse (5.8% active) but 87.5% signed share, magnitude scale (5.0) dwarfs others. progress: high active rate, low contribution. angle_penalty: always on, negative, small. landing_reward: 98.4% active but trivial magnitude.
+
+**Training Dynamics**: No checkpoint snapshots; only final policy stats. Trend information missing.
+
+**Signal Quality**: Sparse contact signal creates credit assignment challenge; other incentives negligible. No intermediate shaping toward landing pad, only terminal contact bonus. Scale mismatch: contact 5.0 vs progress ~0.03 mean.
+
+**Evidence Confidence**: `medium`

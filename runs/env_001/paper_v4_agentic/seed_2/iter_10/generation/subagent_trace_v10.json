@@ -1,0 +1,67 @@
+{
+  "turns_used": 6,
+  "signal": {
+    "key_findings": "Automatic fallback after 5 turns without submit. Raw data: [inspect_component_dynamics]: (no monitor snapshots — training may not have completed)\n[inspect_training_feedback]: # Training Feedback\n\n## Final-policy outcome\nscore=145.891679, len=1000.000000, term",
+    "component_anomalies": "Subagent exhausted turns without explicit submission.",
+    "training_dynamics": "No temporal analysis available.",
+    "signal_quality": "No signal quality assessment available.",
+    "confidence": "low"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 543
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 2797
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 820
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {},
+      "validation_errors": [
+        "missing required field: key_findings",
+        "missing required field: component_anomalies",
+        "missing required field: training_dynamics",
+        "missing required field: signal_quality",
+        "confidence must be low/medium/high"
+      ]
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "All 20 eval episodes run full 1000 steps (0/20 terminated, 20/20 truncated). C_landing dominates the reward landscape at 93.7% signed share (episode sum 99.43) vs A_progress_gated at just 5.2% (5.57). Per-step generated reward is 0.0918, with C contributing 0.0819 (~89%). The agent never lands despite C being the dominant signal.",
+        "component_anomalies": "C_landing_steady has 71.8% active rate yet produces 93.7% of reward — it fires frequently but never drives termination. The contact_factor AND-gate (both legs >0.5) is likely blocking the full landing bonus. A_progress_gated is effectively irrelevant at 5.2% share despite 100% active rate, rendering the progress potential negligible for shaping.",
+        "training_dynamics": "No monitor snapshots available. The final-policy composition shows C_landing has completely taken over the reward budget. The agent appears stuck in a local optimum: it gets partial C credit (dist_factor, speed_factor, angle_factor) without ever satisfying the contact AND-condition needed to actually land and terminate.",
+        "signal_quality": "The landing signal C has unreachable attractor: contact_factor requires simultaneous left_contact>0.5 AND right_contact>0.5, which the policy never achieves. Meanwhile, soft factors (distance, speed, angle) in C provide enough reward (~0.08/step) to sustain the policy without landing. The progress signal A is too weak (×10 scaling × ~0.6 gate ≈ 0.01/step) to compete.",
+        "confidence": "high"
+      },
+      "validation_errors": [
+        "signal too long (1372 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 5,
+      "fallback_signal": true
+    }
+  ],
+  "signal_produced": true
+}
