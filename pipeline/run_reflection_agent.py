@@ -106,6 +106,99 @@ def _build_cumulative_record(run_root, prefix, seed, current_iteration, memory_m
     return "\n".join(lines)
 
 
+def _extract_component_blocks(code: str):
+    """Extract per-component assignment expressions from a reward function."""
+    comps = {}
+    m = re.search(r'components\s*=\s*\{([^}]+)\}', code, re.DOTALL)
+    if not m:
+        return comps
+    var_to_name = {}
+    for vm in re.finditer(r'"([a-z_]+)"\s*:\s*(\w+)', m.group(1)):
+        var_to_name[vm.group(2)] = vm.group(1)
+    code_before = code[:m.start()]
+    lines_before = code_before.split('\n')
+    for var, name in var_to_name.items():
+        for line in reversed(lines_before):
+            s = line.strip()
+            if s.startswith(f"{var} =") or s.startswith(f"{var}="):
+                comps[name] = s
+                break
+        if name not in comps:
+            comps[name] = f"(var={var})"
+    return comps
+
+
+def _build_component_evolution(run_root, prefix, seed, current_iter):
+    """Component evolution: iter_01 full code, then per-iter snapshots with score/len/best/restart."""
+    try:
+        base = Path(run_root) / prefix / f"seed_{seed}"
+        if current_iter < 2:
+            return ""
+
+        # Read all reward versions + scores
+        versions = {}
+        scores = {}
+        for i in range(1, current_iter):
+            f = base / f"iter_{i:02d}" / "generation" / f"reward_v{i}.py"
+            ts = base / f"iter_{i:02d}" / "training" / "training_summary.json"
+            if f.exists():
+                versions[i] = f.read_text(encoding="utf-8")
+            if ts.exists():
+                d = json.loads(ts.read_text(encoding="utf-8"))
+                ee = d.get("external_eval", d)
+                rewards = ee.get("episode_rewards", [])
+                lengths = ee.get("episode_lengths", [])
+                if rewards:
+                    scores[i] = (sum(rewards) / len(rewards), sum(lengths) / len(lengths))
+
+        if not versions:
+            return ""
+
+        # Determine best score
+        best_score = max(v[0] for v in scores.values()) if scores else None
+
+        # Extract components per iteration
+        iter_comps = {i: _extract_component_blocks(code) for i, code in versions.items()}
+        all_comps = sorted(set().union(*[set(c.keys()) for c in iter_comps.values()]))
+
+        lines = ["# 组件演化", ""]
+
+        # Baseline: iter_01 full code
+        if 1 in versions:
+            sc = scores.get(1, ("?", "?"))
+            lines.append(f"## 基线 iter_01 (score={sc[0]:.1f}, len={sc[1]:.0f})")
+            lines.append("```python")
+            lines.append(versions[1].strip())
+            lines.append("```\n")
+
+        # Per-iteration snapshot
+        prev_comps = iter_comps.get(1, {})
+        for i in sorted(versions.keys()):
+            if i == 1:
+                continue
+            comps = iter_comps[i]
+            changed = [n for n in all_comps if comps.get(n) != prev_comps.get(n)]
+            sc = scores.get(i, ("?", "?"))
+            marks = []
+            if best_score and sc[0] and sc[0] >= best_score:
+                marks.append("BEST")
+            # Detect restart: all component names changed vs previous
+            if set(comps.keys()) != set(prev_comps.keys()):
+                marks.append("RESTART")
+            tag_str = f" [{', '.join(marks)}]" if marks else ""
+            lines.append(f"## iter_{i:02d} (score={sc[0]:.1f}, len={sc[1]:.0f}){tag_str}")
+            for name in all_comps:
+                expr = comps.get(name, "(已删除)")
+                tag = "修改" if name in changed else "未变"
+                lines.append(f"- **{name}**: `{expr}`  [{tag}]")
+            lines.append("")
+            prev_comps = comps
+
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def _build_component_delta(run_root, prefix, seed, current_iter):
     """Build before/after component comparison for the current edit.
 
@@ -269,7 +362,7 @@ def _compact_route_context(cfg, environment_card_md, expert_context_md=""):
     return "\n".join(compact)
 
 
-def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md="", cfg=None, expert_context_md="", cumulative_record="", component_delta="", is_rebuild=False, research_signal=""):
+def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md="", cfg=None, expert_context_md="", cumulative_record="", component_evolution="", component_delta="", is_rebuild=False, research_signal=""):
     """Assemble the reflection agent's user prompt — focused, no generic templates."""
     parts = []
 
@@ -307,6 +400,8 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environm
     else:
         parts.append("# 3. 累积迭代记录\n（第一轮反思，无历史记录）")
 
+    if component_evolution:
+        parts.append(component_evolution)
     if component_delta:
         parts.append(component_delta)
     else:
@@ -526,11 +621,13 @@ def run_reflection_agent(
         (run_dir / sub).mkdir(parents=True, exist_ok=True)
 
     reflection_mode = ablation_cfg.get("reflection_mode", "structured")
-    prompt_path = (
-        "prompts/reflection_agent_unconstrained_prompt.md"
-        if reflection_mode == "unconstrained"
-        else "prompts/reflection_agent_prompt.md"
-    )
+    prompt_path = ablation_cfg.get("reflection_prompt_path")
+    if not prompt_path:
+        prompt_path = (
+            "prompts/reflection_agent_unconstrained_prompt.md"
+            if reflection_mode == "unconstrained"
+            else "prompts/reflection_agent_prompt.md"
+        )
     system_prompt = read_text(prompt_path)
     previous_code = read_text(previous_reward_path)
     feedback_md = read_text(str(Path(train_run_dir) / "training_feedback.md"))
@@ -581,9 +678,13 @@ def run_reflection_agent(
                 cfg["experiment"]["run_root"], prefix, seed_str, current_iter, memory_md
             )
 
-    # Build component delta from current vs previous iteration
+    # Build component evolution + numerical delta
+    component_evolution = ""
     component_delta = ""
     if not validation_retry and prefix and seed_str and current_iter > 1:
+        component_evolution = _build_component_evolution(
+            cfg["experiment"]["run_root"], prefix, seed_str, current_iter
+        )
         component_delta = _build_component_delta(
             cfg["experiment"]["run_root"], prefix, seed_str, current_iter
         )
@@ -639,7 +740,7 @@ def run_reflection_agent(
             "Return a complete reward function whose executable code is materially different from every historical reward. "
             "Do not merely rename variables or comments.\n\n"
             f"# Rejected duplicate draft\n```python\n{duplicate_draft}\n```\n\n"
-        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_delta, is_rebuild, research_signal)
+        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_evolution, component_delta, is_rebuild, research_signal)
     elif validation_retry:
         failed_draft_path = run_dir / f"reward_{reward_version}.md"
         failed_draft = read_text(failed_draft_path) if failed_draft_path.exists() else ""
@@ -649,9 +750,9 @@ def run_reflection_agent(
             "这是代码格式修复，不要重新诊断、不要调用工具、不要改变原定修改方向。"
             "直接输出修复后的完整 Python 代码。\n\n"
             f"# 被截断或无效的上一版草稿\n{failed_draft}\n\n"
-        ) + build_user_prompt(feedback_md, "", previous_code, best_code, environment_card_md, cfg, "", cumulative_record, "", False, research_signal)
+        ) + build_user_prompt(feedback_md, "", previous_code, best_code, environment_card_md, cfg, "", cumulative_record, component_evolution, "", False, research_signal)
     else:
-        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_delta, is_rebuild, research_signal)
+        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_evolution, component_delta, is_rebuild, research_signal)
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_reflection_agent.input.md", user_prompt)
     record_prompt(run_dir, "agent_reflection", system_prompt, user_prompt)
