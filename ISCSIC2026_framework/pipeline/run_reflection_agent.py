@@ -114,8 +114,12 @@ def _build_component_delta(run_root, prefix, seed, current_iter):
     Only reports evidence — does NOT suggest what to do next.
     """
     try:
-        prev_dir = Path(run_root) / prefix / f"seed_{seed}" / f"iter_{current_iter-1:02d}" / "training"
-        curr_dir = Path(run_root) / prefix / f"seed_{seed}" / f"iter_{current_iter:02d}" / "training"
+        # current_iter is the iteration being GENERATED (training hasn't run yet).
+        # Compare the just-completed iteration (N-1) vs the previous one (N-2).
+        if current_iter < 3:
+            return ""  # need at least iter1 and iter2 training data
+        prev_dir = Path(run_root) / prefix / f"seed_{seed}" / f"iter_{current_iter-2:02d}" / "training"
+        curr_dir = Path(run_root) / prefix / f"seed_{seed}" / f"iter_{current_iter-1:02d}" / "training"
 
         prev_ts = prev_dir / "training_summary.json"
         curr_ts = curr_dir / "training_summary.json"
