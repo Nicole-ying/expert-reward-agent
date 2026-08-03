@@ -1,5 +1,8 @@
 extends: env001_deepseek_rag.yaml
 
+initial_generation:
+  use_expert_context: false
+
 iteration:
   experiment_prefix: paper_v5
   total_rounds: 10
@@ -9,6 +12,9 @@ ablation:
   disable_memory: false
   feedback_mode: structured
   reflection_mode: structured
+
+subagent_investigator:
+  enabled: true
 
 subagent_investigator:
   enabled: true
