@@ -1,12 +1,5 @@
 \section{CREATE}
-CREATE adopts a two-level architecture consisting of an outer reward-engineering agent and an underlying reinforcement-learning (RL) agent, as illustrated in Fig.~\ref{fig:framework}. The RL agent interacts with the environment and learns a policy under the current generated reward. The outer CREATE agent treats each completed policy-training and native-evaluation run as one reward-design round, calls diagnostic tools to observe training evidence, reflects on the current reward design, and edits the reward program. The resulting observe--reflect--act loop is written as
-\begin{equation}
-O_t=\Phi_{\mathcal T}(\mathcal D_t),\qquad
-(H_t,A_t)=\Psi(R_t,O_t,M_t,B_t),\qquad
-R_{t+1}=\mathcal U(R_t,A_t),
-\label{eq:create_loop}
-\end{equation}
-where the training record $\mathcal D_t$ is transformed into observation $O_t$ through tool-augmented diagnosis. CREATE then combines $O_t$ with the current reward $R_t$, intervention memory $M_t$, and best-reward archive $B_t$ to produce structured reflection $H_t$, reward action $A_t$, and the next executable reward program $R_{t+1}$.
+CREATE adopts a two-level architecture consisting of an outer reward-engineering agent and an underlying reinforcement-learning (RL) agent, as illustrated in Fig.~\ref{fig:framework}. The RL agent interacts with the environment and learns a policy under the current generated reward. The outer CREATE agent treats each completed policy-training and native-evaluation run as one reward-design round, calls diagnostic tools to observe training evidence, reflects on the current reward design, and edits the reward program.
 
 \begin{figure*}[!t]
 \centering
@@ -14,6 +7,15 @@ where the training record $\mathcal D_t$ is transformed into observation $O_t$ t
 \caption{Overview of CREATE. The outer reward-engineering agent observes training evidence produced by the underlying RL agent, reflects on the current reward design, and performs semantic-localized reward editing. Persistent lineage memory records intervention outcomes, while the best archive retains the reward program with the highest native-task performance.}
 \label{fig:framework}
 \end{figure*}
+
+The resulting observe--reflect--act loop is written as
+\begin{equation}
+O_t=\Phi_{\mathcal T}(\mathcal D_t),\qquad
+(H_t,A_t)=\Psi(R_t,O_t,M_t,B_t),\qquad
+R_{t+1}=\mathcal U(R_t,A_t),
+\label{eq:create_loop}
+\end{equation}
+where the training record $\mathcal D_t$ is transformed into observation $O_t$ through tool-augmented diagnosis. CREATE then combines $O_t$ with the current reward $R_t$, intervention memory $M_t$, and best-reward archive $B_t$ to produce structured reflection $H_t$, reward action $A_t$, and the next executable reward program $R_{t+1}$.
 
 \subsection{Task Understanding and Reward Initialization}
 Given a natural-language task description, the environment observation/action interface, and reward-code constraints, CREATE identifies the principal behavioral semantics and instantiates them as named reward components. The initial reward is
