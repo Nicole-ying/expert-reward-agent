@@ -1,0 +1,62 @@
+\section{CREATE Method}
+CREATE is a two-timescale agent system. The inner RL agent acts at environment time steps under the current generated reward, whereas the outer reward-engineering agent acts once per completed policy-training and native-evaluation cycle. As illustrated in Fig.~\ref{fig:create_framework}, the outer agent follows an observe--reflect--act loop:
+\begin{equation}
+\begin{aligned}
+O_t &= \Phi_{\mathcal T}(\mathcal D_t), &
+H_t &= \mathcal R(R_t,O_t,M_t),\\
+A_t &= \mathcal P(H_t), &
+R_{t+1} &= \mathcal U(R_t,A_t).
+\end{aligned}
+\label{eq:agent_loop}
+\end{equation}
+Here, the diagnostic subagent obtains observation $O_t$ from the training record $\mathcal D_t$ through designated evidence analyzers; reflection $H_t$ converts the observation and intervention history $M_t$ into a reward hypothesis; action $A_t$ specifies the selected edit; and $\mathcal U$ produces the next executable reward program. The language-model parameters remain fixed throughout this process.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.98\textwidth]{create_framework.pdf}
+\caption{CREATE's two-timescale reward-engineering loop. The outer agent observes evidence produced by inner policy learning, reflects over one principal reward semantic, executes a bounded reward edit, records the verified transition, and preserves the best reward separately.}
+\label{fig:create_framework}
+\end{figure*}
+
+\subsection{Task Understanding and Initial Reward Generation}
+The task interface contains the natural-language objective, accessible observations and actions, and reward-code constraints. The initializer identifies a compact set of behavior semantics and implements each semantic as a named reward component. The initial reward is
+\begin{equation}
+R_0(s,a,s')=\sum_{i=1}^{m_0}w_i^{(0)}r_i^{(0)}(s,a,s'),
+\label{eq:initial_reward}
+\end{equation}
+where a component can represent progress, stability, task events, safety, or control cost. Named components are logged independently during training, so the same semantic decomposition supports both reward execution and later diagnosis. The generated program is checked against the environment interface before policy training; the exact prompt, function signature, and validation rules are provided in the supplementary material.
+
+\subsection{Training-Evidence-Driven Observe--Reflect--Act}
+At iteration $t$, the generated reward is used to train the inner policy, while an unmodified environment objective is used for evaluation:
+\begin{equation}
+\begin{aligned}
+\pi_t &= \arg\max_{\pi}\;\mathbb E_{\tau\sim\pi}
+\left[\sum_{k=0}^{H-1}\gamma^kR_t(s_k,a_k,s_{k+1})\right],\\
+J_t &= \frac{1}{N}\sum_{n=1}^{N}\sum_{k=0}^{H_n-1}
+ r_{\mathrm{env}}(s_k^{(n)},a_k^{(n)},s_{k+1}^{(n)}).
+\end{aligned}
+\label{eq:train_eval}
+\end{equation}
+This separation prevents the generated reward from serving as its own success criterion. The training record contains native-task outcomes, episode and termination summaries, runtime status, named-component activation and scale, temporal component dynamics, and differences from the preceding reward version. Designated analyzers expose these records to the diagnostic subagent, which reports evidence rather than editing instructions.
+
+Component statistics provide diagnostic cues rather than deterministic rules. A persistently inactive term may indicate an unreachable event, restrictive gate, or overly sparse form. A frequently active term with excessive magnitude may dominate the learning signal, whereas frequent activation with weak contribution may indicate insufficient scale, saturation, or an uninformative mathematical form. The reflection module combines these cues with policy outcomes, training dynamics, reward source code, and prior interventions to infer the principal reward semantic requiring modification.
+
+\subsection{Semantically Localized Reward Action and Selection}
+CREATE commits each ordinary revision to one principal reward semantic. The action is represented by
+\begin{equation}
+A_t=(q_t,\ell_t,\Delta_t),
+\qquad
+\operatorname{supp}(\Delta_t)\subseteq\mathcal C(q_t),
+\label{eq:semantic_action}
+\end{equation}
+where $q_t$ is the selected semantic and $\mathcal C(q_t)$ contains the components and parameters that implement it. A semantic usually corresponds to one named component, so an edit may add or remove that component, adjust its weight or gate, or replace its mathematical form. When several components jointly express the same semantic, their weights or forms may be adjusted together to restore balance. The constraint therefore applies to the edit's design intent rather than to its number of changed lines.
+
+The planner uses three repair levels. L1 calibrates coefficients, thresholds, or gates while preserving the component form. L2 adds, removes, or refactors a component while preserving the intended behavior semantic. L3 replans the reward structure after repeated local failure. Each completed transition stores the observation, diagnosed semantic, edit level, predicted change, and subsequent outcome in intervention memory, enabling later decisions to compare expected and observed effects without asserting strict causal identification.
+
+Because reward evolution is non-monotonic, the best archive is maintained separately from the active lineage. After at most $K$ reward evaluations, the returned program is
+\begin{equation}
+t^*=\arg\max_{0\leq t<K}J_t,
+\qquad R^*=R_{t^*}.
+\label{eq:best_reward}
+\end{equation}
+The archive stores the complete executable reward and its native-evaluation record, whereas intervention memory preserves how the active reward changed. The selected reward is subsequently retrained and evaluated with independent seeds in the experimental protocol.
