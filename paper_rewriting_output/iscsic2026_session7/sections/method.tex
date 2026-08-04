@@ -1,77 +1,51 @@
 \section{CREATE}
-\subsection{Reward Channels and Agent State}
-Let $R_t$ denote the generated reward program at iteration $t$. A policy $\pi_t$ is trained for a fixed interaction budget $B$ using only the generated reward $r_{R_t}$. A separate evaluator uses the unmodified environment reward $r_{\rm env}$:
+CREATE adopts a two-level architecture consisting of an outer reward-engineering agent and an underlying reinforcement-learning (RL) agent, as illustrated in Fig.~\ref{fig:framework}. The RL agent interacts with the environment and learns a policy under the current generated reward. The outer CREATE agent treats each completed policy-training and native-evaluation run as one reward-design round, calls diagnostic tools to observe training evidence, reflects on the current reward design, and edits the reward program. The resulting observe--reflect--act loop is written as
 \begin{equation}
-\pi_t=\operatorname{PPO}(\mathcal{E},R_t;B),\qquad
-J_t=\frac{1}{N}\sum_{i=1}^{N}\sum_{k=0}^{H_i-1}r_{\rm env}^{(i,k)}.
-\label{eq:channels}
+O_t=\Phi_{\mathcal T}(\mathcal D_t),\qquad
+(H_t,A_t)=\Psi(R_t,O_t,M_t,B_t),\qquad
+R_{t+1}=\mathcal U(R_t,A_t),
+\label{eq:create_loop}
 \end{equation}
-This separation prevents the reward-design loop from evaluating a reward with its own generated signal.
+where the training record $\mathcal D_t$ is transformed into observation $O_t$ through tool-augmented diagnosis. CREATE then combines $O_t$ with the current reward $R_t$, intervention memory $M_t$, and best-reward archive $B_t$ to produce structured reflection $H_t$, reward action $A_t$, and the next executable reward program $R_{t+1}$.
 
-The persistent agent state is
-\begin{equation}
-X_t=\{R_t,J_t,T_t,M_{t-1},A^*_{t-1}\},
-\end{equation}
-where $T_t$ contains episode length, termination, runtime errors, and named reward-component statistics; $M_{t-1}$ is the revision history; and $A^*_{t-1}$ is the best archived reward-policy pair. For a component $j$, the summary includes its nonzero activation rate and absolute magnitude share. These measurements are treated as diagnostic evidence, not as causal proof.
-
-\begin{figure*}[t]
+\begin{figure*}[!t]
 \centering
 \includegraphics[width=0.98\textwidth]{create_framework.pdf}
-\caption{CREATE places an autonomous reward-design loop above the policy learner. The generated reward is used only for PPO training; the environment-native reward is used only for evaluation. Training evidence and native-task performance drive the next reward revision, while lineage memory and a best archive preserve the evolution process.}
+\caption{Overview of CREATE. The outer reward-engineering agent observes training evidence produced by the underlying RL agent, reflects on the current reward design, and performs semantic-localized reward editing. Persistent lineage memory records intervention outcomes, while the best archive retains the reward program with the highest native-task performance.}
 \label{fig:framework}
 \end{figure*}
 
-\subsection{Feedback-Guided Reward Revision}
-The agent converts the state into a compact feedback record $F_t$ containing the threshold gap, termination pattern, component activation and scale, the previous revision, and the observed score change. Table~\ref{tab:evidence} summarizes the information contract. Raw policy trajectories and the native reward implementation are not exposed to the LLM; the agent receives aggregated measurements and the generated reward source. This keeps the design decision grounded in observed training outcomes while preserving the benchmark objective as an external evaluator.
-
-\begin{table}[t]
-\caption{Information contract of the reward-design agent.}
-\label{tab:evidence}
-\centering
-\scriptsize
-\setlength{\tabcolsep}{2.4pt}
-\begin{tabular}{p{1.30cm}p{3.15cm}p{2.55cm}}
-\toprule
-Source & Agent-visible fields & Decision role \\
-\midrule
-Training & Component activation/scale, episode length, termination, runtime errors & Detect inactive, dominant, or invalid terms \\
-Native eval. & Mean task return, range, threshold gap & Measure control-task progress \\
-Lineage & Previous reward, declared revision, score response & Avoid repeated or destructive edits \\
-Archive & Best reward and best native score & Protect the best discovered controller \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The update can be viewed as a supervisory control decision: the lower-level PPO learner maps observations to actions, whereas CREATE maps accumulated training evidence to a new learning objective. It therefore changes the policy-learning problem only between completed training runs, not the environment dynamics or the policy action at each time step.
-
-It then produces the next reward:
+\subsection{Task Understanding and Reward Initialization}
+Given a natural-language task description, the environment observation/action interface, and reward-code constraints, CREATE identifies the principal behavioral semantics and instantiates them as named reward components. The initial reward is
 \begin{equation}
-R_{t+1}=\mathcal{U}(R_t,F_t,M_{t-1}).
-\label{eq:update}
+R_0(s,a,s')=\sum_{i=1}^{m_0}w_i^{(0)}r_i^{(0)}(s,a,s'),
+\label{eq:reward_init}
 \end{equation}
-Ordinary revisions modify one declared target: coefficients or gates are tuned when the structure remains usable, while one component is refactored when its mathematical form provides an ineffective signal. A global redesign is permitted only after repeated local failure. This bounded update preserves an interpretable lineage without claiming that a single edit identifies a counterfactual cause.
+where each component $r_i^{(0)}$ represents a behavioral semantic, such as task progress, state stabilization, target events, or action cost, and $w_i^{(0)}$ determines its scale. Named components are logged independently while contributing to the total reward, enabling component-level diagnosis in later rounds. Generated code is checked for interface and execution validity before policy training; prompts and validation rules are provided in the supplementary material.
 
-The archive stores the best development result,
+\subsection{Training-Evidence Observation, Reflection, and Action}
+At iteration $t$, the underlying RL agent optimizes the generated reward, whereas the outer CREATE agent evaluates the resulting policy with the environment-native objective:
 \begin{equation}
-A_t^*=\arg\max_{1\leq q\leq t}J_q,
+\pi_t=\arg\max_{\pi}\;\mathbb E_{\tau\sim\pi}\!\left[\sum_{k=0}^{H-1}\gamma^kR_t(s_k,a_k,s_{k+1})\right],\qquad
+J_t=\frac{1}{N}\sum_{n=1}^{N}\sum_{k=0}^{H_n-1}r_{\rm env}^{(n,k)}.
+\label{eq:train_eval}
 \end{equation}
-and early stopping is applied after the configured task threshold is reached or when further revisions cease to improve the active lineage. Algorithm~\ref{alg:create} summarizes the loop.
+Thus, the generated reward shapes policy learning, while the native objective measures whether the learned behavior satisfies the task. The completed run produces $\mathcal D_t$, including episode outcomes, termination patterns, named-component activity and scale, and their changes over training. A diagnostic subagent queries these records through analysis tools and reports compact evidence to CREATE. Inactive components may indicate unreachable gates or sparse formulations; dominant components may overwhelm other objectives; and frequently active but weak components may require rescaling or reformulation. These patterns are diagnostic cues rather than fixed editing rules, leaving the reflection agent to infer interactions that are not captured by predefined heuristics.
 
-\begin{algorithm}[t]
-\caption{CREATE Reward Evolution}
-\label{alg:create}
-\begin{algorithmic}[1]
-\REQUIRE Environment $\mathcal{E}$, interface $I$, budget $B$, maximum rounds $K$, threshold $\theta$
-\STATE $R_1\leftarrow\textsc{Generate}(I)$; $M_0\leftarrow\emptyset$; $A_0^*\leftarrow\emptyset$
-\FOR{$t=1,\ldots,K$}
-\STATE $\pi_t,T_t\leftarrow\textsc{Train}(\mathcal{E},R_t,B)$
-\STATE $J_t,D_t\leftarrow\textsc{NativeEvaluate}(\mathcal{E},\pi_t)$
-\STATE $A_t^*\leftarrow\textsc{ArchiveBest}(A_{t-1}^*,R_t,\pi_t,J_t)$
-\IF{$J_t\geq\theta$ and stopping rule holds} \STATE \textbf{break} \ENDIF
-\STATE $F_t\leftarrow\textsc{Summarize}(T_t,D_t,M_{t-1})$
-\STATE $R_{t+1}\leftarrow\textsc{Revise}(R_t,F_t,M_{t-1})$
-\STATE $M_t\leftarrow\textsc{Record}(M_{t-1},R_t,F_t,R_{t+1},J_t)$
-\ENDFOR
-\RETURN $A_t^*$
-\end{algorithmic}
-\end{algorithm}
+CREATE then identifies one principal reward semantic and localizes the corresponding edit:
+\begin{equation}
+A_t=(q_t,\ell_t,\Delta_t),\qquad
+\operatorname{supp}(\Delta_t)\subseteq\mathcal C(q_t).
+\label{eq:semantic_edit}
+\end{equation}
+Here $q_t$ denotes the semantic under diagnosis, $\ell_t$ the edit level, and $\mathcal C(q_t)$ the components and parameters that implement that semantic. In most rounds, the action adds or removes one component, tunes its weight or gate, or changes its mathematical form. Related components may be adjusted jointly when they express the same semantic or require rebalancing, but independent design intents are not mixed within one ordinary revision. Level~1 calibrates coefficients, thresholds, and gates; Level~2 adds, removes, or refactors components while retaining the target semantic; Level~3 replans the reward structure after repeated local failure. This semantic-localized action space improves the traceability of reward interventions under stochastic and coupled RL training.
+
+After the next run, CREATE records the previous observation, diagnosed semantic, edit, expected change, and observed outcome in $M_t$. The record supports comparison across rounds and discourages repeated unsuccessful interventions. In parallel, $B_t$ preserves the complete reward program with the highest native-task score, preventing later regressions from overwriting a previously discovered solution.
+
+\subsection{Best-Reward Selection}
+Because reward evolution is not necessarily monotonic, CREATE returns the best program observed within the reward-evaluation budget $K$:
+\begin{equation}
+t^*=\arg\max_{0\leq t<K}J_t,\qquad R^*=R_{t^*}.
+\label{eq:best_reward}
+\end{equation}
+The selected reward is subsequently retrained and evaluated with independent policy and evaluation seeds to assess stability.
