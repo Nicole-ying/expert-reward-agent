@@ -1,0 +1,121 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+
+\title{Supplementary Material for ``CREATE: A Closed-Loop Reward Editing Agent with Training Evidence for Reinforcement Learning''}
+\author{Anonymous Authors}
+
+\begin{document}
+\maketitle
+
+\section{Detailed Experimental Protocol}
+Each reward candidate trains a freshly initialized PPO policy. LunarLander-v3 uses $10^6$ environment steps, four vectorized environments, 20 fixed search-evaluation episodes, and a native-fitness threshold of 200. BipedalWalker-v3 uses $5\times10^6$ steps and a threshold of 300. Every condition contains five seeds and at most ten complete reward evaluations. The generated reward is used only for policy optimization; candidate selection and reporting use the unmodified environment-native episodic return. Selected reward--policy pairs are evaluated for 100 episodes with seeds not exposed during search.
+
+All main comparisons use DeepSeek V4 Pro with the same environment facts, initial reward-generation interface, code validator, PPO settings, and maximum number of trained reward programs. The methods differ only in candidate dependence, accessible evidence, persistent state, and reward-editing constraints. Exact system prompts, model parameters, API provider, run dates, token usage, wall-clock time, and hardware identifiers should be inserted here from the frozen run manifests before submission.
+
+\section{Compared Conditions}
+\textbf{Single-shot generation} evaluates the first reward only. \textbf{Independent-10} trains ten unrelated initial rewards and selects the largest search fitness. \textbf{Stateless iterative revision} receives the current reward and current-round basic feedback but has no tool-organized evidence, persistent intervention memory, cross-round component comparison, hierarchical semantic edit policy, or best-reward context. \textbf{CREATE w/o evidence enrichment} disables the evidence-organizing subagent and processed component diagnostics while retaining memory and hierarchical semantic editing. \textbf{CREATE w/o hierarchical semantic editing} retains enriched evidence, memory, and the best archive but permits free multi-component revision. \textbf{CREATE} uses the complete loop.
+
+\section{Complete LunarLander Search Traces}
+The following tables reproduce the rounded search-fitness values used to design the main-paper plots. Final numerical tables should be regenerated directly from the unrounded JSON logs.
+
+\begin{table*}[t]
+\caption{Stateless iterative revision. Bold entries are lineage-wise maxima.}
+\centering
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrrrrr}
+\toprule
+Seed & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & Best\\
+\midrule
+0 & \textbf{25} & -99 & -394 & -353 & -91 & -28 & -123 & -123 & -118 & -119 & 25\\
+1 & -84 & -114 & -186 & -113 & -116 & -59 & \textbf{-5} & -113 & -126 & -7 & -5\\
+2 & -109 & -65 & -80 & -92 & -72 & -108 & -24 & -68 & \textbf{-10} & -119 & -10\\
+3 & \textbf{151} & -27 & -33 & -159 & -47 & -88 & -134 & -115 & -132 & -627 & 151\\
+4 & \textbf{59} & -118 & -119 & -116 & -115 & -124 & -122 & -119 & -90 & -72 & 59\\
+\bottomrule
+\end{tabular}}
+\end{table*}
+
+\begin{table*}[t]
+\caption{CREATE. A dash denotes stopping after the task was solved or after the configured post-solution criterion.}
+\centering
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrrrrr}
+\toprule
+Seed & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & Best\\
+\midrule
+0 & -70 & -129 & -26 & -120 & -124 & -18 & -389 & \textbf{224} & -612 & -- & 224\\
+1 & -43 & -18 & 28 & -29 & 120 & -17 & 24 & -31 & 168 & \textbf{241} & 241\\
+2 & -18 & \textbf{220} & 107 & -- & -- & -- & -- & -- & -- & -- & 220\\
+3 & -20 & 148 & -15 & \textbf{254} & 249 & 247 & -- & -- & -- & -- & 254\\
+4 & 140 & 114 & \textbf{206} & 206 & 110 & -- & -- & -- & -- & -- & 206\\
+\bottomrule
+\end{tabular}}
+\end{table*}
+
+\begin{table*}[t]
+\caption{CREATE without hierarchical semantic editing.}
+\centering
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrrrrr}
+\toprule
+Seed & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & Best\\
+\midrule
+0 & -122 & 108 & -121 & 14 & -118 & 16 & 16 & -115 & -115 & \textbf{170} & 170\\
+1 & -108 & -40 & -63 & \textbf{131} & -119 & -64 & -142 & -- & -- & -- & 131\\
+2 & -112 & -21 & \textbf{71} & -8 & -70 & -139 & -120 & -25 & -205 & -296 & 71\\
+3 & -10 & -64 & -21 & -123 & -104 & -123 & -122 & -5511 & -5511 & \textbf{59} & 59\\
+4 & -102 & -111 & 0 & \textbf{140} & -126 & -79 & 12 & -59 & -116 & -83 & 140\\
+\bottomrule
+\end{tabular}}
+\end{table*}
+
+\begin{table*}[t]
+\caption{CREATE without evidence enrichment.}
+\centering
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrrrrr}
+\toprule
+Seed & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & Best\\
+\midrule
+0 & -110 & -74 & -583 & 46 & -14 & 111 & 145 & \textbf{240} & 216 & -108 & 240\\
+1 & 40 & \textbf{170} & -9 & 110 & 34 & 35 & -115 & -138 & -95 & -80 & 170\\
+2 & -285 & -298 & -125 & -123 & -125 & -122 & -111 & \textbf{-110} & -110 & -111 & -110\\
+3 & -17 & \textbf{116} & -17 & -25 & -114 & -2471 & 2 & -123 & 114 & 115 & 116\\
+4 & -19 & -38 & 177 & 180 & 89 & 25 & 256 & \textbf{260} & 21 & -- & 260\\
+\bottomrule
+\end{tabular}}
+\end{table*}
+
+\begin{table*}[t]
+\caption{Independent-10. Columns denote unrelated initial candidates rather than revision rounds.}
+\centering
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrrrrr}
+\toprule
+Seed & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & Best\\
+\midrule
+0 & -105 & -116 & \textbf{-13} & -121 & -125 & -116 & -121 & -21 & -123 & -119 & -13\\
+1 & -123 & -121 & -121 & -122 & -115 & -25 & -115 & -123 & -120 & \textbf{171} & 171\\
+2 & -118 & -121 & -119 & -47 & -107 & -122 & -122 & \textbf{55} & -124 & -109 & 55\\
+3 & -122 & -117 & -123 & -121 & -117 & -119 & -120 & -112 & \textbf{-107} & -113 & -107\\
+4 & -118 & -125 & -112 & -115 & -115 & \textbf{-110} & -113 & -117 & -117 & -120 & -110\\
+\bottomrule
+\end{tabular}}
+\end{table*}
+
+\section{Representative Repair Record}
+The final supplement should reproduce the complete round-7 and round-8 seed-0 records: current and incumbent reward code, native evaluation summary, episode termination distribution, component episode sums, activation rates, magnitude shares, temporal statistics, the subagent evidence summary, the reward editor's selected semantic and intervention level, predicted next-run changes, validation output, and observed round-8 outcome. This record should establish the evidence--diagnosis--action--outcome chain without inferring component behavior from native fitness alone.
+
+\section{Reproducibility and Cost Reporting}
+The released supplement should report total trained candidates, total environment steps, LLM calls by role, input/output tokens, wall-clock time, hardware, and peak simultaneous candidate jobs. PPO's four vectorized environments are internal to one candidate-training job and should not be counted as four simultaneous reward candidates. OpenRouter or provider-specific model identifiers and routing settings should be frozen rather than using a moving ``latest'' alias.
+
+\end{document}
