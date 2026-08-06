@@ -1,5 +1,6 @@
 \section{CREATE}
-CREATE comprises an outer reward-editing agent and an underlying reinforcement-learning (RL) agent. The RL agent interacts with the environment and learns a policy under the current generated reward, whereas CREATE treats each completed policy-training and native-evaluation run as one reward-design round. As shown in Fig.~\ref{fig:create_framework}, tool-assisted evidence processing organizes the resulting records before the reward-editing agent diagnoses the current reward and executes a validated edit.
+\label{sec:method}
+CREATE comprises an outer reward-editing agent and an underlying RL agent. The RL agent interacts with the environment and learns a policy under the current generated reward, whereas CREATE treats each completed policy-training and native-evaluation run as one reward-design round. As shown in Fig.~\ref{fig:create_framework}, tool-assisted evidence processing organizes the resulting records before the reward-editing agent diagnoses the current reward and executes a validated edit.
 
 \begin{figure*}[!t]
 \centering
@@ -20,6 +21,7 @@ R_{t+1}&=\mathcal U(R_t,A_t),
 where the training record $\mathcal D_t$ is retrieved and compressed into observation $O_t$ through evidence tools. This processing stage organizes information but does not select a reward edit. The reward-editing agent combines $O_t$ with the current reward $R_t$, intervention memory $M_t$, and best archive $B_t$ to produce reflection $H_t$, reward action $A_t$, and the next executable reward program $R_{t+1}$.
 
 \subsection{Task Understanding and Reward Initialization}
+\label{sec:init}
 Given the task description, environment interface, and reward-code constraints, CREATE identifies the principal behavior semantics and instantiates them as named reward components. The initial reward is
 \begin{equation}
 R_0(s,a,s')=\sum_{i=1}^{m_0}w_i^{(0)}r_i^{(0)}(s,a,s'),
@@ -57,3 +59,8 @@ t^*=\arg\max_{0\leq t<K}J_t,
 \label{eq:best_reward}
 \end{equation}
 The selected reward--policy pair is subsequently evaluated on independent episode seeds to assess stability.
+
+\subsection{Summary}
+\label{sec:method_summary}
+
+Together, the three-stage architecture---evidence processing (Eq.~\ref{eq:agent_loop}), semantic diagnosis and bounded editing (Eq.~\ref{eq:semantic_action}), and intervention memory with best-reward selection (Eq.~\ref{eq:best_reward})---forms a closed diagnostic loop. Each completed policy-training run produces component-level evidence that reveals \emph{which} semantic failed and \emph{how}; the editor commits to a targeted intervention on that semantic alone; and the next training run measures whether the diagnosis was correct. Intervention memory preserves this chain across rounds, while the best archive guards against regression. The experiments in Section~\ref{sec:exp_procedure} and~\ref{sec:results} test whether this diagnostic architecture can convert failed policy training into reliable reward repair under a fixed evaluation budget.
