@@ -1,56 +1,56 @@
 \section{Experiments}
 \label{sec:experiments}
 
-\subsection{Protocol and Compared Conditions}
-LunarLander-v3 is the primary benchmark for the baseline and ablation study. BipedalWalker-v3 is used only as an additional cross-task validation of the complete CREATE workflow on continuous-action locomotion; we do not conduct baseline or ablation comparisons on that task. Every reward program trains a fresh PPO policy. LunarLander uses $10^6$ environment steps and BipedalWalker uses $5\times10^6$, with four vectorized environments inside each policy-training job. Each LunarLander condition contains five independent reward-search lineages and at most ten complete reward evaluations. BipedalWalker likewise uses five CREATE lineages. A complete evaluation comprises reward generation or revision, code validation, policy training, and native-task evaluation.
+\subsection{Experimental Design}
+LunarLander-v3 is the primary benchmark for baseline comparison and mechanism ablation. BipedalWalker-v3 is used only as an additional validation of the complete CREATE workflow under a different action space and control structure; no baseline or ablation comparison is conducted on that task. Every reward program trains a freshly initialized PPO policy. LunarLander uses $10^6$ environment steps per reward candidate and BipedalWalker uses $5\times10^6$, with four vectorized environments inside each policy-training job. Each condition contains five independent reward-search lineages and at most ten complete reward evaluations.
 
-The policy optimizes the generated reward, but candidate quality is measured only by the untouched environment reward. We call the mean undiscounted native episodic return over 20 fixed evaluation episodes the \emph{search fitness}. The largest value retained within a lineage is the \emph{best search fitness}. After reward selection, the returned policy is evaluated for 100 episodes whose seeds are not exposed during search; this value is the \emph{test fitness}. The task thresholds are 200 for LunarLander and 300 for BipedalWalker.
+The policy is optimized with the generated reward, whereas candidate quality is measured only by the untouched environment reward. We define \emph{search fitness} as the mean undiscounted native episodic return over 20 fixed evaluation episodes, and \emph{best search fitness} as the largest search fitness retained in a lineage. After selection, the returned policy is evaluated over 100 episodes whose seeds are not exposed during search; this is reported as \emph{test fitness}. The task thresholds are 200 for LunarLander and 300 for BipedalWalker.
 
-All LunarLander comparison conditions use the same DeepSeek V4 Pro backbone, environment description, initial-generation interface, code checks, and PPO budget. \emph{Single-shot generation} evaluates only the initial reward. \emph{Independent-10} spends ten policy-training evaluations on unrelated initial rewards. \emph{Stateless iterative revision} repeatedly receives the current reward and basic current-round feedback, but has no tool-organized evidence, persistent intervention memory, cross-round component comparison, or hierarchical semantic edit policy. The two ablations remove either evidence enrichment or hierarchical semantic editing while retaining the remaining CREATE loop. Full prompts, model parameters, PPO hyperparameters, per-seed trajectories, and component statistics are reserved for the supplementary material.
+All LunarLander conditions use the same DeepSeek V4 Pro backbone, environment description, reward-generation interface, code checks, and PPO budget. \emph{Single-shot generation} evaluates only the initial reward. \emph{Independent-10} spends ten reward evaluations on unrelated initial candidates. \emph{Stateless iterative revision} repeatedly revises the current reward from basic current-round feedback, but has no tool-organized evidence, persistent intervention memory, cross-round component comparison, or hierarchical semantic edit policy. The two ablations remove either evidence enrichment or hierarchical semantic editing while retaining the remaining CREATE loop. Full prompts, model settings, hyperparameters, and per-seed traces are provided in the supplementary material.
 
 \begin{table}[t]
-\caption{LunarLander-v3 reward search over five lineages. Fitness is mean $\pm$ sample standard deviation across lineage-wise best rewards.}
+\caption{LunarLander-v3 reward search over five lineages. Values are mean $\pm$ sample standard deviation of lineage-wise best search fitness.}
 \label{tab:lander_main}
 \centering
 \scriptsize
-\setlength{\tabcolsep}{2.5pt}
+\setlength{\tabcolsep}{2.3pt}
 \begin{tabular}{lccc}
 \toprule
-Condition & Budget & Best search fitness & Solved \\
+Condition & Budget & Best fitness & Solved \\
 \midrule
 Single-shot generation & 1 & $-2.21\pm73.38$ & $0/5$ \\
 Independent-10 & 10 & $-0.74\pm114.40$ & $0/5$ \\
-Stateless iterative revision & 10 & $44.0\pm65.9$ & $0/5$ \\
+Stateless revision & 10 & $44.0\pm65.9$ & $0/5$ \\
 CREATE w/o evidence enrichment & 10 & $134.97\pm148.43$ & $2/5$ \\
-CREATE w/o semantic hierarchy & 10 & $114.21\pm46.31$ & $0/5$ \\
+CREATE w/o hierarchical editing & 10 & $114.21\pm46.31$ & $0/5$ \\
 CREATE & 10 & $\mathbf{228.98\pm16.54}$ & $\mathbf{5/5}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Budget-Matched Reward Search}
-Table~\ref{tab:lander_main} separates three possible explanations for improvement. Single-shot generation never solves the task, showing that a plausible initial reward is not reliably learnable. Independent-10 also solves no lineage despite evaluating the same maximum number of reward programs as CREATE; its best candidate reaches only 171. Thus, spending the budget on unrelated generations does not substitute for learning from failed policy training.
+\subsection{Reward Search Under a Matched Training Budget}
+Table~\ref{tab:lander_main} separates the value of candidate count, repeated revision, and the complete closed loop. Single-shot generation never solves the task, showing that an initially plausible reward is not reliably learnable. Independent-10 also solves no lineage despite evaluating the same maximum number of reward programs as CREATE. Hence, breadth alone does not recover the information contained in failed policy training.
 
-Stateless iterative revision improves the mean best fitness to $44.0$, but still solves no lineage. In three of five seeds, the initial reward is already the lineage best, and in all five seeds the tenth revision is worse than the stored best. The revision sequence is therefore strongly non-monotonic and fails to accumulate progress. In contrast, CREATE solves all five seeds at rounds $8,10,2,4,$ and $3$, requiring 5.4 complete reward evaluations on average to first cross the threshold. Its lineage-wise best scores lie between 206.14 and 253.71, indicating both higher performance and substantially lower cross-seed dispersion.
+Stateless revision raises the mean lineage-wise best fitness to $44.0$, but still solves no seed. In three of five lineages, the initial reward is already the best version, and the final revision is worse than the stored best in all five. The process therefore produces non-monotonic rewrites without accumulating reliable progress. CREATE instead solves all five lineages at rounds $8,10,2,4,$ and $3$, requiring 5.4 complete reward evaluations on average to first cross the threshold. Its narrower cross-seed spread further indicates that the gain is not driven by a single favorable initialization.
 
 \begin{figure*}[t]
 \centering
 \IfFileExists{figures/fig2_main_results.pdf}{%
   \includegraphics[width=0.97\textwidth]{fig2_main_results.pdf}%
 }{%
-  \fbox{\parbox[c][3.15cm][c]{0.94\textwidth}{\centering
-  Reserved for Fig.~2: (a) mean best-so-far search fitness versus reward-evaluation budget; (b) Success@Budget; (c) five-seed best-fitness scatter for baselines, ablations, and CREATE.}}%
+  \fbox{\parbox[c][3.0cm][c]{0.94\textwidth}{\centering
+  Reserved for Fig.~2: (a) mean best-so-far search fitness versus reward-evaluation budget; (b) Success@Budget; (c) five-seed best-fitness scatter for all LunarLander conditions.}}%
 }
-\caption{Budget-matched LunarLander results. Best-so-far curves retain each lineage's incumbent; Success@Budget first checks the threshold per lineage and then averages the solved indicators. The scatter panel exposes the high variance hidden by aggregate means.}
+\caption{Budget-matched LunarLander results. Best-so-far curves retain each lineage's incumbent, Success@Budget is computed per lineage before averaging, and the scatter panel displays the full five-seed distribution.}
 \label{fig:main_results}
 \end{figure*}
 
-Fig.~\ref{fig:main_results}(a) should report best-so-far rather than the current reward, because CREATE deliberately permits failed exploratory edits while protecting the incumbent. Fig.~\ref{fig:main_results}(b) makes the budget effect explicit: CREATE reaches success rates of $0.2$, $0.4$, $0.6$, $0.8$, and $1.0$ by budgets $2$, $3$, $4$, $8$, and $10$, respectively, whereas all three baselines remain at zero. These results show that repeated LLM calls alone are insufficient; the training outcome must be converted into state that constrains the next reward action.
+Fig.~\ref{fig:main_results} should emphasize search behavior rather than repeat table entries. The best-so-far panel shows whether each additional training run contributes useful information; the Success@Budget panel shows how quickly that information becomes a task-solving reward; and the scatter panel exposes instability hidden by mean values. CREATE reaches success rates of $0.2$, $0.4$, $0.6$, $0.8$, and $1.0$ by budgets $2$, $3$, $4$, $8$, and $10$, whereas all three baselines remain at zero. This pattern supports the central claim that repeated LLM calls are insufficient unless training outcomes are converted into persistent state that constrains the next reward action.
 
-\subsection{Mechanism Ablations and Repair Trace}
-Removing evidence enrichment leaves the editor with native fitness, episode length, termination statistics, and component episode sums, but disables the tool-using evidence organizer and omits activation rates, magnitude shares, temporal trends, and structured cross-round evidence. This variant solves two seeds, reaching 240 and 260, yet one seed remains negative throughout all ten rounds. Its $148.43$ standard deviation shows that basic component values can occasionally support repair but do not provide reliable failure localization.
+\subsection{Mechanism Analysis}
+Removing evidence enrichment leaves the editor with native fitness, episode length, termination statistics, and component episode sums, but removes the tool-using evidence organizer, activation rates, magnitude shares, temporal trends, and structured cross-round summaries. This variant solves two seeds but exhibits very high dispersion, including one lineage that remains negative throughout all ten rounds. Basic component values can therefore support occasional repair, but do not reliably distinguish an inactive, weak, saturated, or behaviorally unreachable reward term.
 
-Removing hierarchical semantic editing retains enriched evidence, memory, and the best archive, but permits unconstrained multi-component rewrites. It reaches moderate scores in several seeds but solves none; one lineage collapses to approximately $-5511$ in two consecutive rounds. Full evidence is therefore not sufficient when a single training outcome corresponds to several unrelated code changes. CREATE instead selects one principal semantic and chooses an L1 parameter repair, L2 component refactor, or exceptional L3 redesign, making the next expensive training run a more focused test of one intervention hypothesis.
+Removing hierarchical semantic editing retains enriched evidence, memory, and the best archive, but allows unconstrained multi-component rewrites. It reaches moderate fitness in several seeds yet solves none, and one lineage collapses to approximately $-5511$ in two consecutive rounds. The failure is not a lack of information: it arises because one training outcome must explain several simultaneous code changes. CREATE instead selects one principal semantic and applies an L1 parameter repair, L2 component refactor, or exceptional L3 redesign, so that the next expensive training run tests a more focused intervention hypothesis.
 
 \begin{figure}[t]
 \centering
@@ -60,17 +60,38 @@ Removing hierarchical semantic editing retains enriched evidence, memory, and th
   \IfFileExists{../../ISCSIC2026_framework/paper/figures/repair_case.pdf}{%
     \includegraphics[width=0.98\columnwidth]{../../ISCSIC2026_framework/paper/figures/repair_case.pdf}%
   }{%
-    \fbox{\parbox[c][3.0cm][c]{0.91\columnwidth}{\centering
+    \fbox{\parbox[c][2.8cm][c]{0.91\columnwidth}{\centering
     Reserved for Fig.~3: current versus incumbent fitness, decisive component evidence before/after repair, and the evidence--diagnosis--action--outcome chain.}}%
   }%
 }
-\caption{Representative CREATE repair on LunarLander seed~0. The decisive revision raises current search fitness from about $-389$ to 224, while the separate best archive prevents a later regression from replacing the solved reward.}
+\caption{Representative CREATE repair on LunarLander seed~0. A diagnostic L2 revision raises current fitness from about $-389$ to 224, while the separate best archive protects the solved reward from a later regression.}
 \label{fig:repair_case}
 \end{figure}
 
-The seed-0 trace illustrates the loop behind the aggregate result. Fitness falls to about $-389$ at round 7. The auxiliary subagent retrieves and compresses the relevant training and lineage records, but does not choose the edit. The reward-editing agent diagnoses the principal failure, performs an L2 semantic refactor, and obtains 224 at round 8. A later candidate falls to about $-612$, yet the best archive continues to return the solved round-8 reward. The final version of Fig.~\ref{fig:repair_case} will report the actual component activation and magnitude changes supporting this transition rather than infer them from fitness alone.
+The seed-0 case illustrates how these mechanisms interact. The auxiliary subagent retrieves and compresses the relevant training and lineage records but does not choose the edit. The reward-editing agent uses that observation to diagnose one principal failure and perform an L2 semantic refactor, after which fitness rises from about $-389$ to 224. A later candidate falls to about $-612$, but the best archive preserves the solved reward. The final figure will report the actual component activation and magnitude changes supporting this transition, so that the discussion traces evidence to diagnosis, action, and outcome rather than inferring mechanism from fitness alone.
 
-\subsection{Cross-Task Validation on Continuous Control}
-BipedalWalker-v3 provides a secondary check of whether the same CREATE workflow remains applicable when the action space and task structure change; it is not used as a second baseline-comparison benchmark. We run only complete CREATE for five lineages. Their search-fitness paths are $270.7\!\rightarrow\!318.3\!\rightarrow\!305.3\!\rightarrow\!320.0$, $280.5\!\rightarrow\!313.5\!\rightarrow\!313.7$, $272.1\!\rightarrow\!307.9$, $290.0\!\rightarrow\!311.1$, and $103.0\!\rightarrow\!264.4\!\rightarrow\!304.9$. Thus, all five lineages exceed the 300 threshold by the third evaluated reward version. Four initial rewards already lie near the threshold and require only local refinement, whereas seed~4 provides the clearer repair case, improving from 103.0 to 304.9 over two revisions.
+\subsection{Additional Validation on Continuous Control}
+BipedalWalker-v3 is used to check whether the complete CREATE workflow remains usable when moving from discrete landing control to continuous locomotion. Only full CREATE is evaluated, so this experiment is not used for method ranking.
 
-The lineage-wise best search fitness is $311.54\pm5.17$, and the independently evaluated test fitness is $310.82\pm5.03$. These results provide supporting evidence that the observation--memory--editing loop remains operational on a continuous-action locomotion task. Because no BipedalWalker baselines or ablations were run, we do not use this experiment to claim comparative superiority on that environment or broad task generalization.
+\begin{table}[t]
+\caption{BipedalWalker-v3 results for complete CREATE only. $v$ denotes the evaluated reward version.}
+\label{tab:bipedal}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.0pt}
+\begin{tabular}{lccc}
+\toprule
+Seed & Initial fitness & First $v\!\geq\!300$ & Best fitness \\
+\midrule
+0 & 270.7 & $v_2$ & 320.0 \\
+1 & 280.5 & $v_2$ & 313.7 \\
+2 & 272.1 & $v_2$ & 307.9 \\
+3 & 290.0 & $v_2$ & 311.1 \\
+4 & 103.0 & $v_3$ & 304.9 \\
+\midrule
+Mean & $243.26\pm70.45$ & 2.2 versions & $311.54\pm5.17$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:bipedal} shows that all five lineages cross the task threshold by the third evaluated reward version. Four initial rewards are already near the threshold and require local refinement, whereas seed~4 provides the more informative stress case: the workflow raises fitness from 103.0 to a task-solving 304.9. The selected policies obtain $310.82\pm5.03$ test fitness over independent evaluation episodes. These results provide limited supporting evidence that the same observation--memory--editing loop remains operational on a continuous-action task. Because no BipedalWalker baselines or ablations were run, we do not claim comparative superiority on this environment or broad task generalization.
