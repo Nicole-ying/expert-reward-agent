@@ -1,0 +1,22 @@
+extends: env001_paper_v4.yaml
+
+# ── Baseline 3: Stateless Sequential Reflection ──
+subagent_investigator:
+  enabled: false
+# Uses DeepSeek V4 Pro (inherited from env001_deepseek_rag.yaml).
+# Same initial generation and environment analysis as main experiment.
+# Only the reflection agent is stripped: no memory, no iteration history,
+# no subagent analyst, no L1/L2/L3 rules, no component delta.
+
+# Override to use paper_v4 prompts (same as main experiment)
+llm:
+  environment_analyzer: prompts/paper_v4/01_environment_analyzer_prompt.md
+  reward_generator: prompts/paper_v4/02_reward_generator_prompt.md
+
+ablation:
+  reflection_prompt_path: prompts/paper_v4/reflection_agent_baseline_prompt.md
+  stateless_baseline: true    # pipeline switch: strip user prompt, skip analyst
+
+iteration:
+  experiment_prefix: rpv4_old_baseline_v2
+  total_rounds: 10

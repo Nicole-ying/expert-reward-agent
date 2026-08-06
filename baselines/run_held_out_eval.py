@@ -47,6 +47,10 @@ EXPERIMENTS = {
         "dir": "budget_matched_independent_v2",
         "type": "independent",  # needs per-seed best from 10 candidates
     },
+    "StatelessRevision": {
+        "dir": "rpv4_old_baseline",
+        "type": "iterative",
+    },
 }
 
 

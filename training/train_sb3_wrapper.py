@@ -80,6 +80,37 @@ class ConvergenceEarlyStopCallback(BaseCallback):
         return True
 
 
+class CheckpointEvalCallback(BaseCallback):
+    """Runs external evaluation every N steps and records checkpoint data.
+
+    Produces a list of {step, pct, score_mean, score_std, ep_lengths, components}
+    dictionaries, one per checkpoint.
+    """
+
+    def __init__(self, total_timesteps, checkpoint_pct=10, eval_fn=None):
+        super().__init__()
+        self.total_timesteps = total_timesteps
+        self.checkpoint_step = max(1, total_timesteps * checkpoint_pct // 100)
+        self.eval_fn = eval_fn
+        self.records = []
+
+    def _on_step(self):
+        if self.n_calls > 0 and self.n_calls % self.checkpoint_step == 0:
+            pct = self.model.num_timesteps * 100 // self.total_timesteps
+            record = {"step": self.model.num_timesteps, "pct": pct}
+            if self.eval_fn:
+                try:
+                    result = self.eval_fn()
+                    record["score_mean"] = result.get("score_mean", 0)
+                    record["score_std"] = result.get("score_std", 0)
+                    record["episode_lengths"] = result.get("episode_lengths", [])
+                    record["components"] = result.get("components", {})
+                except Exception:
+                    record["score_mean"] = None
+            self.records.append(record)
+        return True
+
+
 class RewardComponentStatsCallback(BaseCallback):
     def __init__(self):
         super().__init__()
@@ -704,6 +735,29 @@ def main():
         )
         callbacks.append(ev_callback)
 
+    # ── Checkpoint evaluation (every 10% of training) ──
+    eval_episodes_for_checkpoint = int(args.eval_episodes if args.eval_episodes is not None else train_cfg.get("eval_episodes", 20))
+    def _checkpoint_eval_fn():
+        result = evaluate_model_on_original_env(
+            model=model,
+            env_id=train_cfg["runner_env_id"],
+            eval_episodes=eval_episodes_for_checkpoint,
+            seed=seed,
+            reward_fn=reward_fn,
+            observation_normalizer=vec_normalize if normalize_obs else None,
+            env_kwargs=env_kwargs,
+        )
+        return {
+            "score_mean": result.get("score_mean", 0),
+            "score_std": result.get("score_std", 0),
+            "episode_lengths": result.get("episode_lengths", []),
+            "components": result.get("components", {}),
+        }
+    checkpoint_callback = CheckpointEvalCallback(
+        total_timesteps=total_timesteps, checkpoint_pct=10, eval_fn=_checkpoint_eval_fn
+    )
+    callbacks.append(checkpoint_callback)
+
     model.learn(total_timesteps=total_timesteps, tb_log_name=tb_log_name, callback=callbacks)
     _train_sec = _time.time() - _train_start
     print(f"Training duration: {_train_sec/60:.1f} min ({_train_sec:.0f} sec)")
@@ -761,6 +815,7 @@ def main():
     write_eval_result_md(save_dir / "eval_result.md", eval_result)
     write_component_stats_md(save_dir / "component_stats.md", component_summary)
     write_training_feedback_md(save_dir / "training_feedback.md", summary, eval_result, component_summary)
+    (save_dir / "checkpoint_evals.json").write_text(json.dumps(checkpoint_callback.records, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"Training finished. Model saved to: {save_dir / 'model.zip'}")
     print(f"Monitor logs: {monitor_dir}")
