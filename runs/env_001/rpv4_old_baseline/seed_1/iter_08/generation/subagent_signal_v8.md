@@ -1,0 +1,11 @@
+# Subagent Research Signal
+
+**训练过程**: Early: avg_len=135, crash=94%, gen_reward=10.1. Mid: avg_len=147, crash=93%, gen_reward=9.1. Late: avg_len=181, crash=88%, gen_reward=8.5. Agent prolonged episodes but crash rate stayed ≥88%. Shaped reward declined despite longer episodes, indicating exploitation rather than true skill.
+
+**组件健康**: All components active. Dominant: success_bonus (mean=11.8, nonzero=23.6%), descending_penalty (mean=-0.21, nonzero=77.2%), approach_bonus (mean=0.25, nonzero=49.6%). crash_penalty rare (nonzero=2.1%). original_env_reward per step negative (mean=-0.22).
+
+**奖励对齐**: Shaped reward per step positive (mean=4.33) vs original reward negative (mean=-0.22). Evaluation: mean score -5.05, only 5/20 terminated. Agent maximizes shape components (approach, contact_continuous) but fails safe landing, causing high crash rate.
+
+**异常检测**: Crash rate plateaued 88–94% across training, no improvement. Generated reward decreased 10.1→8.5 while episode length rose, suggesting shaped reward exploitation without task progress.
+
+**置信度**: `high`

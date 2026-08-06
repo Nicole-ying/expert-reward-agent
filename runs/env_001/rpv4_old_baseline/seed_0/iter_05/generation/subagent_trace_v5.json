@@ -1,0 +1,12 @@
+{
+  "turns_used": 1,
+  "signal": {
+    "training_progress": "Early-to-late improvement marginal (avg_score -5.4 to -3.5). avg_len stable (68-69). Crash rate remained 100% throughout, agent never learned to land or survive. Shaped reward per step improved from -1.872 to -1.561, but this did not translate to success.",
+    "component_health": "Active: progress_reward (+0.082), stability_penalty (-0.046), action_penalty (-0.053, 50.5% nonzero), time_penalty (-0.005). Dead/near-dead: landing_reward (0.0% nonzero), crash_penalty (0.2% nonzero, -100 when rare). Training driven almost entirely by distance and attitude components.",
+    "reward_alignment": "Generated_reward per step in training -0.06 vs original_env_reward -5.73; evaluation episode reward -352.5 (~-5.26/step) suggests huge gap. Crash_penalty effectively absent (0.2% nonzero), leaving no signal to avoid crashes. Agent exploits progress + stability terms without learning safe landing.",
+    "anomalies": "Crash rate frozen at 100% across all phases. landing_reward never triggered. crash_penalty almost never fired (0.2% steps) despite universal crashing—likely condition too strict or not aligned to actual termination. Training per-step generated_reward (-0.06) vs evaluation per-step generated_reward (-5.26) indicates severe distribution shift.",
+    "confidence": "high"
+  },
+  "tool_trace": [],
+  "signal_produced": true
+}

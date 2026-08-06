@@ -1,0 +1,11 @@
+# Subagent Research Signal
+
+**训练过程**: Agent failed to learn safe landing: crash rate remained 100% across early, mid, late phases. Episode length stable ~75 steps; mean score low (10→12→11), no meaningful improvement. Shaped reward ~7.5/step while true reward ~-100/step.
+
+**组件健康**: Active: shaping_reward (100% nonzero), angle_penalty (100%), ang_vel_penalty (100%), fuel_penalty (53%). Dead/near-dead: success_bonus (0.4% nonzero), crash_penalty (0.1%), boundary_x_penalty (0%), boundary_y_penalty (0%). Crucial terminal components never fired.
+
+**奖励对齐**: Severe misalignment: generated_reward positive (~7.5/step) vs original_env_reward heavily negative (~-100/step). Agent exploited shaping reward while consistently crashing, showing reward hacking.
+
+**异常检测**: 100% crash rate persisted, yet crash_penalty triggered only 0.1% of steps and success_bonus 0.4%. These vital signals are absent from training, preventing the agent from learning crash avoidance or landing success.
+
+**置信度**: `high`
