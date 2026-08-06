@@ -1,10 +1,10 @@
 \section{CREATE}
-CREATE comprises an outer reward-engineering agent and an underlying reinforcement-learning (RL) agent. The RL agent interacts with the environment and learns a policy under the current generated reward, whereas CREATE treats each completed policy-training and native-evaluation run as one reward-design round. As shown in Fig.~\ref{fig:create_framework}, CREATE observes training evidence, reflects on the current reward design, and executes a validated reward edit.
+CREATE comprises an outer reward-editing agent and an underlying reinforcement-learning (RL) agent. The RL agent interacts with the environment and learns a policy under the current generated reward, whereas CREATE treats each completed policy-training and native-evaluation run as one reward-design round. As shown in Fig.~\ref{fig:create_framework}, tool-assisted evidence processing organizes the resulting records before the reward-editing agent diagnoses the current reward and executes a validated edit.
 
 \begin{figure*}[!t]
 \centering
 \includegraphics[width=0.98\textwidth]{cretae_framework.pdf}
-\caption{Overview of CREATE. The outer reward-engineering agent observes training evidence produced by the underlying RL agent, reflects on the current reward design, and performs semantic-localized reward editing. Persistent lineage memory records intervention outcomes, while the best archive retains the reward program with the highest native-task performance.}
+\caption{Overview of CREATE. The underlying RL agent learns under the current generated reward. Tool-assisted evidence processing retrieves and compresses relevant training and lineage records, while the reward-editing agent remains responsible for failure diagnosis, semantic localization, intervention-level selection, and reward modification. Persistent memory records intervention outcomes, and the best archive retains the reward program with the highest native-task performance.}
 \label{fig:create_framework}
 \end{figure*}
 
@@ -17,7 +17,7 @@ R_{t+1}&=\mathcal U(R_t,A_t),
 \end{aligned}
 \label{eq:agent_loop}
 \end{equation}
-where the training record $\mathcal D_t$ is converted into observation $O_t$ through diagnostic tools. CREATE then combines $O_t$ with the current reward $R_t$, intervention memory $M_t$, and best archive $B_t$ to produce reflection $H_t$, reward action $A_t$, and the next executable reward program $R_{t+1}$.
+where the training record $\mathcal D_t$ is retrieved and compressed into observation $O_t$ through evidence tools. This processing stage organizes information but does not select a reward edit. The reward-editing agent combines $O_t$ with the current reward $R_t$, intervention memory $M_t$, and best archive $B_t$ to produce reflection $H_t$, reward action $A_t$, and the next executable reward program $R_{t+1}$.
 
 \subsection{Task Understanding and Reward Initialization}
 Given the task description, environment interface, and reward-code constraints, CREATE identifies the principal behavior semantics and instantiates them as named reward components. The initial reward is
@@ -38,9 +38,9 @@ J_t &= \frac{1}{N}\sum_{n=1}^{N}\sum_{k=0}^{H_n-1}
 \end{aligned}
 \label{eq:train_eval}
 \end{equation}
-Thus, the generated reward shapes policy learning, whereas the native objective measures task completion. Each run produces episode outcomes, termination patterns, component activation and scale, temporal dynamics, and differences from the preceding reward version. A diagnostic subagent queries these records through analysis tools and summarizes the evidence for CREATE.
+Thus, the generated reward shapes policy learning, whereas the native objective measures task completion. Each run produces episode outcomes, termination patterns, component activation and scale, temporal dynamics, and differences from the preceding reward version. An auxiliary tool-using subagent retrieves and compresses these records into a structured evidence summary. It reports what occurred during training but does not recommend coefficient changes, select an intervention level, or modify reward code.
 
-Component statistics serve as diagnostic cues rather than fixed editing rules. Persistent inactivity may indicate an unreachable gate or sparse formulation; excessive activation and magnitude may reveal a dominant proxy; frequent activation with weak contribution may indicate insufficient scale, saturation, or an ineffective mathematical form. CREATE combines these cues with policy outcomes, reward source code, and prior interventions to identify one principal reward semantic for the next edit:
+Component statistics serve as diagnostic cues rather than fixed editing rules. Persistent inactivity may indicate an unreachable gate or sparse formulation; excessive activation and magnitude may reveal a dominant proxy; frequent activation with weak contribution may indicate insufficient scale, saturation, or an ineffective mathematical form. The reward-editing agent combines these cues with policy outcomes, reward source code, and prior interventions to identify one principal reward semantic for the next edit:
 \begin{equation}
 A_t=(q_t,\ell_t,\Delta_t),
 \qquad
@@ -56,4 +56,4 @@ t^*=\arg\max_{0\leq t<K}J_t,
 \qquad R^*=R_{t^*}.
 \label{eq:best_reward}
 \end{equation}
-The selected reward is subsequently retrained and evaluated with independent seeds to assess stability.
+The selected reward--policy pair is subsequently evaluated on independent episode seeds to assess stability.
