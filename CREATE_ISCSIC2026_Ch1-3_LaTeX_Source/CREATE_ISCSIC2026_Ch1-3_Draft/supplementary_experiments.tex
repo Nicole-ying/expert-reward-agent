@@ -4,6 +4,7 @@
 \usepackage{graphicx}
 \usepackage{microtype}
 \usepackage[hidelinks]{hyperref}
+\graphicspath{{figures/}}
 
 \title{Supplementary Material for ``CREATE: A Closed-Loop Reward Editing Agent with Training Evidence for Reinforcement Learning''}
 \author{Anonymous Authors}
@@ -112,10 +113,24 @@ Seed & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & Best\\
 \end{tabular}}
 \end{table*}
 
-\section{Representative Repair Record}
-The final supplement should reproduce the complete round-7 and round-8 seed-0 records: current and incumbent reward code, native evaluation summary, episode termination distribution, component episode sums, activation rates, magnitude shares, temporal statistics, the subagent evidence summary, the reward editor's selected semantic and intervention level, predicted next-run changes, validation output, and observed round-8 outcome. This record should establish the evidence--diagnosis--action--outcome chain without inferring component behavior from native fitness alone.
+\section{Representative Repair Patterns}
+The three main-paper traces illustrate distinct successful repair patterns. Seed~0 undergoes collapse and recovery: a differential progress signal fails to supply stable landing guidance at round~7, and an L2 return to state-based proximity with altitude-based anti-exploitation raises fitness to 224 at round~8. Seed~3 exhibits progressive convergence: potential-difference approach shaping first raises fitness to 148, and a later L2 contact refactor supplies a reachable gradient from single-leg to stable two-leg contact, yielding 254. Seed~4 exposes proxy misalignment: a near-ground transition reward is triggered roughly 75 times per episode during bouncing, and an L2 persistent contact-quality gate suppresses the proxy and yields 206.
+
+These cases should be interpreted as diagnostic traces rather than three independent mechanism ablations. Their common structure is that component-level evidence identifies one principal semantic defect and the reward editor applies a localized L2 intervention.
+
+\section{Component-Evidence Heatmaps}
+For component $i$, the activation rate is the fraction of logged training steps at which its value is nonzero. A value near zero indicates that the term is effectively unreachable under the current policy, whereas a value near one indicates nearly continuous signaling. The magnitude share is the component's absolute contribution divided by the summed absolute contribution of all logged components. A large share indicates that one term dominates the shaped objective, even when its semantic meaning is only a proxy for task success.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{figS1_seed0_heatmaps.pdf}
+\caption{Component evidence for CREATE seed~0. Activation-rate and magnitude-share heatmaps show how component reachability and relative reward scale evolve across reward versions. The round-7 to round-8 transition is interpreted together with the saved reward-code diff and editor decision, rather than from native fitness alone.}
+\label{fig:supp_seed0_heatmaps}
+\end{figure*}
+
+Fig.~\ref{fig:supp_seed0_heatmaps} provides the detailed evidence behind the seed-0 case in the main paper. The heatmaps indicate which landing-related terms remain inactive, which shaping term controls most of the generated reward, and how those relationships change after the decisive L2 repair. They are descriptive observations supplied to the reward editor, not deterministic rules that directly choose the code modification. Analogous seed-3 and seed-4 heatmaps are included in the released figure artifacts.
 
 \section{Reproducibility and Cost Reporting}
-The released supplement should report total trained candidates, total environment steps, LLM calls by role, input/output tokens, wall-clock time, hardware, and peak simultaneous candidate jobs. PPO's four vectorized environments are internal to one candidate-training job and should not be counted as four simultaneous reward candidates. OpenRouter or provider-specific model identifiers and routing settings should be frozen rather than using a moving ``latest'' alias.
+The released supplement should report total trained candidates, total environment steps, LLM calls by role, input/output tokens, wall-clock time, hardware, and peak simultaneous candidate jobs. PPO's four vectorized environments are internal to one candidate-training job and should not be counted as four simultaneous reward candidates. Provider-specific model identifiers and routing settings should be frozen rather than using a moving ``latest'' alias.
 
 \end{document}
