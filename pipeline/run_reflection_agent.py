@@ -11,9 +11,14 @@ from pathlib import Path
 
 from .common import load_config, read_text, write_text, write_json, record_prompt, record_response
 from .reflection_tools import (
-    get_reward_transformation,
-    get_skeleton_detail,
-    search_reward_design_knowledge,
+    set_reflection_context,
+    read_memory,
+    read_training_feedback,
+    read_reward_code,
+    read_past_reflection,
+    get_component_history,
+    read_environment_card,
+    read_checkpoint_trend,
 )
 from .run_03_direct_reward_generator import extract_code, validate_code
 from .subagent_investigator import run_investigator
@@ -627,34 +632,47 @@ def _compact_route_context(cfg, environment_card_md, expert_context_md=""):
     return "\n".join(compact)
 
 
-def build_user_prompt(feedback_md, memory_md, previous_code, best_code=None, environment_card_md="", cfg=None, expert_context_md="", cumulative_record="", component_evolution="", component_delta="", is_rebuild=False, research_signal="", analyst_report="", stateless_baseline=False, component_stats_md="", checkpoint_data=""):
-    """Assemble the reflection agent's user prompt — focused, no generic templates."""
+def _extract_task_description(environment_card_md):
+    """Extract the task goal from the environment card."""
+    if not environment_card_md:
+        return ""
+    m = re.search(r'## 1\. 任务目标\s*\n(.+?)(?=\n##|\n\Z)', environment_card_md, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return ""
+
+
+def build_user_prompt(feedback_md, memory_md, previous_code, best_code=None, environment_card_md="", cfg=None, expert_context_md="", cumulative_record="", component_evolution="", component_delta="", is_rebuild=False, research_signal="", analyst_report="", stateless_baseline=False, component_stats_md="", checkpoint_data="", current_iter=None, prefix="", seed_str="", reflection_mode="structured"):
+    """Assemble the reflection agent's user prompt from template file."""
     parts = []
 
-    # ── Baseline mode: stateless — only 4 sections, no history, no analyst ──
+    # ── Baseline mode: stateless — uses baseline template, no tools, no history ──
     if stateless_baseline:
         prev_score = "?"
         m = re.search(r"score=([-\d.]+)", feedback_md)
         if m:
             prev_score = m.group(1)
         target_score = float((cfg or {}).get("iteration", {}).get("target_score", 0.0))
-        current_score = float(prev_score) if prev_score != "?" else None
-        if target_score > 0 and current_score is not None:
-            gap = target_score - current_score
-            parts.append(
-                "# 1. Search objective\n"
-                f"- target_score: {target_score:.6f}\n"
-                f"- current_score: {current_score:.6f}\n"
-                f"- gap_to_target: {gap:.6f}"
-            )
-        parts.append(f"# 2. Current reward program (score: {prev_score})\n```python\n{previous_code.strip()}\n```")
-        parts.append(f"# 3. Training feedback\n{feedback_md}")
-        if checkpoint_data:
-            parts.append(f"# 3.5. Checkpoint evaluations (every 10% of training)\n{checkpoint_data}")
-        env_summary = _environment_summary(environment_card_md)
-        if env_summary:
-            parts.append(f"# 4. Environment facts\n{env_summary}")
-        return "\n\n".join(parts)
+
+        task_description = _extract_task_description(environment_card_md)
+        feedback_section = f"# 上一轮训练反馈 (score={prev_score})\n{feedback_md}"
+        checkpoint_section = checkpoint_data if checkpoint_data else ""
+        previous_code_section = f"# 上一轮奖励函数代码\n```python\n{previous_code.strip()}\n```"
+
+        template_path = Path("prompts/paper_v4/reflection_agent_baseline_user_prompt.md")
+        if template_path.exists():
+            template = template_path.read_text(encoding="utf-8")
+        else:
+            template = "{task_description}\n\n目标得分：{target_score}\n\n{feedback_section}\n{checkpoint_section}\n{previous_code_section}"
+
+        user_prompt_md = template.format(
+            task_description=task_description,
+            target_score=f"{target_score:.0f}" if target_score > 0 else "?",
+            feedback_section=feedback_section,
+            checkpoint_section=checkpoint_section,
+            previous_code_section=previous_code_section,
+        )
+        return user_prompt_md
 
     prev_score = "?"
     m = re.search(r"score=([-\d.]+)", feedback_md)
@@ -662,71 +680,90 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code=None, env
         prev_score = m.group(1)
 
     target_score = float((cfg or {}).get("iteration", {}).get("target_score", 0.0))
-    current_score = float(prev_score) if prev_score != "?" else None
+
+    training_iter = current_iter - 1 if current_iter and current_iter > 1 else 1
+
+    # Build data sections
+    feedback_section = (
+        f"# 上一轮训练反馈 (iter_{training_iter}, score={prev_score})\n{feedback_md}"
+    )
+
+    checkpoint_section = checkpoint_data if checkpoint_data else ""
+
+    previous_code_section = f"# 上一轮奖励函数代码\n```python\n{previous_code.strip()}\n```"
+
+    # Extract task description from environment card
+    task_description = _extract_task_description(environment_card_md)
+
+    # Read template — select based on mode
+    if reflection_mode == "unconstrained":
+        template_path = Path("prompts/paper_v4/reflection_agent_unconstrained_user_prompt.md")
+    elif reflection_mode == "no_share":
+        template_path = Path("prompts/paper_v4/reflection_agent_noshare_user_prompt.md")
+    else:
+        template_path = Path("prompts/paper_v4/reflection_agent_user_prompt.md")
+    if template_path.exists():
+        template = template_path.read_text(encoding="utf-8")
+    else:
+        template = "{task_description}\n\n目标得分：{target_score}\n\n{feedback_section}\n{checkpoint_section}\n{previous_code_section}"
+
+    user_prompt_md = template.format(
+        task_description=task_description,
+        target_score=f"{target_score:.0f}" if target_score > 0 else "?",
+        feedback_section=feedback_section,
+        checkpoint_section=checkpoint_section,
+        previous_code_section=previous_code_section,
+    )
 
     if is_rebuild:
-        parts.append(
-            "# ⚠️ REBUILD MODE\n"
-            "系统接受了你的 Level 3 重建建议。你不是在修改上一轮代码——你是在基于全部历史设计新骨架。\n"
-            "参考 #2 修改自传避开已失败的路径，参考 #8 完整公式算子库选新的主信号框架。\n"
-            "不要受上一轮代码结构约束。\n"
+        user_prompt_md = (
+            "⚠️ 这是 Level 3 重建轮——你建议了换框架。基于全部历史从零设计新骨架，"
+            "避开已知失败路径。\n\n" + user_prompt_md
         )
 
-    if target_score > 0 and current_score is not None:
-        gap = target_score - current_score
-        ratio = current_score / target_score
-        parts.append(
-            "# 1. Search objective\n"
-            f"- target_score: {target_score:.6f}\n"
-            f"- current_score: {current_score:.6f}\n"
-            f"- gap_to_target: {gap:.6f}\n"
-            f"- target_achievement_ratio: {ratio:.3%}"
-        )
-
-    # ── Autobiography FIRST — read your own history before looking at current code ──
-    if cumulative_record:
-        parts.append(cumulative_record)
-    else:
-        parts.append("# 2. 你的修改自传\n（这是你第一次反思，没有历史。专注于当前反馈。）")
-
-    parts.append(f"# 3. 上一轮奖励函数代码（该轮得分: {prev_score}）\n```python\n{previous_code.strip()}\n```")
-
-    # Behavior analyst report replaces the verbose component_evolution
-    if analyst_report:
-        parts.append(f"# 4. Subagent 行为诊断报告\n\n{analyst_report}")
-    elif component_evolution:
-        parts.append(component_evolution)
-
-    # Best reward code — critical when current << best, so the LLM can base modifications on it
-    if best_code:
-        parts.append(
-            "# 4.5. 历史最佳奖励函数代码\n"
-            "如果 Subagent 诊断建议回退到某个历史最佳版本，或你判断当前方向错误，"
-            "应基于此最佳代码做最小修改，而不是从当前失败代码出发或全盘重建。\n"
-            f"```python\n{best_code.strip()}\n```"
-        )
-
-    if component_delta:
-        parts.append(component_delta)
-    else:
-        parts.append("# 5. 组件逐项对比\n（第一轮反思，无历史对比）")
-
-    parts.append(f"# 6. 本轮训练反馈\n{feedback_md}")
-
-    environment_summary = _environment_summary(environment_card_md)
-    if environment_summary:
-        parts.append(
-            "# 7. 环境事实（只据此理解任务和变量，不猜测环境名称）\n"
-            f"{environment_summary}"
-        )
+    parts.append(user_prompt_md)
 
     if is_rebuild and expert_context_md:
-        parts.append(f"# 8. Formula Operator Library（完整版，用于 Level 3 重建）\n{expert_context_md}")
-
-    if memory_md:
-        parts.append(f"# 8. 历史记忆\n{memory_md}")
+        parts.append(f"# Formula Operator Library（L3 重建参考）\n{expert_context_md}")
 
     return "\n\n".join(parts)
+
+
+def _no_share_feedback(feedback_md):
+    """Strip magnitude_share, signed_contribution_share, and active_rate columns from feedback.
+
+    Keeps only episode_sum_mean — same level of detail as baseline.
+    """
+    # Remove share/rate columns from the component table
+    # Table format: | component | episode_sum_mean | signed_share | magnitude_share | active_rate |
+    # Target:       | component | episode_sum_mean |
+    lines = feedback_md.splitlines()
+    result = []
+    in_table = False
+    for line in lines:
+        if line.startswith("| component |") or line.startswith("| component "):
+            in_table = True
+            # Keep only component and episode_sum_mean columns
+            cols = line.strip("|").split("|")
+            # cols: [' component ', ' episode_sum_mean ', ' signed_share ', ' magnitude_share ', ' active_rate ']
+            result.append("| component | episode_sum_mean |")
+            continue
+        if in_table and line.startswith("|---"):
+            result.append("|---|---|")
+            continue
+        if in_table and line.startswith("|"):
+            # Data row
+            if not line.strip() or line.strip() == "|":
+                in_table = False
+                result.append(line)
+            else:
+                cols = [c.strip() for c in line.strip("|").split("|")]
+                if len(cols) >= 2:
+                    result.append(f"| {cols[0]} | {cols[1]} |")
+            continue
+        in_table = False
+        result.append(line)
+    return "\n".join(result)
 
 
 def _score_only_feedback(feedback_md):
@@ -809,51 +846,86 @@ def _tool_definitions():
         {
             "type": "function",
             "function": {
-                "name": "search_reward_design_knowledge",
-                "description": "搜索奖励设计技法库。输入症状描述（自然语言），返回匹配的技法和修复方案。",
+                "name": "read_memory",
+                "description": "Read the full reward memory table — all past iterations at a glance: iter, skeleton, score, best, delta, len, key_signal, action. Use this FIRST to see the big picture.",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_training_feedback",
+                "description": "Read the training eval_result for a specific past iteration — exact score, len, termination, and per-component ep_sum/active_rate/shares.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "症状的自然语言描述，如 'penalty dominating progress signal' 或 'landing bonus never triggers'",
-                        }
+                        "iteration": {"type": "integer", "description": "The iteration number to read (1-based)."},
                     },
-                    "required": ["query"],
+                    "required": ["iteration"],
                 },
             },
         },
         {
             "type": "function",
             "function": {
-                "name": "get_skeleton_detail",
-                "description": "获取某个骨架的数学形态、设计原理、常见陷阱和推荐配合。",
+                "name": "read_reward_code",
+                "description": "Read the reward function Python code from a specific past iteration. Use this to compare what changed at the code level between two iterations.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "skeleton_name": {
-                            "type": "string",
-                            "description": "骨架名称，如 'progress_delta_reward', 'potential_based_shaping', 'bounded_proximity_reward'",
-                        }
+                        "iteration": {"type": "integer", "description": "The iteration number to read (1-based)."},
                     },
-                    "required": ["skeleton_name"],
+                    "required": ["iteration"],
                 },
             },
         },
         {
             "type": "function",
             "function": {
-                "name": "get_reward_transformation",
-                "description": "Retrieve general reward-structure transformations from diagnosis evidence, including rationale, risks, and next-round verification targets.",
+                "name": "read_past_reflection",
+                "description": "Read your own reflection response from a past iteration — what you diagnosed, what level you chose, and what intervention you made. Use this before modifying a component to check if you already tried the same approach.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The diagnosed problem dimension or desired transformation, such as persistent proxy farming, sparse credit, product collapse, or global constraint interference.",
-                        }
+                        "iteration": {"type": "integer", "description": "The past iteration number to read (1-based, must < current iter)."},
                     },
-                    "required": ["query"],
+                    "required": ["iteration"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_component_history",
+                "description": "Get per-iteration ep_sum_mean and active_rate for a specific component across all past iterations. If values jumped 5x and magnitude_share > 90%, this component may be exploited — fix it, don't protect it. If component not found, it shows available names in history.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "component_name": {"type": "string", "description": "The exact component name as it appears in the components dict (e.g., 'success_landing_bonus')."},
+                    },
+                    "required": ["component_name"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_environment_card",
+                "description": "Read the environment card — task goal, observation space (8 fields), action space (4 discrete actions), and termination conditions. Use this when you need to verify what signals are available for reward design.",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_checkpoint_trend",
+                "description": "Read per-component checkpoint evaluation data for a specific iteration. Shows how each component's ep_sum_mean and active_rate evolved during training at 10% intervals. Use this to cross-validate your diagnosis: if contact's active surges while velocity_damping's share drops, the exploit is from speed threshold being too loose. If score peaks mid-training then drops, the reward is being exploited.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "iteration": {"type": "integer", "description": "The iteration number to read (1-based). If omitted, reads the most recent."},
+                    },
+                    "required": [],
                 },
             },
         },
@@ -862,12 +934,20 @@ def _tool_definitions():
 
 def _run_tool_call(tool_call):
     args = json.loads(tool_call.function.arguments)
-    if tool_call.function.name == "search_reward_design_knowledge":
-        result = search_reward_design_knowledge(args.get("query", ""))
-    elif tool_call.function.name == "get_skeleton_detail":
-        result = get_skeleton_detail(args.get("skeleton_name", ""))
-    elif tool_call.function.name == "get_reward_transformation":
-        result = get_reward_transformation(args.get("query", ""))
+    if tool_call.function.name == "read_memory":
+        result = read_memory()
+    elif tool_call.function.name == "read_training_feedback":
+        result = read_training_feedback(args.get("iteration", 0))
+    elif tool_call.function.name == "read_reward_code":
+        result = read_reward_code(args.get("iteration", 0))
+    elif tool_call.function.name == "read_past_reflection":
+        result = read_past_reflection(args.get("iteration", 0))
+    elif tool_call.function.name == "get_component_history":
+        result = get_component_history(args.get("component_name", ""))
+    elif tool_call.function.name == "read_environment_card":
+        result = read_environment_card()
+    elif tool_call.function.name == "read_checkpoint_trend":
+        result = read_checkpoint_trend(args.get("iteration"))
     else:
         result = f"Unknown tool: {tool_call.function.name}"
     return args, result
@@ -908,17 +988,23 @@ def run_reflection_agent(
         (run_dir / sub).mkdir(parents=True, exist_ok=True)
 
     reflection_mode = ablation_cfg.get("reflection_mode", "structured")
+    stateless_baseline = ablation_cfg.get("stateless_baseline", False)
     prompt_path = ablation_cfg.get("reflection_prompt_path")
     if not prompt_path:
-        prompt_path = (
-            "prompts/reflection_agent_unconstrained_prompt.md"
-            if reflection_mode == "unconstrained"
-            else "prompts/reflection_agent_prompt.md"
-        )
+        if stateless_baseline:
+            prompt_path = "prompts/paper_v4/reflection_agent_baseline_prompt.md"
+        elif reflection_mode == "unconstrained":
+            prompt_path = "prompts/paper_v4/reflection_agent_unconstrained_prompt.md"
+        elif reflection_mode == "no_share":
+            prompt_path = "prompts/paper_v4/reflection_agent_noshare_prompt.md"
+        else:
+            prompt_path = "prompts/paper_v4/reflection_agent_prompt.md"
     system_prompt = read_text(prompt_path)
     previous_code = read_text(previous_reward_path)
     feedback_md = read_text(str(Path(train_run_dir) / "training_feedback.md"))
-    if ablation_cfg.get("feedback_mode") == "score_only":
+    if reflection_mode == "no_share":
+        feedback_md = _no_share_feedback(feedback_md)
+    elif ablation_cfg.get("feedback_mode") == "score_only":
         feedback_md = _score_only_feedback(feedback_md)
     elif ablation_cfg.get("feedback_mode") == "eureka_style":
         feedback_md = _eureka_style_feedback(feedback_md)
@@ -929,22 +1015,68 @@ def run_reflection_agent(
     if stats_path.exists():
         component_stats_md = read_text(str(stats_path))
 
-    # ── Checkpoint evaluation data (every 10% of training) ──
+    # ── Checkpoint evaluation data (training trend diagnostics) ──
     checkpoint_data = ""
+    no_share_checkpoint = (reflection_mode == "no_share")
     ckpt_path = Path(train_run_dir) / "checkpoint_evals.json"
     if ckpt_path.exists():
         import json as _json
         try:
             ckpt_raw = _json.loads(ckpt_path.read_text())
-            # Format as compact table
-            lines = ["| pct | score_mean | score_std |", "|---|---|---|"]
-            for r in ckpt_raw:
-                pct = r.get("pct", "?")
-                sm = r.get("score_mean", "?")
-                ss = r.get("score_std", "?")
-                if isinstance(sm, (int, float)):
-                    lines.append(f"| {pct}% | {sm:.2f} | {ss:.2f} |")
-            checkpoint_data = "\n".join(lines)
+            if not ckpt_raw:
+                checkpoint_data = ""
+            else:
+                # Collect all component names across checkpoints
+                all_comp_names = set()
+                for r in ckpt_raw:
+                    comps = r.get("components", {})
+                    all_comp_names.update(comps.keys())
+
+                lines = [
+                    "# Checkpoint 评估（训练过程中各组件的变化趋势）",
+                    "",
+                    "每个 checkpoint 在训练到 N% 时用当前模型评估 20 集，记录每个组件的 ep_sum_mean。",
+                    "**趋势比单点数值更重要：**",
+                    "- 组件全程为 0 → 死组件，agent 在训练中忽略了它",
+                    "- 组件从 0 逐渐增长 → 正在引导学习",
+                    "- 组件骤升 → 可能被 exploit",
+                    "- 组件骤降 → agent 在学习抑制它",
+                    "",
+                    "## Overall score trend",
+                    "| " + " | ".join(f"cp{r['pct']}%" for r in ckpt_raw) + " |",
+                    "|---" * (len(ckpt_raw) + 2) + "|",
+                    "| " + " | ".join(f"{r.get('score_mean', 0):.1f}" for r in ckpt_raw) + " |",
+                ]
+
+                if all_comp_names and not no_share_checkpoint:
+                    # Per-component trend: one row per component, columns = checkpoints
+                    sorted_names = sorted(all_comp_names)
+                    lines.append("")
+                    lines.append("## Per-component ep_sum_mean trend")
+                    lines.append("| component | " + " | ".join(f"cp{r['pct']}%" for r in ckpt_raw) + " |")
+                    lines.append("|---|" + "|".join("---|" for _ in ckpt_raw))
+                    for name in sorted_names:
+                        vals = []
+                        for r in ckpt_raw:
+                            c = r.get("components", {}).get(name, {})
+                            v = c.get("episode_sum_mean", 0) if c else 0
+                            vals.append(f"{v:.3f}")
+                        lines.append(f"| {name} | " + " | ".join(vals) + " |")
+
+                    # Active rate trend
+                    lines.append("")
+                    lines.append("## Per-component active_rate trend")
+                    lines.append("| component | " + " | ".join(f"cp{r['pct']}%" for r in ckpt_raw) + " |")
+                    lines.append("|---|" + "|".join("---|" for _ in ckpt_raw))
+                    for name in sorted_names:
+                        vals = []
+                        for r in ckpt_raw:
+                            c = r.get("components", {}).get(name, {})
+                            v = (c.get("active_rate", 0) or 0) * 100
+                            vals.append(f"{v:.1f}%")
+                        lines.append(f"| {name} | " + " | ".join(vals) + " |")
+
+                checkpoint_data = "\n".join(lines)
         except Exception:
             checkpoint_data = ""
 
@@ -972,19 +1104,25 @@ def run_reflection_agent(
 
     # Generate cumulative record from all previous iterations
     cumulative_record = ""
+    # Always extract iter/prefix/seed (needed by build_user_prompt even in validation retry)
+    m_iter = re.search(r"/iter_(\d+)/", out_run_name)
+    current_iter = int(m_iter.group(1)) if m_iter else 1
+    # Extract prefix and seed from out_run_name
+    # Format: {prefix}/seed_{N}/iter_{M}/generation
+    parts = out_run_name.split("/")
+    prefix = parts[0] if len(parts) > 0 else ""
+    seed_str = ""
+    for p in parts:
+        if p.startswith("seed_"):
+            seed_str = p.replace("seed_", "")
+            break
+    # Set reflection context for history-reading tools
+    if prefix and seed_str:
+        set_reflection_context(
+            cfg["experiment"]["run_root"], prefix, seed_str, current_iter
+        )
     if not validation_retry:  # skip for pure code-fix retries
-        # Extract iter number from out_run_name like "paper_ant_v6/seed_0/iter_07/generation"
-        m_iter = re.search(r"/iter_(\d+)/", out_run_name)
-        current_iter = int(m_iter.group(1)) if m_iter else 1
-        # Extract prefix and seed from out_run_name
-        # Format: {prefix}/seed_{N}/iter_{M}/generation
-        parts = out_run_name.split("/")
-        prefix = parts[0] if len(parts) > 0 else ""
-        seed_str = ""
-        for p in parts:
-            if p.startswith("seed_"):
-                seed_str = p.replace("seed_", "")
-                break
+
         if prefix and seed_str and current_iter > 1:
             cumulative_record = _build_cumulative_record(
                 cfg["experiment"]["run_root"], prefix, seed_str, current_iter, memory_md
@@ -1038,59 +1176,8 @@ def run_reflection_agent(
             print(f"  Subagent: error (continuing without signal) — {exc}")
 
     # ── Run behavior analyst (replaces component_evolution) ──
-    # Skip in baseline mode: stateless reflection has no analyst, no history
+    # Disabled: user prompt now guides LLM to investigate autonomously via tools
     analyst_report = ""
-    stateless_baseline = ablation_cfg.get("stateless_baseline", False)
-    if not validation_retry and not duplicate_retry and not stateless_baseline:
-        try:
-            llm_cfg = cfg["llm"]
-            analyst_client = create_client(cfg)
-
-            # Collect ALL historical data for the analyst
-            prev_feedback_md = ""
-            prev_code = ""
-            prev_score = "?"
-            all_historical_feedbacks = []
-            all_historical_codes = []
-            if current_iter > 1 and prefix and seed_str:
-                base_path = Path(cfg["experiment"]["run_root"]) / prefix / f"seed_{seed_str}"
-                for i in range(1, current_iter):
-                    fb_path = base_path / f"iter_{i:02d}" / "training" / "training_feedback.md"
-                    code_path = base_path / f"iter_{i:02d}" / "generation" / f"reward_v{i}.py"
-                    if fb_path.exists():
-                        all_historical_feedbacks.append(read_text(str(fb_path)))
-                    if code_path.exists():
-                        all_historical_codes.append(read_text(str(code_path)))
-                if all_historical_feedbacks:
-                    prev_feedback_md = all_historical_feedbacks[-1]
-                    prev_code = all_historical_codes[-1] if all_historical_codes else ""
-                    m = re.search(r"score=([-\d.]+)", prev_feedback_md)
-                    if m:
-                        prev_score = m.group(1)
-
-            current_score_str = "?"
-            m_cur = re.search(r"score=([-\d.]+)", feedback_md)
-            if m_cur:
-                current_score_str = m_cur.group(1)
-
-            analyst_user_prompt = _build_analyst_user_prompt(
-                feedback_md, memory_md, previous_code, best_code,
-                cumulative_record, component_delta,
-                prev_feedback_md, prev_code, prev_score, current_score_str,
-                checkpoint_data=checkpoint_data,
-                all_historical_feedbacks=all_historical_feedbacks,
-                all_historical_codes=all_historical_codes,
-            )
-            analyst_report = _run_behavior_analyst(
-                run_dir, reward_version, analyst_client,
-                llm_cfg.get("model_investigator", llm_cfg.get("model_reflection", llm_cfg["model_reward"])),
-                analyst_user_prompt, mock,
-                reasoning_effort=llm_cfg.get("reasoning_analyst"),
-            )
-            if analyst_report:
-                print(f"  Behavior analyst: {len(analyst_report)} chars")
-        except Exception as exc:
-            print(f"  Behavior analyst: error (continuing without) — {exc}")
 
     if duplicate_retry:
         duplicate_draft_path = run_dir / f"reward_{reward_version}.py"
@@ -1104,7 +1191,7 @@ def run_reflection_agent(
             "Return a complete reward function whose executable code is materially different from every historical reward. "
             "Do not merely rename variables or comments.\n\n"
             f"# Rejected duplicate draft\n```python\n{duplicate_draft}\n```\n\n"
-        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_evolution, component_delta, is_rebuild, research_signal, analyst_report, stateless_baseline=stateless_baseline, component_stats_md=component_stats_md, checkpoint_data=checkpoint_data)
+        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_evolution, component_delta, is_rebuild, research_signal, analyst_report, stateless_baseline=stateless_baseline, component_stats_md=component_stats_md, checkpoint_data=checkpoint_data, current_iter=current_iter, prefix=prefix, seed_str=seed_str, reflection_mode=reflection_mode)
     elif validation_retry:
         failed_draft_path = run_dir / f"reward_{reward_version}.md"
         failed_draft = read_text(failed_draft_path) if failed_draft_path.exists() else ""
@@ -1125,9 +1212,10 @@ def run_reflection_agent(
             stateless_baseline=stateless_baseline,
             component_stats_md=component_stats_md,
             checkpoint_data=checkpoint_data,
+            current_iter=current_iter,
         )
     else:
-        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_evolution, component_delta, is_rebuild, research_signal, analyst_report, stateless_baseline=stateless_baseline, component_stats_md=component_stats_md, checkpoint_data=checkpoint_data)
+        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_evolution, component_delta, is_rebuild, research_signal, analyst_report, stateless_baseline=stateless_baseline, component_stats_md=component_stats_md, checkpoint_data=checkpoint_data, current_iter=current_iter, prefix=prefix, seed_str=seed_str, reflection_mode=reflection_mode)
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_reflection_agent.input.md", user_prompt)
     record_prompt(run_dir, "agent_reflection", system_prompt, user_prompt)
@@ -1166,21 +1254,89 @@ def run_reflection_agent(
         llm_cfg = cfg["llm"]
         client = create_client(cfg)
 
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        tools = _tool_definitions()
+        max_tool_rounds = 8
+        out_md = ""
+
         try:
-            resp = client.completion(
-                model=llm_cfg.get("model_reflection", llm_cfg["model_reward"]),
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=llm_cfg["temperature_reward_generator"],
-                max_tokens=llm_cfg["max_tokens_reward"],
-                reasoning_effort=llm_cfg.get("reasoning_reflection"),
-            )
+            for tool_round in range(max_tool_rounds):
+                resp = client.completion(
+                    model=llm_cfg.get("model_reflection", llm_cfg["model_reward"]),
+                    messages=messages,
+                    tools=tools,
+                    temperature=llm_cfg["temperature_reward_generator"],
+                    max_tokens=llm_cfg["max_tokens_reward"],
+                    reasoning_effort=llm_cfg.get("reasoning_reflection"),
+                )
+                msg = resp.choices[0].message
+                if msg.tool_calls:
+                    messages.append({
+                        "role": "assistant",
+                        "content": msg.content or None,
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": tc.type,
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments,
+                                },
+                            }
+                            for tc in msg.tool_calls
+                        ],
+                    })
+                else:
+                    messages.append({
+                        "role": "assistant",
+                        "content": msg.content or "",
+                    })
+
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        args, result = _run_tool_call(tc)
+                        tool_trace.append({
+                            "name": tc.function.name,
+                            "arguments": args,
+                            "result_preview": str(result)[:500],
+                        })
+                        print(f"  Tool: {tc.function.name}({json.dumps(args)}) → {len(str(result))} chars")
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": str(result),
+                        })
+                    continue
+                else:
+                    out_md = msg.content or ""
+                    break
+            else:
+                # Max tool rounds reached — force final output without tools
+                print(f"  Max tool rounds ({max_tool_rounds}) reached, forcing final output...")
+                tool_trace.append({"warning": "max_tool_rounds_reached", "rounds": max_tool_rounds})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "你已经完成了充分的调查。现在基于已收集的所有证据，"
+                        "输出你的诊断、干预层级选择、以及完整的新奖励函数代码。"
+                        "不要再调用工具，直接输出最终结果。"
+                    ),
+                })
+                resp = client.completion(
+                    model=llm_cfg.get("model_reflection", llm_cfg["model_reward"]),
+                    messages=messages,
+                    temperature=llm_cfg["temperature_reward_generator"],
+                    max_tokens=llm_cfg["max_tokens_reward"],
+                    reasoning_effort=llm_cfg.get("reasoning_reflection"),
+                )
+                out_md = resp.choices[0].message.content or ""
         except Exception:
             save_tool_trace("llm_error")
             raise
-        out_md = resp.choices[0].message.content or ""
+        out_md = out_md or ""
 
     record_response(run_dir, "agent_reflection", out_md)
     save_tool_trace("completed")

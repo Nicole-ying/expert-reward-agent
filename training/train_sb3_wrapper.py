@@ -81,23 +81,35 @@ class ConvergenceEarlyStopCallback(BaseCallback):
 
 
 class CheckpointEvalCallback(BaseCallback):
-    """Runs external evaluation every N steps and records checkpoint data.
+    """Runs external evaluation at every checkpoint_pct% of training.
+
+    Records per-component reward values at each checkpoint, showing how each
+    component's contribution evolves during training. This trend data is the
+    primary diagnostic tool for the reflection agent — dead components (value
+    near 0 at all checkpoints) provide no gradient, while exploiting components
+    spike early.
 
     Produces a list of {step, pct, score_mean, score_std, ep_lengths, components}
-    dictionaries, one per checkpoint.
+    dictionaries, one per checkpoint (e.g., 10 checkpoints at 10% intervals).
     """
 
     def __init__(self, total_timesteps, checkpoint_pct=10, eval_fn=None):
         super().__init__()
         self.total_timesteps = total_timesteps
-        self.checkpoint_step = max(1, total_timesteps * checkpoint_pct // 100)
+        self.checkpoint_pct = checkpoint_pct
+        self._next_checkpoint_pct = checkpoint_pct  # fire at 10%, 20%, ...
         self.eval_fn = eval_fn
         self.records = []
 
     def _on_step(self):
-        if self.n_calls > 0 and self.n_calls % self.checkpoint_step == 0:
-            pct = self.model.num_timesteps * 100 // self.total_timesteps
-            record = {"step": self.model.num_timesteps, "pct": pct}
+        if self.total_timesteps <= 0:
+            return True
+        current_pct = self.model.num_timesteps * 100 // self.total_timesteps
+        if current_pct >= self._next_checkpoint_pct:
+            self._next_checkpoint_pct = (
+                (current_pct // self.checkpoint_pct) + 1
+            ) * self.checkpoint_pct
+            record = {"step": self.model.num_timesteps, "pct": current_pct}
             if self.eval_fn:
                 try:
                     result = self.eval_fn()
@@ -748,10 +760,10 @@ def main():
             env_kwargs=env_kwargs,
         )
         return {
-            "score_mean": result.get("score_mean", 0),
+            "score_mean": result.get("mean_eval_reward", 0),
             "score_std": result.get("score_std", 0),
             "episode_lengths": result.get("episode_lengths", []),
-            "components": result.get("components", {}),
+            "components": result.get("final_policy_component_evaluation", {}),
         }
     checkpoint_callback = CheckpointEvalCallback(
         total_timesteps=total_timesteps, checkpoint_pct=10, eval_fn=_checkpoint_eval_fn
