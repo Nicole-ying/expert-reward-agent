@@ -1,0 +1,105 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{ng1999policy,singh2010intrinsically}
+\citation{eureka,text2reward,language2rewards}
+\citation{eureka}
+\citation{rfagent}
+\citation{card,rda}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\citation{ng1999policy,wiewiora2003potential}
+\citation{ng2000algorithms,abbeel2004apprenticeship,ziebart2008maximum}
+\citation{eureka}
+\citation{text2reward}
+\citation{language2rewards}
+\citation{card}
+\citation{rfagent}
+\citation{revolve}
+\citation{stride}
+\citation{rda}
+\citation{cour}
+\citation{selfrefine}
+\citation{selfcorrecting}
+\citation{wang2026diagnostic}
+\citation{rfagent}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{2}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Classical Reward Design}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}LLM-Based Reward Generation and Search}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Diagnostic-Driven Reward Refinement}{2}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Method}{2}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Problem Formulation and Budget Model}{3}{subsection.3.1}\protected@file@percent }
+\newlabel{eq:gen_reward}{{1}{3}{Problem Formulation and Budget Model}{equation.3.1}{}}
+\newlabel{eq:policy_train}{{2}{3}{Problem Formulation and Budget Model}{equation.3.2}{}}
+\newlabel{eq:dev_return}{{3}{3}{Problem Formulation and Budget Model}{equation.3.3}{}}
+\newlabel{eq:dev_score}{{4}{3}{Problem Formulation and Budget Model}{equation.3.4}{}}
+\newlabel{eq:dual_channel}{{5}{3}{Problem Formulation and Budget Model}{equation.3.5}{}}
+\newlabel{eq:ind_search}{{6}{3}{Problem Formulation and Budget Model}{equation.3.6}{}}
+\newlabel{eq:seq_path}{{7}{3}{Problem Formulation and Budget Model}{equation.3.7}{}}
+\newlabel{eq:budget}{{8}{3}{Problem Formulation and Budget Model}{equation.3.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Component-Level Evidence and Structured Diagnosis}{3}{subsection.3.2}\protected@file@percent }
+\newlabel{eq:components}{{9}{3}{Component-Level Evidence and Structured Diagnosis}{equation.3.9}{}}
+\newlabel{eq:mu}{{10}{3}{Component-Level Evidence and Structured Diagnosis}{equation.3.10}{}}
+\newlabel{eq:activation}{{11}{3}{Component-Level Evidence and Structured Diagnosis}{equation.3.11}{}}
+\newlabel{eq:magnitude}{{12}{3}{Component-Level Evidence and Structured Diagnosis}{equation.3.12}{}}
+\newlabel{eq:feedback}{{13}{3}{Component-Level Evidence and Structured Diagnosis}{equation.3.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Overview of CREATE. Training traces, development-evaluation outcomes, and lineage context are combined as reward evidence. The edit controller selects among parameter tuning, component refactoring, or structural redesign based on problem severity. Each local edit targets one component. A Best Archive preserves the historically best reward--policy pair.}}{4}{figure.1}\protected@file@percent }
+\newlabel{fig:framework}{{1}{4}{Overview of CREATE. Training traces, development-evaluation outcomes, and lineage context are combined as reward evidence. The edit controller selects among parameter tuning, component refactoring, or structural redesign based on problem severity. Each local edit targets one component. A Best Archive preserves the historically best reward--policy pair}{figure.1}{}}
+\newlabel{eq:diagnosis}{{14}{4}{Component-Level Evidence and Structured Diagnosis}{equation.3.14}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Severity-Gated Edit Controller}{4}{subsection.3.3}\protected@file@percent }
+\newlabel{eq:L1}{{15}{4}{Severity-Gated Edit Controller}{equation.3.15}{}}
+\citation{ppo}
+\newlabel{eq:L2}{{16}{5}{Severity-Gated Edit Controller}{equation.3.16}{}}
+\newlabel{eq:L3}{{17}{5}{Severity-Gated Edit Controller}{equation.3.17}{}}
+\newlabel{eq:constraint}{{18}{5}{Severity-Gated Edit Controller}{equation.3.18}{}}
+\newlabel{eq:edit}{{19}{5}{Severity-Gated Edit Controller}{equation.3.19}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{5}{section.4}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces CREATE: Closed-Loop Reward Evolution}}{5}{algorithm.1}\protected@file@percent }
+\newlabel{alg:create}{{1}{5}{Severity-Gated Edit Controller}{algorithm.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Experimental Setup}{5}{subsection.4.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Environment and training configurations. Steps/Reward = PPO training steps per reward evaluation. Search Runs = number of independent search paths. Max Evals = maximum reward evaluations per search path. }}{6}{table.1}\protected@file@percent }
+\newlabel{tab:envs}{{1}{6}{Environment and training configurations. Steps/Reward = PPO training steps per reward evaluation. Search Runs = number of independent search paths. Max Evals = maximum reward evaluations per search path}{table.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Budget-Matched Reward Search}{6}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Component Ablation}{6}{subsection.4.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Common-cap comparison on LunarLander-v3. Both methods permit at most ten evaluations per run, each using 1M PPO steps. Independent Generation executes 50 trainings; CREATE executes 33 because of early stopping. Held-out: 100 episodes, seeds 50000--50099, never returned to the LLM. Values are mean $\pm $ std over five runs. }}{7}{table.2}\protected@file@percent }
+\newlabel{tab:budget}{{2}{7}{Common-cap comparison on LunarLander-v3. Both methods permit at most ten evaluations per run, each using 1M PPO steps. Independent Generation executes 50 trainings; CREATE executes 33 because of early stopping. Held-out: 100 episodes, seeds 50000--50099, never returned to the LLM. Values are mean $\pm $ std over five runs}{table.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces LunarLander-v3 search under a common cap of ten reward evaluations per run. Curves carry forward the best-so-far score after a run terminates. Shaded regions: 95\% bootstrap CI (Independent) and $\pm 1.96\,\text  {SE}$ (CREATE).}}{7}{figure.2}\protected@file@percent }
+\newlabel{fig:budget}{{2}{7}{LunarLander-v3 search under a common cap of ten reward evaluations per run. Curves carry forward the best-so-far score after a run terminates. Shaded regions: 95\% bootstrap CI (Independent) and $\pm 1.96\,\text {SE}$ (CREATE)}{figure.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Ablation results on LunarLander-v3. Five search runs per condition. LLM-once = initial generation without iteration. Coarse Feedback = structured evidence replaced with scalar summary. Unconstrained = intervention tiers and single-component constraint removed. Held-out: 100 episodes, seeds 50000--50099. }}{7}{table.3}\protected@file@percent }
+\newlabel{tab:ablation}{{3}{7}{Ablation results on LunarLander-v3. Five search runs per condition. LLM-once = initial generation without iteration. Coarse Feedback = structured evidence replaced with scalar summary. Unconstrained = intervention tiers and single-component constraint removed. Held-out: 100 episodes, seeds 50000--50099}{table.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Per-run development scores for the main ablations on LunarLander-v3. Horizontal bars denote means; dashed line marks the 200-point threshold.}}{7}{figure.3}\protected@file@percent }
+\newlabel{fig:ablation}{{3}{7}{Per-run development scores for the main ablations on LunarLander-v3. Horizontal bars denote means; dashed line marks the 200-point threshold}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Cross-Environment Validation}{7}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.1}BipedalWalker-v3}{7}{subsubsection.4.4.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Cross-environment results. Held-out: 100 episodes, seeds 50000--50099. Evidence roles characterize the statistical strength of each result. }}{8}{table.4}\protected@file@percent }
+\newlabel{tab:cross}{{4}{8}{Cross-environment results. Held-out: 100 episodes, seeds 50000--50099. Evidence roles characterize the statistical strength of each result}{table.4}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.4.2}Ant-v4 Mechanism Case}{8}{subsubsection.4.4.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Development-score trajectory for CREATE seed 0 on LunarLander-v3. Despite large score fluctuations, the Best Archive preserves the iteration-8 solution (224.21).}}{8}{figure.4}\protected@file@percent }
+\newlabel{fig:score_trajectory}{{4}{8}{Development-score trajectory for CREATE seed 0 on LunarLander-v3. Despite large score fluctuations, the Best Archive preserves the iteration-8 solution (224.21)}{figure.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Conclusion}{8}{section.5}\protected@file@percent }
+\bibstyle{unsrt}
+\bibdata{references}
+\bibcite{ng1999policy}{1}
+\bibcite{singh2010intrinsically}{2}
+\bibcite{eureka}{3}
+\bibcite{text2reward}{4}
+\bibcite{language2rewards}{5}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Component-level diagnostic evidence for CREATE seed 0 on LunarLander-v3. Zero-valued cells include both components with zero activation and components absent from a given reward version.}}{9}{figure.5}\protected@file@percent }
+\newlabel{fig:diagnostic_case}{{5}{9}{Component-level diagnostic evidence for CREATE seed 0 on LunarLander-v3. Zero-valued cells include both components with zero activation and components absent from a given reward version}{figure.5}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Development versus held-out scores for selected rewards across all methods. Points near the diagonal indicate no systematic shift on the fixed held-out seed set.}}{9}{figure.6}\protected@file@percent }
+\newlabel{fig:heldout}{{6}{9}{Development versus held-out scores for selected rewards across all methods. Points near the diagonal indicate no systematic shift on the fixed held-out seed set}{figure.6}{}}
+\bibcite{rfagent}{6}
+\bibcite{card}{7}
+\bibcite{rda}{8}
+\bibcite{wiewiora2003potential}{9}
+\bibcite{ng2000algorithms}{10}
+\bibcite{abbeel2004apprenticeship}{11}
+\bibcite{ziebart2008maximum}{12}
+\bibcite{revolve}{13}
+\bibcite{stride}{14}
+\bibcite{cour}{15}
+\bibcite{selfrefine}{16}
+\bibcite{selfcorrecting}{17}
+\bibcite{wang2026diagnostic}{18}
+\bibcite{ppo}{19}
+\gdef \@abspage@last{10}

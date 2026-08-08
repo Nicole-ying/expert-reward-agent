@@ -1,0 +1,134 @@
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Experimental Design}
+\label{sec:exp_design}
+
+LunarLander-v3 is the primary benchmark for baseline comparison and mechanism ablation. BipedalWalker-v3 is used only as an additional validation of the complete CREATE workflow under a different action space and control structure; no baseline or ablation comparison is conducted on that task. Every reward program trains a freshly initialized PPO policy. LunarLander uses $10^6$ environment steps per candidate and BipedalWalker uses $5\times10^6$, with four vectorized environments inside each policy-training job. Each condition contains five independent reward-search lineages and at most ten complete reward evaluations.
+
+The policy is optimized with the generated reward, whereas candidate quality is measured only by the untouched environment reward. We define \emph{search fitness} as the mean undiscounted native episodic return over 20 fixed evaluation episodes and \emph{best search fitness} as the largest value retained within a lineage. After reward selection, the returned policy is evaluated over 100 episodes whose seeds are not exposed during search; this is reported as \emph{test fitness}. The task-solving thresholds are 200 for LunarLander and 300 for BipedalWalker.
+
+All LunarLander conditions use the same DeepSeek V4 Pro backbone, environment description, reward interface, code checks, and PPO budget. \emph{Single-shot generation} evaluates only the initial reward. \emph{Independent-10} spends ten reward evaluations on unrelated initial candidates. \emph{Stateless iterative revision} repeatedly revises the current reward from basic current-round feedback, but has no tool-organized evidence, persistent intervention memory, cross-round component comparison, or hierarchical semantic editing. The two ablations remove either evidence enrichment or hierarchical semantic editing while retaining the remaining CREATE loop. Full prompts, model settings, hyperparameters, and per-seed traces are provided in the supplementary material.
+
+\subsection{How CREATE Differs from Prior Reward-Generation Methods}
+
+Before presenting the main results, we clarify the conceptual distinction between CREATE and the most closely related prior work, Eureka~\cite{ma2024eureka}. Eureka generates reward candidates through evolutionary search and uses reward-component feedback---scalar metrics computed from training---to guide subsequent generations. This feedback helps the generator rank and evolve reward programs, but the generator itself does not inspect \emph{why} a policy trained under a given reward behaved as it did. CREATE instead closes the loop by design: each completed policy-training run produces structured evidence (Eq.~\ref{eq:agent_loop}), the reward-editing agent diagnoses a specific semantic failure (Eq.~\ref{eq:semantic_action}), and the system commits to a bounded edit whose consequence is measured by the next policy-training run. The distinction is therefore not one of scale or model choice but of \emph{information architecture}: Eureka treats training outcomes as scores for selection; CREATE treats them as observations for diagnosis. Diagnostic-driven refinement~\cite{wang2026when} similarly uses training diagnostics, but focuses on debugging sparse structured rewards without the persistent memory and hierarchical editing that constrain CREATE's edit actions. The experiments below test whether this information architecture---structured observation, persistent state, and bounded editing---can convert failed policy training into reliable reward repair.
+
+\subsection{Reward Search Under a Matched Training Budget}
+\label{sec:reward_search}
+
+\begin{table}[t]
+\caption{LunarLander-v3 reward search over five lineages. Values are mean $\pm$ sample standard deviation of lineage-wise best search fitness.}
+\label{tab:lander_main}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{2.3pt}
+\begin{tabular}{lccc}
+\toprule
+Condition & Budget & Best fitness & Solved \\
+\midrule
+Single-shot generation & 1 & $-2.21\pm73.38$ & $0/5$ \\
+Independent-10 & 10 & $-0.74\pm114.40$ & $0/5$ \\
+Stateless revision & 10 & $44.0\pm65.9$ & $0/5$ \\
+CREATE w/o evidence enrichment & 10 & $134.97\pm148.43$ & $2/5$ \\
+CREATE w/o hierarchical editing & 10 & $114.21\pm46.31$ & $0/5$ \\
+CREATE & 10 & $\mathbf{228.98\pm16.54}$ & $\mathbf{5/5}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{The closed-loop evidence architecture is necessary for reliable reward repair.} Table~\ref{tab:lander_main} and Fig.~\ref{fig:budget_curve} jointly test whether search breadth, iterative rewriting, or the complete closed loop accounts for CREATE's performance. Single-shot generation never solves the task, demonstrating that an initially plausible reward is not reliably learnable---even a semantically sound reward can contain exploitable proxies or uninformative gradients that emerge only during training. Independent-10 fails across all five lineages despite evaluating the same maximum number of reward programs as CREATE, directly ruling out the alternative explanation that candidate count alone drives improvement. Hence, search breadth does not recover the information contained in failed policy training: ten independent guesses, each made without access to training dynamics, remain guesses.
+
+\textbf{Iterative rewriting without persistent evidence produces non-monotonic progress.} Stateless revision raises the mean lineage-wise best fitness to $44.0$ but solves no seed. In three of five lineages, the initial reward is already the best version, and the final revision is worse than the stored best in all five. The process therefore accumulates rewrites without accumulating reliable progress---each revision operates on the current reward text alone, with no memory of which prior edits succeeded or failed, and no structured evidence to distinguish a poorly calibrated component from a fundamentally wrong semantic. CREATE instead solves all five lineages at rounds $8,10,2,4,$ and $3$, requiring 5.4 complete reward evaluations on average to first cross the threshold. Its selected policies obtain $231.63\pm12.23$ test fitness, close to their search-time performance.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\columnwidth]{fig2_budget_curve.pdf}
+\caption{Best-so-far LunarLander search fitness under a matched policy-training budget. Each curve averages five lineages after retaining the incumbent within each lineage; the dashed line denotes the task-solving threshold.}
+\label{fig:budget_curve}
+\end{figure}
+
+Fig.~\ref{fig:budget_curve} reveals the qualitative difference in search dynamics. Independent generation improves only when another unrelated sample happens to be better---a random walk over reward space. Stateless revision reaches a low plateau despite repeated rewriting, confirming that revision without structured evidence cannot escape local basins. CREATE progressively raises its retained incumbent and eventually solves every lineage. The key distinction is therefore not repeated LLM invocation, but whether a completed policy-training run becomes persistent evidence that constrains the next reward action. Every CREATE edit is informed by component activation rates, magnitude shares, termination patterns, and cross-round trends (Eq.~\ref{eq:agent_loop}, step $\Phi_{\mathcal T}$), converting training failure from a binary outcome into diagnostic information.
+
+\subsection{Mechanism Ablations: What Makes the Closed Loop Work?}
+\label{sec:mechanism_ablations}
+
+The previous section established that the closed loop works. We now isolate \emph{how} it works by removing two architectural components and examining the resulting failure modes. Each ablation tests a specific mechanism hypothesis derived from the design choices in Section~\ref{sec:method}.
+
+\textbf{Hypothesis 1 (H1): Evidence enrichment enables failure diagnosis.} The evidence organizer (Eq.~\ref{eq:agent_loop}, $\Phi_{\mathcal T}$) provides the editor with activation rates, magnitude shares, temporal trends, and cross-round summaries---not just scalar outcomes. H1 predicts that without this structured evidence, the editor cannot distinguish between mechanistically distinct component failures. We test this by removing the tool-using evidence organizer: the editor still receives native fitness, episode length, termination statistics, and component episode sums, but loses activation rates, magnitude shares, temporal trends, and structured cross-round summaries.
+
+The results support H1. The evidence-poor variant solves two seeds but exhibits very high dispersion ($134.97\pm148.43$), including one lineage that remains negative throughout all ten rounds. Basic component values---knowing that a component contributed $X$ to the episode return---can sometimes support repair, but cannot reliably answer the diagnostic questions that matter: is an inactive component stuck behind an unreachable gate, or is its signal too weak to compete? Is a high-magnitude component providing useful guidance, or has it become a dominant proxy? Activation rates and magnitude shares answer these questions; without them, the editor is operating on coarse aggregate statistics that conflate distinct failure modes. This experiment therefore shows that \emph{what} training evidence is provided determines \emph{which} diagnoses are possible.
+
+\textbf{Hypothesis 2 (H2): Hierarchical semantic editing enables single-trial attribution.} The semantic action constraint (Eq.~\ref{eq:semantic_action}) limits each edit to one principal semantic and one edit level (L1/L2/L3). H2 predicts that without this constraint, multi-component edits prevent the system from attributing a subsequent performance change to any specific intervention---the credit assignment problem moves from RL training to reward design itself. We test this by removing hierarchical editing: the editor retains enriched evidence, memory, and the best archive, but is allowed unconstrained multi-component rewrites.
+
+The results support H2. The unconstrained variant reaches moderate fitness in several seeds yet solves none ($114.21\pm46.31$), and one lineage collapses to approximately $-5511$ in two consecutive rounds. The failure is not a lack of information---the same enriched evidence is available---but a failure of attribution. When several unrelated components change together, one subsequent training result cannot identify which intervention should be retained or reverted. Each expensive retraining run ($10^6$ environment steps) then becomes an uncontrolled multivariate experiment rather than a focused hypothesis test. CREATE's hierarchical editing instead treats each retraining run as a single-intervention trial: select one principal semantic, apply an L1 parameter repair, L2 component refactor, or exceptional L3 redesign, and observe the consequence. This coupling of bounded action to expensive evaluation is what converts the closed loop from a search process into a diagnostic process.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\columnwidth]{fig3_ablation_scatter.pdf}
+\caption{Five-seed mechanism ablation on LunarLander. Points are lineage-wise best search fitness; horizontal markers show means, and the dashed line denotes the task-solving threshold.}
+\label{fig:ablation_scatter}
+\end{figure}
+
+Fig.~\ref{fig:ablation_scatter} makes the reliability difference explicit. Evidence-poor repair can occasionally succeed, but its performance is strongly initialization-dependent: one lucky seed reaches the threshold, while another collapses. Unconstrained editing has lower dispersion only because all five lineages remain below the threshold---a uniformly poor distribution, not a reliable one. Full CREATE combines a $5/5$ solution rate with a substantially tighter distribution ($\sigma=16.54$ vs.\ $148.43$ and $46.31$), demonstrating that enriched observation and bounded action are complementary requirements. Neither alone suffices; together they enable the diagnostic closed loop that H1 and H2 describe.
+
+\subsection{Mechanism in Action: How Evidence Becomes an Edit}
+\label{sec:mechanism_in_action}
+
+The aggregate and ablation results establish \emph{that} evidence enrichment and hierarchical editing matter. We now examine \emph{how} component evidence is translated into concrete edits in individual reward lineages. Fig.~\ref{fig:repair_patterns} presents three successful CREATE trajectories, each exposing a different failure mode and a different diagnostic pathway. For each trajectory, we report the component-level evidence that drove the decisive edit; full activation-rate and magnitude-share heatmaps are provided in the supplementary material.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.96\columnwidth]{fig4a_seed0_repair_trace.pdf}\\[-1.2mm]
+\includegraphics[width=0.96\columnwidth]{fig4b_seed3_repair_trace.pdf}\\[-1.2mm]
+\includegraphics[width=0.96\columnwidth]{fig4c_seed4_repair_trace.pdf}
+\caption{Three representative CREATE repair trajectories on LunarLander: (a) collapse and recovery in seed~0, (b) progressive convergence in seed~3, and (c) proxy-misalignment repair in seed~4. L1/L2 labels mark the edit level at each intervention; the best archive is updated only when a new incumbent surpasses the previous best.}
+\label{fig:repair_patterns}
+\end{figure}
+
+\textbf{Collapse and recovery (seed~0): Evidence-guided recovery from a destructive edit.} Rounds 1--6 explore coefficient scaling, sparse-to-dense conversion, and mathematical-form changes without solving the task. Round~7 replaces a state-based proximity signal with differential progress shaping and collapses to approximately $-389$. The evidence organizer reports that the new signal is near zero when the lander is stationary and becomes negative under disturbance---the component is not merely weak but actively detrimental because it penalizes stability. Critically, the intervention memory retains the pre-collapse reward in the best archive, so the editor can compare across rounds rather than working only from the current failure. The round-8 L2 intervention is informed by this evidence: it restores a state-based formulation and adds an altitude factor that suppresses reward exploitation, directly addressing the diagnostic finding that the collapsed signal lacked a stable reference frame. Fitness rises to 224. The best archive preserves this solution even when the next exploratory reward falls to approximately $-612$, demonstrating that persistent memory---not just current evidence---prevents regression. Without the archive, the editor would be forced to recover from $-612$ with no record of the round-8 solution.
+
+\textbf{Progressive convergence (seed~3): Memory-enabled trajectory comparison.} Seed~3 improves from approximately $-20$ to 148 after replacing an absolute-distance penalty with potential-difference approach shaping---an L2 refactor informed by component evidence showing that the absolute-distance term was active but provided an uninformative gradient (constant penalty regardless of approach direction). An overly restrictive adjustment then causes a temporary regression. At this point, the intervention memory provides a cross-round comparison: the pre-regression version achieved 148 with a specific contact-semantic formulation, while the regressed version modified that semantic too aggressively. The subsequent L2 edit reconstructs the contact semantic as a reachable gradient, providing continuous feedback from single-leg contact toward simultaneous stable contact, and the next policy reaches 254. Unlike seed~0, these revisions remain within a consistent signal framework and change one principal semantic at a time---the hierarchical editing constraint (H2) prevents the editor from simultaneously modifying the approach shaping and the contact semantic, which would have made attribution impossible. The trajectory shows that memory serves not only as a safety net (preventing loss of the best solution) but as an active diagnostic tool: comparing activation patterns across rounds reveals \emph{which} change caused the regression.
+
+\textbf{Proxy-misalignment repair (seed~4): Evidence-driven proxy detection.} Seed~4 begins at 140 but regresses after a local adjustment. Component evidence is decisive here: the evidence organizer reports that a near-ground contact-transition reward is triggered approximately 75 times per episode during bouncing and dominates the shaped objective---occupying over 60\% of the total shaped reward magnitude---rather than representing stable landing. This is a classic proxy-reward failure: the reward program incentivizes repeated ground contact, not controlled landing. The activation rate and magnitude share data make this diagnosis possible because they reveal not just \emph{that} the reward is high (a scalar outcome) but \emph{which component} is inflated and \emph{under what behavioral conditions}. The L2 repair replaces this transition proxy with persistent contact-quality gating: bounce velocity now suppresses the reward, and only low-speed contact remains favorable. The next version reaches 206 and solves the task. This trajectory demonstrates the diagnostic chain that evidence enrichment (H1) enables: activation pattern $\rightarrow$ proxy identification $\rightarrow$ targeted semantic repair $\rightarrow$ verified improvement. Without activation-rate data, the editor would see only that performance regressed after a local adjustment---it would not know \emph{why}, and any repair would be a guess.
+
+Across the three paths, the decisive edits address different defects---an uninformative gradient that became destructive, an unreachable contact gradient, and a rewardable proxy---but follow the same diagnostic mechanism. Component activation and magnitude identify a principal semantic failure (evidence enrichment, H1); the editor commits to a targeted L2 revision on that semantic alone (hierarchical editing, H2); and intervention memory preserves the best solution and enables cross-round comparison (persistent state). The trajectories therefore complement the ablation results by showing \emph{how} enriched evidence and hierarchical editing interact in individual reward lineages---not merely that removing them degrades performance.
+
+\subsection{Additional Validation on Continuous Control}
+\label{sec:continuous_control}
+
+BipedalWalker-v3 checks whether the complete CREATE workflow remains usable when moving from discrete landing control to continuous locomotion. Only full CREATE is evaluated, so this experiment is not used for method ranking or mechanism claims.
+
+\begin{table}[t]
+\caption{BipedalWalker-v3 results for complete CREATE only. $v$ denotes the evaluated reward version.}
+\label{tab:bipedal}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.0pt}
+\begin{tabular}{lccc}
+\toprule
+Seed & Initial fitness & First $v\!\geq\!300$ & Best fitness \\
+\midrule
+0 & 270.7 & $v_2$ & 320.0 \\
+1 & 280.5 & $v_2$ & 313.7 \\
+2 & 272.1 & $v_2$ & 307.9 \\
+3 & 290.0 & $v_2$ & 311.1 \\
+4 & 103.0 & $v_3$ & 304.9 \\
+\midrule
+Mean & $243.26\pm70.45$ & 2.2 versions & $311.54\pm5.17$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All five BipedalWalker lineages cross the threshold by the third evaluated reward version (Table~\ref{tab:bipedal}). Four initial rewards are already near the threshold and require local refinement, whereas seed~4 is a more informative difficult initialization. The selected policies obtain $310.82\pm5.03$ test fitness. These results provide supporting evidence that the observation--memory--editing loop remains operational on a continuous-action task with a different state and action structure. Because no BipedalWalker baselines or ablations were run, we do not claim comparative superiority on this environment, nor do we claim that the specific evidence-enrichment design---developed and ablated on LunarLander---transfers without modification to locomotion domains.
+
+\subsection{Mechanism Synthesis: Why Does CREATE Work?}
+\label{sec:mechanism_synthesis}
+
+Taken together, the experiments support a unified mechanistic account of CREATE's closed-loop reward repair. We synthesize this account here and identify its boundaries.
+
+\textbf{The diagnostic chain.} CREATE succeeds because it converts each policy-training run from a binary evaluation (``did the policy perform well?'') into a diagnostic observation (``which semantic failed, how, and with what component-level signature?''). This conversion follows a four-stage chain. \emph{(1) Structured observation:} the evidence organizer (Eq.~\ref{eq:agent_loop}, $\Phi_{\mathcal T}$) extracts activation rates, magnitude shares, temporal trends, termination patterns, and cross-round deltas---transforming raw training logs into information that can support differential diagnosis. \emph{(2) Semantic diagnosis:} the reward-editing agent maps these component-level statistics to failure hypotheses. An inactive component with zero activation rate suggests an unreachable gate or a sparse formulation; a component with high magnitude share but no correlation with task progress suggests a rewardable proxy; a component with declining activation across rounds suggests saturation or an expiring signal (Section~\ref{sec:method}). \emph{(3) Bounded intervention:} the agent selects one principal semantic and one edit level (L1/L2/L3), ensuring that the subsequent policy-training run serves as a controlled test of a single hypothesis (Eq.~\ref{eq:semantic_action}). \emph{(4) Verified improvement:} the next policy-training result either confirms or refutes the diagnosis, and this outcome is recorded in intervention memory for future rounds. The best archive guards the strongest solution against regression (Eq.~\ref{eq:best_reward}).
+
+\textbf{Why the components are interdependent.} The ablation results (Section~\ref{sec:mechanism_ablations}) show that evidence enrichment and hierarchical editing are not independent contributors---they are coupled requirements. Evidence enrichment without hierarchical editing provides rich diagnostic information, but the editor cannot attribute outcomes to specific changes when multiple components are modified simultaneously (H2). Hierarchical editing without evidence enrichment constrains the edit space, but the editor lacks the activation-rate and magnitude-share data needed to select the right semantic for intervention (H1). Intervention memory amplifies both: it enables cross-round comparison of activation patterns (seed~3) and preserves solutions that would otherwise be lost to exploratory edits (seed~0, Section~\ref{sec:mechanism_in_action}).
+
+\textbf{Limitations and boundary conditions.} Three limitations qualify the mechanism account above. First, the evidence-organizer design---which component statistics to extract and how to summarize them---was developed on LunarLander and may not transfer directly to environments with substantially different state-action structure. The BipedalWalker validation (Section~\ref{sec:continuous_control}) shows that the complete loop remains operational, but does not test whether the same evidence types (e.g., activation rates, magnitude shares) carry equal diagnostic value in locomotion. Second, CREATE depends on the LLM's ability to interpret component-level evidence and map it to semantic diagnoses. When the evidence is ambiguous---for example, when two components show similar activation patterns but for different behavioral reasons---the editor may select the wrong semantic for intervention, wasting a retraining round. Third, the current system assumes that each round's policy training converges to a stable outcome under the given reward; if training is itself unstable (high variance across seeds for the same reward), the evidence becomes noisy and diagnosis degrades. These boundary conditions define the scope of the mechanism account and point to directions for future work: evidence-organizer design for new domains, conflict resolution for ambiguous diagnostics, and robustness to training-instability noise.

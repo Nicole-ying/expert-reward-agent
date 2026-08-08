@@ -1,0 +1,233 @@
+runner_env_id: BipedalWalker-v3
+reward_path: runs\env_006\paper_bipedal_hardcore_v1\seed_1\iter_03\generation\reward_v3.py
+reward_source: generated_function
+run_name: paper_bipedal_hardcore_v1/seed_1/iter_03/training
+n_envs: 8
+total_timesteps: 5000000
+reward_clip: 20.0
+error_fallback: zero
+ppo_args:
+  policy: MlpPolicy
+  verbose: '1'
+  device: cpu
+  seed: '1'
+  n_steps: '2048'
+  batch_size: '128'
+  gae_lambda: '0.95'
+  gamma: '0.99'
+  n_epochs: '10'
+  ent_coef: '0.0'
+  learning_rate: '0.0003'
+  clip_range: '0.2'
+  vf_coef: '0.5'
+  max_grad_norm: '0.5'
+  policy_kwargs: '{''ortho_init'': True, ''activation_fn'': <class ''torch.nn.modules.activation.Tanh''>,
+    ''net_arch'': {''pi'': [64, 64], ''vf'': [64, 64]}}'
+  tensorboard_log: runs/env_006/tensorboard
+model_path: runs\env_006\paper_bipedal_hardcore_v1\seed_1\iter_03\training\model.zip
+monitor_dir: runs\env_006\paper_bipedal_hardcore_v1\seed_1\iter_03\training\monitor
+tensorboard_log: runs/env_006/tensorboard
+normalization:
+  normalize_obs: false
+  normalize_reward: false
+  clip_obs: 10.0
+  clip_normalized_reward: 10.0
+  vecnormalize_path: null
+external_eval:
+  eval_episodes: 20
+  eval_seed_offset: 10000
+  eval_seeds:
+  - 10000
+  - 10001
+  - 10002
+  - 10003
+  - 10004
+  - 10005
+  - 10006
+  - 10007
+  - 10008
+  - 10009
+  - 10010
+  - 10011
+  - 10012
+  - 10013
+  - 10014
+  - 10015
+  - 10016
+  - 10017
+  - 10018
+  - 10019
+  episode_rewards:
+  - -42.40991989988834
+  - -74.06588233541697
+  - 34.644243649207056
+  - -69.30356907192618
+  - -68.79899393580854
+  - -35.20278594363481
+  - -38.02209121081978
+  - -66.90536404866725
+  - -43.4566339738667
+  - -26.31901115644723
+  - -81.42841313034296
+  - -61.49943750188686
+  - -74.73283453378826
+  - -75.46653785090894
+  - -35.24842953681946
+  - 23.415711050853133
+  - -32.91275347955525
+  - 80.26351823098958
+  - -27.003902109339833
+  - -24.83996977005154
+  episode_lengths:
+  - 220
+  - 115
+  - 480
+  - 133
+  - 129
+  - 249
+  - 239
+  - 168
+  - 239
+  - 321
+  - 110
+  - 359
+  - 130
+  - 141
+  - 257
+  - 418
+  - 268
+  - 599
+  - 265
+  - 274
+  episode_terminated:
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  mean_eval_reward: -36.96465282790596
+  mean_episode_length: 255.7
+  min_eval_reward: -81.42841313034296
+  max_eval_reward: 80.26351823098958
+  termination_breakdown:
+    terminated: 20
+    truncated: 0
+  final_policy_component_evaluation:
+    action_efficiency_penalty:
+      episode_sum_mean: -3.168688304696116
+      episode_abs_sum_mean: 3.168688304696116
+      signed_contribution_share: -0.029130752700381034
+      magnitude_share: 0.029130752700381034
+      active_rate: 1.0
+    angular_velocity_penalty:
+      episode_sum_mean: -0.03602634593773448
+      episode_abs_sum_mean: 0.03602634593773448
+      signed_contribution_share: -0.00033120158036849473
+      magnitude_share: 0.00033120158036849473
+      active_rate: 1.0
+    progress_reward:
+      episode_sum_mean: 105.21858234941173
+      episode_abs_sum_mean: 105.56996540267865
+      signed_contribution_share: 0.9673076702946141
+      magnitude_share: 0.9705380457192505
+      active_rate: 0.9960891669925694
+  final_policy_component_error_count: 0
+train_duration_sec: 1585.4
+component_summary:
+  steps_seen: 2000000
+  reward_error_count_max: 0
+  component_stats:
+    component.action_efficiency_penalty:
+      count: 2000000
+      mean: -0.016938237852921645
+      abs_mean: 0.016938237852921645
+      nonzero_rate: 1.0
+      mean_when_active: -0.016938237852921645
+      abs_mean_when_active: 0.016938237852921645
+      min: -0.03999999910593033
+      max: -8.077108759607654e-06
+    component.angular_velocity_penalty:
+      count: 2000000
+      mean: -0.00018880577054215656
+      abs_mean: 0.00018880577054215656
+      nonzero_rate: 0.9990435
+      mean_when_active: -0.00018898653616368198
+      abs_mean_when_active: 0.00018898653616368198
+      min: -0.00925165694206953
+      max: -1.2908899213911002e-19
+    component.progress_reward:
+      count: 2000000
+      mean: 0.26679219085136624
+      abs_mean: 0.2697410460589343
+      nonzero_rate: 0.9842735
+      mean_when_active: 0.27105493630720146
+      abs_mean_when_active: 0.2740509076582213
+      min: -0.42822912335395813
+      max: 0.8797038793563843
+    component.total_reward:
+      count: 2000000
+      mean: 0.24966514731328376
+      abs_mean: 0.2567479571855028
+      nonzero_rate: 1.0
+      mean_when_active: 0.24966514731328376
+      abs_mean_when_active: 0.2567479571855028
+      min: -0.4443449079990387
+      max: 0.8683546185493469
+    generated_reward:
+      count: 2000000
+      mean: 0.24966514731328376
+      abs_mean: 0.2567479571855028
+      nonzero_rate: 1.0
+      mean_when_active: 0.24966514731328376
+      abs_mean_when_active: 0.2567479571855028
+      min: -0.4443449079990387
+      max: 0.8683546185493469
+    original_env_reward:
+      count: 2000000
+      mean: -0.4364682901772342
+      abs_mean: 0.7474066475727137
+      nonzero_rate: 1.0
+      mean_when_active: -0.4364682901772342
+      abs_mean_when_active: 0.7474066475727137
+      min: -100.0
+      max: 0.9423263072967529
+  episode_component_sum_stats:
+    action_efficiency_penalty:
+      count: 11384
+      mean: -2.9737121329864302
+      abs_mean: 2.9737121329864302
+      min: -33.66390047757886
+      max: -0.6962331142276525
+    angular_velocity_penalty:
+      count: 11384
+      mean: -0.033155112765958845
+      abs_mean: 0.033155112765958845
+      min: -0.2850148453333997
+      max: -0.006120871361483078
+    progress_reward:
+      count: 11384
+      mean: 46.813298429111526
+      abs_mean: 46.81847820439727
+      min: -6.17304732039338
+      max: 493.83259948925115
+    total_reward:
+      count: 11384
+      mean: 43.80643119837856
+      abs_mean: 43.99569129476896
+      min: -34.49183326459024
+      max: 475.8188013113104

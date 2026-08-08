@@ -1,0 +1,235 @@
+{
+  "runner_env_id": "BipedalWalker-v3",
+  "reward_path": "runs\\env_006\\paper_bipedal_hardcore_v1\\seed_2\\iter_06\\generation\\reward_v6.py",
+  "reward_source": "generated_function",
+  "run_name": "paper_bipedal_hardcore_v1/seed_2/iter_06/training",
+  "n_envs": 8,
+  "total_timesteps": 5000000,
+  "reward_clip": 20.0,
+  "error_fallback": "zero",
+  "ppo_args": {
+    "policy": "MlpPolicy",
+    "verbose": "1",
+    "device": "cpu",
+    "seed": "2",
+    "n_steps": "2048",
+    "batch_size": "128",
+    "gae_lambda": "0.95",
+    "gamma": "0.99",
+    "n_epochs": "10",
+    "ent_coef": "0.0",
+    "learning_rate": "0.0003",
+    "clip_range": "0.2",
+    "vf_coef": "0.5",
+    "max_grad_norm": "0.5",
+    "policy_kwargs": "{'ortho_init': True, 'activation_fn': <class 'torch.nn.modules.activation.Tanh'>, 'net_arch': {'pi': [64, 64], 'vf': [64, 64]}}",
+    "tensorboard_log": "runs/env_006/tensorboard"
+  },
+  "model_path": "runs\\env_006\\paper_bipedal_hardcore_v1\\seed_2\\iter_06\\training\\model.zip",
+  "monitor_dir": "runs\\env_006\\paper_bipedal_hardcore_v1\\seed_2\\iter_06\\training\\monitor",
+  "tensorboard_log": "runs/env_006/tensorboard",
+  "normalization": {
+    "normalize_obs": false,
+    "normalize_reward": false,
+    "clip_obs": 10.0,
+    "clip_normalized_reward": 10.0,
+    "vecnormalize_path": null
+  },
+  "external_eval": {
+    "eval_episodes": 20,
+    "eval_seed_offset": 10000,
+    "eval_seeds": [
+      10000,
+      10001,
+      10002,
+      10003,
+      10004,
+      10005,
+      10006,
+      10007,
+      10008,
+      10009,
+      10010,
+      10011,
+      10012,
+      10013,
+      10014,
+      10015,
+      10016,
+      10017,
+      10018,
+      10019
+    ],
+    "episode_rewards": [
+      -49.65637606312521,
+      -39.62571167526767,
+      -40.23825608380139,
+      -59.8932522891555,
+      -91.3510674345307,
+      -68.8056696280837,
+      -83.23706458229572,
+      -81.20146132912487,
+      -45.09336363314651,
+      -36.72976546129212,
+      -65.23881884128787,
+      -68.93454943504184,
+      -74.90681283548474,
+      -63.36675191856921,
+      -85.49166886508465,
+      -5.312528133392334,
+      -52.27669274434447,
+      -27.54590946342796,
+      -46.730480091646314,
+      -104.28297316422686
+    ],
+    "episode_lengths": [
+      247,
+      328,
+      290,
+      313,
+      1600,
+      146,
+      116,
+      127,
+      294,
+      334,
+      189,
+      168,
+      169,
+      180,
+      125,
+      481,
+      214,
+      346,
+      352,
+      1600
+    ],
+    "episode_terminated": [
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ],
+    "mean_eval_reward": -59.49595868361648,
+    "mean_episode_length": 380.95,
+    "min_eval_reward": -104.28297316422686,
+    "max_eval_reward": -5.312528133392334,
+    "termination_breakdown": {
+      "terminated": 18,
+      "truncated": 2
+    },
+    "final_policy_component_evaluation": {
+      "energy_penalty": {
+        "episode_sum_mean": -5.8407599629656035,
+        "episode_abs_sum_mean": 5.8407599629656035,
+        "signed_contribution_share": -0.08683516021839625,
+        "magnitude_share": 0.08683516021839625,
+        "active_rate": 1.0
+      },
+      "forward_reward": {
+        "episode_sum_mean": 61.42185518366048,
+        "episode_abs_sum_mean": 61.42185518366048,
+        "signed_contribution_share": 0.9131648397816037,
+        "magnitude_share": 0.9131648397816037,
+        "active_rate": 0.8182176138600866
+      }
+    },
+    "final_policy_component_error_count": 0
+  },
+  "train_duration_sec": 980.2,
+  "component_summary": {
+    "steps_seen": 1280000,
+    "reward_error_count_max": 0,
+    "component_stats": {
+      "component.energy_penalty": {
+        "count": 1280000,
+        "mean": -0.018148753602019722,
+        "abs_mean": 0.018148753602019722,
+        "nonzero_rate": 1.0,
+        "mean_when_active": -0.018148753602019722,
+        "abs_mean_when_active": 0.018148753602019722,
+        "min": -0.03999999910593033,
+        "max": -1.7351992937619798e-05
+      },
+      "component.forward_reward": {
+        "count": 1280000,
+        "mean": 0.17478053828488296,
+        "abs_mean": 0.17478053828488296,
+        "nonzero_rate": 0.90742734375,
+        "mean_when_active": 0.19261105529682576,
+        "abs_mean_when_active": 0.19261105529682576,
+        "min": 0.0,
+        "max": 0.6832545399665833
+      },
+      "component.total_reward": {
+        "count": 1280000,
+        "mean": 0.156631784702025,
+        "abs_mean": 0.16215367566964412,
+        "nonzero_rate": 1.0,
+        "mean_when_active": 0.156631784702025,
+        "abs_mean_when_active": 0.16215367566964412,
+        "min": -0.03999999910593033,
+        "max": 0.663563072681427
+      },
+      "generated_reward": {
+        "count": 1280000,
+        "mean": 0.156631784702025,
+        "abs_mean": 0.16215367566964412,
+        "nonzero_rate": 1.0,
+        "mean_when_active": 0.156631784702025,
+        "abs_mean_when_active": 0.16215367566964412,
+        "min": -0.03999999910593033,
+        "max": 0.663563072681427
+      },
+      "original_env_reward": {
+        "count": 1280000,
+        "mean": -0.5301676261760209,
+        "abs_mean": 0.7608558797805536,
+        "nonzero_rate": 1.0,
+        "mean_when_active": -0.5301676261760209,
+        "abs_mean_when_active": 0.7608558797805536,
+        "min": -100.0,
+        "max": 0.7323824167251587
+      }
+    },
+    "episode_component_sum_stats": {
+      "energy_penalty": {
+        "count": 7897,
+        "mean": -2.937788092856584,
+        "abs_mean": 2.937788092856584,
+        "min": -33.6036330445786,
+        "max": -0.6367343477904797
+      },
+      "forward_reward": {
+        "count": 7897,
+        "mean": 28.305265034874743,
+        "abs_mean": 28.305265034874743,
+        "min": 0.0013371226377785206,
+        "max": 196.38790196215268
+      },
+      "total_reward": {
+        "count": 7897,
+        "mean": 25.367476945146826,
+        "abs_mean": 25.513840589689927,
+        "min": -17.748868209600914,
+        "max": 184.40961445169523
+      }
+    }
+  }
+}

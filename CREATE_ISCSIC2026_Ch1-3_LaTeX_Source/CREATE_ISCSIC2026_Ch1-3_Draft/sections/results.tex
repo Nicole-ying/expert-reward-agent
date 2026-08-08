@@ -1,0 +1,109 @@
+\section{Results and Analysis}
+\label{sec:results}
+
+\subsection{Reward Search Under a Matched Training Budget}
+\label{sec:reward_search}
+
+\begin{table}[t]
+\caption{Seed-level LunarLander best-search fitness.}
+\label{tab:lander_main}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+Condition & s0 & s1 & s2 & s3 & s4 & Mean \\
+\midrule
+\multicolumn{7}{@{}l}{\emph{Budget-matched baselines}}\\
+Independent-10 & -13.1 & 170.8 & 55.1 & -106.7 & -109.7 & $-0.7\pm118.1$ \\
+Baseline & 25.4 & -5.0 & -10.1 & 151.3 & 58.9 & $44.1\pm66.0$ \\
+CREATE & \textbf{224.2} & \textbf{240.6} & \textbf{220.2} & \textbf{253.7} & \textbf{206.1} & $\mathbf{229.0\pm18.5}$ \\
+\midrule
+\multicolumn{7}{@{}l}{\emph{Mechanism ablations}}\\
+w/o evidence & \textbf{239.5} & 170.4 & -110.1 & 115.5 & \textbf{259.5} & $135.0\pm148.4$ \\
+w/o hierarchy & 169.9 & 130.6 & 71.1 & 59.2 & 140.3 & $114.2\pm47.3$ \\
+CREATE & \textbf{224.2} & \textbf{240.6} & \textbf{220.2} & \textbf{253.7} & \textbf{206.1} & $\mathbf{229.0\pm18.5}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Search breadth alone does not produce reliable reward repair.} Table~\ref{tab:lander_main} reports per-seed best search fitness under a ten-evaluation budget, with bold entries crossing the 200 threshold. Independent-10 evaluates ten unrelated candidates without cross-round information flow, yet solves no lineage---ruling out that candidate count alone drives improvement. The iterative conditions share the same task facts, environment interface, reward-generation protocol, and PPO budget; subsequent differences therefore reflect each architecture's capacity to convert training outcomes into better reward functions.
+
+\textbf{Iterative rewriting without tool-use evidence or memory produces non-monotonic progress.} Baseline retains sequential LLM invocation but removes tool access, memory, and editing constraints. It solves no lineage, and in three seeds the initial reward outperforms every subsequent revision. Without component-level diagnostics or memory, the LLM cannot distinguish a poorly calibrated coefficient from a fundamentally wrong semantic---each rewrite is effectively a guess. CREATE, by contrast, solves every lineage, demonstrating that agentic evidence seeking, not repeated invocation, drives reliable repair.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.98\columnwidth]{fig2_budget_curve.pdf}
+\caption{Best-so-far LunarLander search fitness under a matched policy-training budget. Each curve averages five lineages after retaining the incumbent within each lineage; the dashed line denotes the task-solving threshold.}
+\label{fig:budget_curve}
+\end{figure}
+
+Fig.~\ref{fig:budget_curve} reveals the qualitative gap: Independent-10 improves by chance, Baseline plateaus, and CREATE progressively raises its incumbent. The distinction is whether each training run becomes diagnostic evidence rather than a binary outcome. Fig.~\ref{fig:heldout_ablation}(a) shows that the same gap appears at the per-lineage level.
+
+\subsection{Mechanism Ablations}
+\label{sec:mechanism_ablations}
+
+We now isolate \emph{why} the closed loop works by testing two mechanism hypotheses from Section~\ref{sec:method}.
+
+\textbf{Tool use enables agentic diagnosis.} Activation rates, magnitude shares, and temporal trends let the reward-engineering agent distinguish mechanistically distinct failure modes---for instance, an inactive component could be unreachable, too weak, or behaviorally irrelevant, and a scalar sum cannot tell them apart.
+
+Without tool-use access, the reward-engineering agent can consult only scalar current-round feedback. Table~\ref{tab:lander_main} shows that this variant solves only two of five lineages, with high dispersion and one lineage that remains negative throughout. Aggregate scores can support occasional repair but cannot distinguish \emph{why} a component failed: \emph{what} evidence the agent can inspect determines \emph{which} diagnoses it can form.
+
+\textbf{Bounded reward actions enable single-trial attribution.} Eq.~\ref{eq:semantic_action} formalizes the semantic-localization constraint that makes each retraining run a controlled test of one intervention. This matters because reward revision is not ordinary program repair: an LLM can analyze code and diagnostics, but the policy consequence of changing reward weights, gates, or mathematical forms appears only after black-box RL training~\cite{wang2026diagnostic}.
+
+Without bounded actions, the agent retains tool-returned evidence and memory but may issue unconstrained multi-component rewrites. Table~\ref{tab:lander_main} shows that this variant solves no lineage, while Fig.~\ref{fig:heldout_ablation}(b) shows the same failure pattern visually. If several components are retuned or refactored together, a failed next run gives no stable diagnostic target: the agent may react by changing other components, coupling unrelated hypotheses and severing the evidence--action--outcome chain. The ablation therefore degenerates into metrics-conditioned trial and error, not experience-guided diagnosis; each $10^6$-step run must stay tied to one falsifiable reward hypothesis.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.98\columnwidth]{fig_heldout_ablation_combined.pdf}
+\caption{LunarLander per-lineage search outcomes. (a) Independent-10, Baseline, and CREATE under a matched budget. (b) CREATE compared with the two mechanism ablations. Dots are lineages, black bars are means, whiskers denote standard deviations, and the dashed line denotes the task threshold.}
+\label{fig:heldout_ablation}
+\end{figure}
+
+Fig.~\ref{fig:heldout_ablation}(b) shows that tool-mediated evidence and bounded actions are coupled requirements. Evidence-poor repair is initialization-dependent, and unconstrained rewriting remains below threshold in every lineage. Full CREATE combines 5/5 solutions with a tight distribution, aligning high success rate with reliable attribution.
+
+\subsection{Agentic Diagnosis from Tool-Returned Evidence}
+\label{sec:evidence_to_edit}
+
+We examine \emph{how} the reward-engineering agent turns tool-returned evidence into a diagnosis and intervention through the most representative seed-0 trajectory in Fig.~\ref{fig:repair_patterns}. This lineage contains both collapse and recovery; complete traces and additional component-evidence heatmaps are provided in the appendix.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.98\columnwidth]{fig4_traces.pdf}
+\caption{Auditable CREATE repair for LunarLander seed~0. (a) Current fitness and the protected best archive. (b) Component activation rates across rounds. (c) Component magnitude shares used during diagnosis.}
+\label{fig:repair_patterns}
+\end{figure}
+
+\textbf{Diagnostic trajectory.} Subfigures b and c separate three kinds of components: guidance signals such as safe, approach, and landing proximity; safety or cost terms such as descent and fuel; and landing-quality events such as touchdown and stable. Iterations 1--5 fail to produce stable landing, with the best score still below zero. Before iteration~6, the agent observes from the training records that distance progress is active while episodes terminate early; the queried reward-design tools map this pattern to proxy misalignment and missing safe-descent feedback. The selected L2 action removes raw distance reduction and introduces state-based safe proximity, descent safety, touchdown, and stable-landing components, visible as new rows in subfigure b. Iteration~6 improves to $-18.3$ and survives much longer, giving memory a useful but still unsolved reference point.
+
+\textbf{Collapse and recovery.} The next reward version changes the approach signal back to a delta-style shaping term and collapses at iteration~7 to $-388.7$. The tools then expose the failure signature reflected in subfigures b and c: touchdown and stable-landing components are not activated, approach shaping contributes negatively, and descent safety appears only rarely but with large penalty share. Rather than discarding the entire reward, the agent compares against iteration~6 and selects an L2 repair: replace the unstable delta signal with a bounded landing-proximity term that combines horizontal centering with a height factor, while keeping safety and landing components. Iteration~8 reaches 224.2, and subfigure a shows the best archive preserving this recovered solution through later exploratory regression.
+
+\textbf{Mechanism summary.} The case illustrates the full CREATE loop: tool calls inspect lineage state, including reward code, prior diagnoses, component activation, magnitude balance, and previous outcome; memory makes iteration~6 the recovery anchor and iteration~7 negative evidence; and the agent returns to the best preserved reward family. It then changes only the unstable semantic, so recovery is diagnostic rather than a fresh regeneration attempt.
+
+\subsection{Cross-Task Validation}
+\label{sec:cross_task}
+
+BipedalWalker-v3 validates CREATE on continuous-action locomotion as a secondary domain with a different action space and gait-control reward structure. The ten-evaluation cap and input protocol remain unchanged, but the reward semantics shift from landing to forward gait and stability. Table~\ref{tab:bipedal} reports the first reward version that crosses the task threshold, where $v$ denotes the evaluated version.
+
+\begin{table}[!h]
+\caption{BipedalWalker-v3 CREATE search results.}
+\label{tab:bipedal}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4.0pt}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Seed & Initial fitness & First $v\!\geq\!300$ & Best search \\
+\midrule
+0 & 270.7 & $v_2$ & 320.0 \\
+1 & 280.5 & $v_2$ & 313.7 \\
+2 & 272.1 & $v_2$ & 307.9 \\
+3 & 290.0 & $v_2$ & 311.1 \\
+4 & 103.0 & $v_3$ & 304.9 \\
+\midrule
+Mean & $243.26\pm70.45$ & 2.2 versions & $311.54\pm5.17$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All five BipedalWalker lineages cross the threshold within three evaluated reward versions, and the selected policies obtain $310.82\pm5.03$ test fitness over unseen episodes. Four lineages begin near the threshold and mainly require calibration; seed~4 starts from 103.0 and reaches 304.9 after one additional repair round. This secondary result summarizes the cross-task evidence: the same observe--remember--act workflow remains operational when reward repair shifts from discrete landing semantics to continuous gait control.

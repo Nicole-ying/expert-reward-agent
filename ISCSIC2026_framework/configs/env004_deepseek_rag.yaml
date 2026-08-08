@@ -1,0 +1,113 @@
+experiment:
+  env_id: Env_004
+  run_root: runs/env_004
+  run_name: null
+  seed: 0
+
+llm:
+  provider: deepseek
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  model_env: deepseek-v4-pro
+  model_reward: deepseek-v4-pro
+  temperature_environment_analyzer: 0.0
+  temperature_reward_generator: 0.15
+  max_tokens_env: 4096
+  max_tokens_reward: 8192
+
+inputs:
+  task_spec_path: envs/env_004/task_spec_anonymized.yaml
+  masked_step_path: envs/env_004/masked_step_source.py
+
+prompts:
+  environment_analyzer: prompts/01_environment_analyzer_prompt.md
+  reward_generator: prompts/02_reward_generator_prompt.md
+  reward_revision: prompts/03_reward_revision_prompt.md
+
+rag:
+  route_catalog_path: knowledge_base/stage_generation/route_catalog_03.json
+  skeleton_catalog_path: knowledge_base/stage_generation/skeleton_catalog_02.json
+  generation_chunks_path: knowledge_base/stage_generation/generation_chunks_02_03_exact.jsonl
+  generation_table_chunks_path: knowledge_base/stage_generation/table_chunks_02_03.jsonl
+  reward_misalignment_cards_path: knowledge_base/iteration/reward_misalignment_cards.md
+
+context:
+  include_masked_step_in_reward_generator: false
+  max_expert_context_chars: 6500
+
+reward_generation:
+  function_signature: "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):"
+  forbidden_info_fields_for_reward:
+    - original_reward
+    - official_reward
+    - reward_forward
+    - reward_ctrl
+    - reward_survive
+    - x_position
+    - y_position
+    - z_distance_from_origin
+    - fitness_score
+    - individual_reward
+    - success
+    - failure
+    - termination_reason
+
+multi_seed:
+  enabled: true
+  start_seed: 0
+  num_seeds: 5
+
+iteration:
+  total_rounds: 10
+  experiment_prefix: paper_env004_main_v2
+  experiment_root: runs/env_004/experiments
+  memory_path: runs/env_004/memory/reward_memory.md
+  reset_memory_at_start: true
+  cards_top_k: 4
+  stop_on_invalid_reward: true
+  use_mock_llm: false
+  target_score: 3800.0
+  save_best_artifacts: true
+  stop_after_solved_drop: true
+  stop_when_solved_and_identical: true
+  no_improvement_patience_after_solved: 2
+  no_improvement_patience_unsolved: 3
+  min_meaningful_improvement: 100.0
+  retry_identical_when_unsolved: true
+  max_identical_revision_retries: 2
+  use_reflection_agent: true
+
+training:
+  runner_env_id: Hopper-v5
+  normalize_obs: true
+  normalize_reward: false
+  clip_obs: 10.0
+  policy: MlpPolicy
+  # RL Zoo's tuned MuJoCo Hopper-v4 PPO setup, applied to Hopper-v5.
+  n_envs: 1
+  total_timesteps: 1000000
+  eval_episodes: 20
+  eval_seed_offset: 10000
+  n_steps: 512
+  batch_size: 32
+  gae_lambda: 0.99
+  gamma: 0.999
+  n_epochs: 5
+  ent_coef: 0.00229519
+  learning_rate: 0.0000980828
+  clip_range: 0.2
+  max_grad_norm: 0.7
+  vf_coef: 0.835671
+  policy_kwargs:
+    log_std_init: -2
+    ortho_init: false
+    activation_fn: ReLU
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+  device: cpu
+  seed: 0
+  max_training_steps_for_progress: 1000000
+  save_dir: runs/env_004/training_runs
+  run_name: ppo_reward_v1_004
+  tensorboard_log: runs/env_004/tensorboard

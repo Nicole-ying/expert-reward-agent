@@ -11,99 +11,394 @@ from pathlib import Path
 
 from .common import load_config, read_text, write_text, write_json, record_prompt, record_response
 from .reflection_tools import (
-    get_reward_transformation,
-    get_skeleton_detail,
-    search_reward_design_knowledge,
+    set_reflection_context,
+    read_memory,
+    read_training_feedback,
+    read_reward_code,
+    read_past_reflection,
+    get_component_history,
+    read_environment_card,
+    read_checkpoint_trend,
 )
 from .run_03_direct_reward_generator import extract_code, validate_code
 from .subagent_investigator import run_investigator
-from llm_clients.deepseek_client import DeepSeekClient
+from llm_clients import create_client
+
+
+def _parse_reflection_fields(resp_text):
+    """Extract structured fields from a reflection agent response.
+
+    Returns dict with keys: selected_level, selected_intervention, falsifiable_hypothesis,
+    expected_next_round, main_risk, evidence, behavior_diagnosis.
+
+    Handles both standard numbered-field format and JSON-block format.
+    """
+    fields = {}
+
+    # ── Try JSON format first (some responses wrap fields in a json block) ──
+    json_m = re.search(r'```json\s*\n(.*?)\n```', resp_text, re.DOTALL)
+    if json_m:
+        try:
+            json_fields = json.loads(json_m.group(1))
+            for key in ['selected_level', 'selected_intervention', 'falsifiable_hypothesis',
+                        'expected_next_round', 'main_risk', 'evidence', 'behavior_diagnosis']:
+                if key in json_fields:
+                    val = str(json_fields[key])
+                    if len(val) > 300:
+                        val = val[:297] + "..."
+                    fields[key] = val
+            if fields:
+                return fields
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # ── Standard numbered-field format ──
+    for key in ['selected_level', 'selected_intervention', 'falsifiable_hypothesis',
+                'expected_next_round', 'main_risk', 'evidence', 'behavior_diagnosis']:
+        # Match patterns like: "5. `selected_intervention`：..."  or  "5. selected_intervention: ..."
+        m = re.search(
+            rf'\d+\.\s*`?{key}`?\s*[：:]\s*(.+?)(?=\n\d+\.\s*`|\n\d+\.\s*\w|\n```|\n\Z)',
+            resp_text, re.DOTALL
+        )
+        if m:
+            val = m.group(1).strip()
+            # Clean up trailing newlines and markdown artifacts
+            val = val.rstrip()
+            if len(val) > 300:
+                val = val[:297] + "..."
+            fields[key] = val
+    return fields
 
 
 def _build_cumulative_record(run_root, prefix, seed, current_iteration, memory_md=""):
-    """Build a compact因果链 table from all previous iterations' responses and feedback.
+    """Build the reflection agent's decision autobiography from all past iterations.
 
-    Returns a markdown table showing: iter | 做了什么 | 预期 | 实际 len | 实际 score | 预判
-    The "预判" column uses the memory table's decision to judge outcome quality.
-    Returns empty string if no history (iteration 2 or less than 2 completed iters).
+    Parses each past reflection response to extract what was changed, why, and the result.
+    Presents a per-iteration narrative that lets the agent see its own patterns —
+    oscillations, repeated failures, abandoned breakthroughs — without hard-coded rules.
+
+    Returns empty string if no history (iteration 2 or has no response records).
     """
     if current_iteration <= 2:
         return ""
 
-    lines = [
-        "# 3. 累积迭代记录（本轮之前所有尝试的因果链）",
-        "| iter | 做了什么 | 预期效果 | 实际 len | 实际 score | 预判 |",
-        "|---|---:|---:|---:|---:|",
-    ]
+    base = Path(run_root) / prefix / f"seed_{seed}"
 
-    # Parse memory table rows for quick lookup
-    mem_scores = {}   # iter -> score
-    mem_lens = {}     # iter -> len
-    mem_skels = {}    # iter -> skeleton
-    mem_decisions = {}  # iter -> decision
-    for line in memory_md.splitlines():
-        if not line.startswith("|") or "|---" in line or "iter |" in line:
-            continue
-        cols = [c.strip() for c in line.strip().strip("|").split("|")]
-        # Table columns: iter | skeleton | score | best | delta | len | key_signal | action
-        if len(cols) >= 8:
+    # ── Collect scores from training_summary.json ──
+    scores = {}   # iter -> score
+    lengths = {}  # iter -> mean episode length
+    for i in range(1, current_iteration):
+        ts = base / f"iter_{i:02d}" / "training" / "training_summary.json"
+        if ts.exists():
             try:
-                it = int(cols[0])
-                mem_skels[it] = cols[1]
-                mem_scores[it] = cols[2]
-                mem_lens[it] = cols[5]
-                mem_decisions[it] = cols[7]
-            except (ValueError, IndexError):
+                d = json.loads(ts.read_text(encoding="utf-8"))
+                ee = d.get("external_eval", d)
+                rewards = ee.get("episode_rewards", [])
+                if rewards:
+                    scores[i] = sum(rewards) / len(rewards)
+                ep_lens = ee.get("episode_lengths", [])
+                if ep_lens:
+                    lengths[i] = sum(ep_lens) / len(ep_lens)
+            except (json.JSONDecodeError, KeyError):
                 continue
 
-    decision_emoji = {
-        "new_best": "✅",
-        "target_solved_new_best": "✅",
-        "no_meaningful_improvement": "❌",
-        "stop_after_solved_drop_keep_best": "➖",
-        "unsolved_high_achievement_continue_from_best": "➖",
-        "unsolved_improving_continue_from_best": "➖",
-    }
+    # Also get scores from eval_result.json as fallback
+    for i in range(1, current_iteration):
+        if i in scores:
+            continue
+        er = base / f"iter_{i:02d}" / "training" / "eval_result.json"
+        if er.exists():
+            try:
+                d = json.loads(er.read_text(encoding="utf-8"))
+                if "mean_eval_reward" in d:
+                    scores[i] = d["mean_eval_reward"]
+                if "mean_episode_length" in d:
+                    lengths[i] = d["mean_episode_length"]
+            except (json.JSONDecodeError, KeyError):
+                continue
 
-    for it in sorted(mem_skels):
-        if it >= current_iteration:
-            break
+    # ── Build per-iteration narrative ──
+    lines = [
+        "# 2. 你的修改自传 — 你过去每一轮做了什么，结果如何",
+        "",
+        "逐轮阅读，关注你**自己的修改决策和它们的结果**。注意你是否在重复过去的操作。",
+        "",
+    ]
 
-        # Extract hypothesis from response record
-        hypothesis = ""
-        resp_path = (
-            Path(run_root) / prefix / f"seed_{seed}"
-            / f"iter_{it:02d}" / "generation" / "response_records" / "agent_reflection.md"
-        )
-        if resp_path.exists():
-            resp_text = resp_path.read_text(encoding="utf-8")
-            m = re.search(r"\*\*hypothesis\*\*:\s*(.+)", resp_text)
-            if m:
-                hypothesis = m.group(1).strip()
-                if len(hypothesis) > 60:
-                    hypothesis = hypothesis[:57] + "..."
+    iterations_with_data = 0
+    component_mod_count = {}  # component -> list of (iter, score_delta)
 
-        # What changed: skeleton difference from previous
-        prev_skel = mem_skels.get(it - 1, "")
-        curr_skel = mem_skels.get(it, "")
-        if it == 1:
-            what = "初始生成"
-        elif not hypothesis:
-            what = f"骨架变化: {curr_skel[:50]}"
+    for i in range(2, current_iteration):
+        resp_path = base / f"iter_{i:02d}" / "generation" / "response_records" / "agent_reflection.md"
+        if not resp_path.exists():
+            continue
+
+        resp_text = resp_path.read_text(encoding="utf-8")
+        fields = _parse_reflection_fields(resp_text)
+
+        intervention = fields.get("selected_intervention", "")
+        hypothesis = fields.get("falsifiable_hypothesis", "")
+        selected_level = fields.get("selected_level", "")
+
+        # Handle unparseable responses (e.g. only code, no numbered fields)
+        if not intervention and not hypothesis:
+            # Check if this was a restart (new skeleton)
+            prev_code_path = base / f"iter_{i-1:02d}" / "generation" / f"reward_v{i-1}.py"
+            curr_code_path = base / f"iter_{i:02d}" / "generation" / f"reward_v{i}.py"
+            is_restart = False
+            if prev_code_path.exists() and curr_code_path.exists():
+                prev_code = prev_code_path.read_text(encoding="utf-8")
+                curr_code = curr_code_path.read_text(encoding="utf-8")
+                # Count component keys to detect skeleton change
+                prev_comps = set(re.findall(r'"([a-z_]+)"\s*:', prev_code))
+                curr_comps = set(re.findall(r'"([a-z_]+)"\s*:', curr_code))
+                if prev_comps != curr_comps:
+                    is_restart = True
+                    intervention = f"骨架重建：组件从 {sorted(prev_comps)} 变为 {sorted(curr_comps)}"
+                else:
+                    intervention = "(响应格式异常，无法解析修改内容)"
+            else:
+                intervention = "(响应格式异常，无法解析修改内容)"
+        expected = fields.get("expected_next_round", "")
+
+        prev_score = scores.get(i - 1)
+        curr_score = scores.get(i)
+        prev_len = lengths.get(i - 1)
+        curr_len = lengths.get(i)
+
+        # Calculate delta
+        if prev_score is not None and curr_score is not None:
+            delta = curr_score - prev_score
+            delta_str = f"{delta:+.1f}"
+            if delta > 20:
+                outcome = "✅ 大幅改善"
+            elif delta > 0:
+                outcome = "➖ 小幅改善"
+            elif delta > -20:
+                outcome = "➖ 小幅退步"
+            else:
+                outcome = "❌ 明显退步"
         else:
-            what = hypothesis
+            delta_str = "?"
+            outcome = "?"
 
-        score = mem_scores.get(it, "?")
-        length = mem_lens.get(it, "?")
-        decision = mem_decisions.get(it, "")
-        emoji = decision_emoji.get(decision, "❓")
+        prev_str = f"{prev_score:.1f}" if prev_score is not None else "?"
+        curr_str = f"{curr_score:.1f}" if curr_score is not None else "?"
 
-        lines.append(f"| {it} | {what} | {hypothesis or '—'} | {length} | {score} | {emoji} |")
+        # Format length change
+        if prev_len is not None and curr_len is not None:
+            len_info = f"len: {prev_len:.0f}→{curr_len:.0f}"
+        else:
+            len_info = ""
 
-    if len(lines) <= 3:
+        # Extract target component from intervention text
+        target_comp = "?"
+        # Multiple patterns found in real reflection responses:
+        # "唯一目标组件 contact_bonus" / "唯一目标组件为 `contact_bonus`"
+        # "唯一干预目标为 contact_bonus" / "目标是goal_proximity"
+        # "修改contact_bonus的" / "修改 `contact_bonus` 组件"
+        for pat in [
+            r'(?:目标组件|干预目标|目标)(?:为|是)?\s*`?(\w+)`?',
+            r'修改\s*`?(\w+)`?\s*(?:组件|的|近地|公式|系数)',
+        ]:
+            comp_match = re.search(pat, intervention)
+            if comp_match:
+                cand = comp_match.group(1)
+                if re.match(r'^[a-z_][a-z0-9_]*$', cand):
+                    target_comp = cand
+                    break
+        # Fallback: first backtick-quoted snake_case word
+        if target_comp == "?":
+            for m in re.finditer(r'`(\w+)`', intervention):
+                cand = m.group(1)
+                if not re.match(r'^[a-z_][a-z0-9_]*$', cand):
+                    continue
+                if cand in ('obs', 'action', 'next_obs', 'info', 'original_reward',
+                            'training_progress', 'compute_reward', 'def', 'import',
+                            'soft_factor', 'speed_sq', 'vx', 'vy', 'angle', 'angvel',
+                            'max', 'abs', 'float', 'if', 'y_next', 'left_contact',
+                            'right_contact', 'descent_target', 'contact_reward',
+                            'true', 'false', 'none', 'range', 'len', 'min', 'sum',
+                            'int', 'str', 'list', 'dict', 'bool', 'return', 'w_prox',
+                            'w_vel', 'w_ang', 'w_contact', 'w_proxy', 'w_thrust',
+                            'w_progress', 'w_success', 'w_soft', 'w_angle',
+                            'comp_prox', 'comp_vel', 'comp_angle', 'comp_contact',
+                            'comp_proxy', 'comp_thrust', 'comp_soft',
+                            'progress_reward', 'contact_bonus', 'fuel_penalty',
+                            'orientation_penalty', 'landing_speed_penalty',
+                            'gate_x', 'gate_y', 'gate_vx', 'gate_vy',
+                            'score_x', 'score_y', 'score_vx', 'score_vy',
+                            'score_angle', 'score_contact', 'score_leg'):
+                    continue
+                target_comp = cand
+                break
+        # Code-diff fallback: compare component dicts across iterations
+        if target_comp == "?" and i >= 3:
+            prev_code_path = base / f"iter_{i-1:02d}" / "generation" / f"reward_v{i-1}.py"
+            curr_code_path = base / f"iter_{i:02d}" / "generation" / f"reward_v{i}.py"
+            if prev_code_path.exists() and curr_code_path.exists():
+                prev_code = prev_code_path.read_text(encoding="utf-8")
+                curr_code = curr_code_path.read_text(encoding="utf-8")
+                prev_comps = _extract_component_blocks(prev_code)
+                curr_comps = _extract_component_blocks(curr_code)
+                # Find changed components
+                changed = []
+                all_names = set(list(prev_comps.keys()) + list(curr_comps.keys()))
+                for name in all_names:
+                    if prev_comps.get(name) != curr_comps.get(name):
+                        changed.append(name)
+                if len(changed) == 1:
+                    target_comp = changed[0]
+                elif len(changed) > 1:
+                    target_comp = changed[0]  # pick first changed
+
+        # Track component modification history
+        if target_comp != "?":
+            if target_comp not in component_mod_count:
+                component_mod_count[target_comp] = []
+            component_mod_count[target_comp].append((i, delta if isinstance(delta_str, str) and delta_str != "?" else None))
+
+        # Truncate long text for readability
+        intervention_short = intervention[:120] + "..." if len(intervention) > 120 else intervention
+
+        lines.append(f"### v{i}：修改 `{target_comp}` → 分数 {prev_str} → {curr_str}（{delta_str}）{outcome}")
+        lines.append(f"- **你做了什么**：{intervention_short}")
+        if hypothesis:
+            hyp_short = hypothesis[:150] + "..." if len(hypothesis) > 150 else hypothesis
+            lines.append(f"- **你为什么这么做**：{hyp_short}")
+        if len_info:
+            lines.append(f"- **回合长度**：{len_info}")
+        lines.append("")
+
+        iterations_with_data += 1
+
+    if iterations_with_data == 0:
         return ""
-    lines.append("\n预判列连续 ≥ 3 轮 ❌ → 当前方向大概率错误，应考虑 Level 3 重建。")
+
+    # ── Component modification summary ──
+    if len(component_mod_count) > 1 or (
+        len(component_mod_count) == 1 and sum(len(v) for v in component_mod_count.values()) >= 3
+    ):
+        lines.append("## 你的修改轨迹（按组件分组）")
+        lines.append("")
+        for comp, history in sorted(component_mod_count.items(), key=lambda x: -len(x[1])):
+            count = len(history)
+            score_changes = []
+            for it, delta in history:
+                if delta is not None:
+                    score_changes.append(f"v{it}({delta:+.0f})")
+                else:
+                    score_changes.append(f"v{it}(?)")
+            changes_str = " → ".join(score_changes)
+            lines.append(f"- **`{comp}`**：修改了 **{count} 次**，分数变化：{changes_str}")
+
+        # Call out components modified 4+ times
+        heavy_components = [c for c, h in component_mod_count.items() if len(h) >= 4]
+        if heavy_components:
+            lines.append("")
+            for comp in heavy_components:
+                lines.append(
+                    f"⚠️ 你已修改 `{comp}` **{len(component_mod_count[comp])} 次**。"
+                    f"在做任何涉及 `{comp}` 的修改之前，先确认你不是在重复过去的某个操作。"
+                )
+
+    lines.append("")
+    lines.append("**在进入第 1 步诊断之前，先通读上面的修改自传。问自己：我过去改了什么？哪些成功了？我是不是在重复自己？**")
+
     return "\n".join(lines)
+
+
+def _extract_component_blocks(code: str):
+    """Extract per-component assignment expressions from a reward function."""
+    comps = {}
+    m = re.search(r'components\s*=\s*\{([^}]+)\}', code, re.DOTALL)
+    if not m:
+        return comps
+    var_to_name = {}
+    for vm in re.finditer(r'"([a-z_]+)"\s*:\s*(\w+)', m.group(1)):
+        var_to_name[vm.group(2)] = vm.group(1)
+    code_before = code[:m.start()]
+    lines_before = code_before.split('\n')
+    for var, name in var_to_name.items():
+        for line in reversed(lines_before):
+            s = line.strip()
+            if s.startswith(f"{var} =") or s.startswith(f"{var}="):
+                comps[name] = s
+                break
+        if name not in comps:
+            comps[name] = f"(var={var})"
+    return comps
+
+
+def _build_component_evolution(run_root, prefix, seed, current_iter):
+    """Component evolution: iter_01 full code, then per-iter snapshots with score/len/best/restart."""
+    try:
+        base = Path(run_root) / prefix / f"seed_{seed}"
+        if current_iter < 2:
+            return ""
+
+        # Read all reward versions + scores
+        versions = {}
+        scores = {}
+        for i in range(1, current_iter):
+            f = base / f"iter_{i:02d}" / "generation" / f"reward_v{i}.py"
+            ts = base / f"iter_{i:02d}" / "training" / "training_summary.json"
+            if f.exists():
+                versions[i] = f.read_text(encoding="utf-8")
+            if ts.exists():
+                d = json.loads(ts.read_text(encoding="utf-8"))
+                ee = d.get("external_eval", d)
+                rewards = ee.get("episode_rewards", [])
+                lengths = ee.get("episode_lengths", [])
+                if rewards:
+                    scores[i] = (sum(rewards) / len(rewards), sum(lengths) / len(lengths))
+
+        if not versions:
+            return ""
+
+        # Determine best score
+        best_score = max(v[0] for v in scores.values()) if scores else None
+
+        # Extract components per iteration
+        iter_comps = {i: _extract_component_blocks(code) for i, code in versions.items()}
+        all_comps = sorted(set().union(*[set(c.keys()) for c in iter_comps.values()]))
+
+        lines = ["# 组件演化", ""]
+
+        # Baseline: iter_01 full code
+        if 1 in versions:
+            sc = scores.get(1, ("?", "?"))
+            lines.append(f"## 基线 iter_01 (score={sc[0]:.1f}, len={sc[1]:.0f})")
+            lines.append("```python")
+            lines.append(versions[1].strip())
+            lines.append("```\n")
+
+        # Per-iteration snapshot
+        prev_comps = iter_comps.get(1, {})
+        for i in sorted(versions.keys()):
+            if i == 1:
+                continue
+            comps = iter_comps[i]
+            changed = [n for n in all_comps if comps.get(n) != prev_comps.get(n)]
+            sc = scores.get(i, ("?", "?"))
+            marks = []
+            if best_score and sc[0] and sc[0] >= best_score:
+                marks.append("BEST")
+            # Detect restart: all component names changed vs previous
+            if set(comps.keys()) != set(prev_comps.keys()):
+                marks.append("RESTART")
+            tag_str = f" [{', '.join(marks)}]" if marks else ""
+            lines.append(f"## iter_{i:02d} (score={sc[0]:.1f}, len={sc[1]:.0f}){tag_str}")
+            for name in all_comps:
+                expr = comps.get(name, "(已删除)")
+                tag = "修改" if name in changed else "未变"
+                lines.append(f"- **{name}**: `{expr}`  [{tag}]")
+            lines.append("")
+            prev_comps = comps
+
+        return "\n".join(lines)
+    except Exception:
+        return ""
 
 
 def _build_component_delta(run_root, prefix, seed, current_iter):
@@ -114,8 +409,12 @@ def _build_component_delta(run_root, prefix, seed, current_iter):
     Only reports evidence — does NOT suggest what to do next.
     """
     try:
-        prev_dir = Path(run_root) / prefix / f"seed_{seed}" / f"iter_{current_iter-1:02d}" / "training"
-        curr_dir = Path(run_root) / prefix / f"seed_{seed}" / f"iter_{current_iter:02d}" / "training"
+        # current_iter is the iteration being GENERATED (training hasn't run yet).
+        # Compare the just-completed iteration (N-1) vs the previous one (N-2).
+        if current_iter < 3:
+            return ""  # need at least iter1 and iter2 training data
+        prev_dir = Path(run_root) / prefix / f"seed_{seed}" / f"iter_{current_iter-2:02d}" / "training"
+        curr_dir = Path(run_root) / prefix / f"seed_{seed}" / f"iter_{current_iter-1:02d}" / "training"
 
         prev_ts = prev_dir / "training_summary.json"
         curr_ts = curr_dir / "training_summary.json"
@@ -210,6 +509,74 @@ def _build_component_delta(run_root, prefix, seed, current_iter):
         return ""
 
 
+# ── Behavior Analyst Subagent ──────────────────────────────────────────────
+# Called before the main reflection agent. It reads training feedback, memory,
+# current/best reward code, and component deltas, then produces a compact
+# diagnostic report that replaces the verbose component_evolution section.
+
+def _build_analyst_user_prompt(feedback_md, memory_md, current_code, best_code,
+                                cumulative_record, component_delta, prev_feedback_md,
+                                prev_code, prev_score, current_score, checkpoint_data="",
+                                all_historical_feedbacks=None, all_historical_codes=None):
+    """Build a compact user prompt for the behavior analyst subagent.
+
+    Includes ALL historical training feedbacks and reward codes so the analyst
+    can build a complete skeleton evolution table across all iterations.
+    """
+    parts = []
+
+    parts.append(f"# 本轮训练反馈 (score={current_score})\n{feedback_md}")
+
+    if checkpoint_data:
+        parts.append(f"# Checkpoint 评估数据（每10%步数的官方环境得分）\n{checkpoint_data}")
+
+    parts.append(f"# 本轮奖励函数代码\n```python\n{current_code.strip()}\n```")
+
+    # All historical data for building evolution table
+    if all_historical_feedbacks:
+        for i, (hist_fb, hist_code) in enumerate(zip(all_historical_feedbacks, all_historical_codes or [])):
+            parts.append(f"# 历史 iter_{i+1:02d} 训练反馈\n{hist_fb}")
+            parts.append(f"# 历史 iter_{i+1:02d} 奖励函数代码\n```python\n{hist_code.strip()}\n```")
+
+    if cumulative_record:
+        parts.append(f"# 修改自传（反思LLM过去每轮的修改决策和结果）\n{cumulative_record}")
+
+    if memory_md:
+        parts.append(f"# 历史记忆表\n{memory_md}")
+
+    if best_code:
+        parts.append(f"# 历史最佳奖励函数代码\n```python\n{best_code.strip()}\n```")
+
+    return "\n\n".join(parts)
+
+
+def _run_behavior_analyst(run_dir, reward_version, client, model, analyst_user_prompt, mock=False, reasoning_effort=None):
+    """Run the behavior analyst subagent — diagnose what the policy learned.
+
+    Returns the analyst report text, or '' on failure.
+    """
+    analyst_system_prompt = read_text("prompts/paper_v4/behavior_analyst_prompt.md")
+
+    if mock:
+        return ""
+
+    try:
+        out = client.chat(
+            system_prompt=analyst_system_prompt,
+            user_prompt=analyst_user_prompt,
+            model=model,
+            temperature=0.0,
+            max_tokens=12000,
+            reasoning_effort=reasoning_effort,
+        )
+        record_prompt(run_dir, "behavior_analyst", analyst_system_prompt, analyst_user_prompt)
+        write_text(str(run_dir / f"behavior_analyst_output_{reward_version}.md"), out)
+        return out.strip()
+    except Exception as exc:
+        print(f"  Behavior analyst: error — {exc}")
+        return ""
+
+
 def _environment_summary(environment_card_md):
     """Keep task and interface facts needed to interpret reward code.
 
@@ -265,9 +632,47 @@ def _compact_route_context(cfg, environment_card_md, expert_context_md=""):
     return "\n".join(compact)
 
 
-def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md="", cfg=None, expert_context_md="", cumulative_record="", component_delta="", is_rebuild=False, research_signal=""):
-    """Assemble the reflection agent's user prompt — focused, no generic templates."""
+def _extract_task_description(environment_card_md):
+    """Extract the task goal from the environment card."""
+    if not environment_card_md:
+        return ""
+    m = re.search(r'## 1\. 任务目标\s*\n(.+?)(?=\n##|\n\Z)', environment_card_md, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return ""
+
+
+def build_user_prompt(feedback_md, memory_md, previous_code, best_code=None, environment_card_md="", cfg=None, expert_context_md="", cumulative_record="", component_evolution="", component_delta="", is_rebuild=False, research_signal="", analyst_report="", stateless_baseline=False, component_stats_md="", checkpoint_data="", current_iter=None, prefix="", seed_str="", reflection_mode="structured"):
+    """Assemble the reflection agent's user prompt from template file."""
     parts = []
+
+    # ── Baseline mode: stateless — uses baseline template, no tools, no history ──
+    if stateless_baseline:
+        prev_score = "?"
+        m = re.search(r"score=([-\d.]+)", feedback_md)
+        if m:
+            prev_score = m.group(1)
+        target_score = float((cfg or {}).get("iteration", {}).get("target_score", 0.0))
+
+        task_description = _extract_task_description(environment_card_md)
+        feedback_section = f"# 上一轮训练反馈 (score={prev_score})\n{feedback_md}"
+        checkpoint_section = checkpoint_data if checkpoint_data else ""
+        previous_code_section = f"# 上一轮奖励函数代码\n```python\n{previous_code.strip()}\n```"
+
+        template_path = Path("prompts/paper_v4/reflection_agent_baseline_user_prompt.md")
+        if template_path.exists():
+            template = template_path.read_text(encoding="utf-8")
+        else:
+            template = "{task_description}\n\n目标得分：{target_score}\n\n{feedback_section}\n{checkpoint_section}\n{previous_code_section}"
+
+        user_prompt_md = template.format(
+            task_description=task_description,
+            target_score=f"{target_score:.0f}" if target_score > 0 else "?",
+            feedback_section=feedback_section,
+            checkpoint_section=checkpoint_section,
+            previous_code_section=previous_code_section,
+        )
+        return user_prompt_md
 
     prev_score = "?"
     m = re.search(r"score=([-\d.]+)", feedback_md)
@@ -275,62 +680,90 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code, environm
         prev_score = m.group(1)
 
     target_score = float((cfg or {}).get("iteration", {}).get("target_score", 0.0))
-    current_score = float(prev_score) if prev_score != "?" else None
+
+    training_iter = current_iter - 1 if current_iter and current_iter > 1 else 1
+
+    # Build data sections
+    feedback_section = (
+        f"# 上一轮训练反馈 (iter_{training_iter}, score={prev_score})\n{feedback_md}"
+    )
+
+    checkpoint_section = checkpoint_data if checkpoint_data else ""
+
+    previous_code_section = f"# 上一轮奖励函数代码\n```python\n{previous_code.strip()}\n```"
+
+    # Extract task description from environment card
+    task_description = _extract_task_description(environment_card_md)
+
+    # Read template — select based on mode
+    if reflection_mode == "unconstrained":
+        template_path = Path("prompts/paper_v4/reflection_agent_unconstrained_user_prompt.md")
+    elif reflection_mode == "no_share":
+        template_path = Path("prompts/paper_v4/reflection_agent_noshare_user_prompt.md")
+    else:
+        template_path = Path("prompts/paper_v4/reflection_agent_user_prompt.md")
+    if template_path.exists():
+        template = template_path.read_text(encoding="utf-8")
+    else:
+        template = "{task_description}\n\n目标得分：{target_score}\n\n{feedback_section}\n{checkpoint_section}\n{previous_code_section}"
+
+    user_prompt_md = template.format(
+        task_description=task_description,
+        target_score=f"{target_score:.0f}" if target_score > 0 else "?",
+        feedback_section=feedback_section,
+        checkpoint_section=checkpoint_section,
+        previous_code_section=previous_code_section,
+    )
 
     if is_rebuild:
-        parts.append(
-            "# ⚠️ REBUILD MODE\n"
-            "系统接受了你的 Level 3 重建建议。你不是在修改上一轮代码——你是在基于全部历史设计新骨架。\n"
-            "参考 #6 完整公式算子库选新的主信号框架，基于 #3 累积记录避开已失败的路径。\n"
-            "不要受上一轮代码结构约束。\n"
+        user_prompt_md = (
+            "⚠️ 这是 Level 3 重建轮——你建议了换框架。基于全部历史从零设计新骨架，"
+            "避开已知失败路径。\n\n" + user_prompt_md
         )
 
-    if target_score > 0 and current_score is not None:
-        gap = target_score - current_score
-        ratio = current_score / target_score
-        parts.append(
-            "# 1. Search objective\n"
-            f"- target_score: {target_score:.6f}\n"
-            f"- current_score: {current_score:.6f}\n"
-            f"- gap_to_target: {gap:.6f}\n"
-            f"- target_achievement_ratio: {ratio:.3%}"
-        )
+    parts.append(user_prompt_md)
 
-    parts.append(f"# 2. 上一轮奖励函数代码（该轮得分: {prev_score}）\n```python\n{previous_code.strip()}\n```")
-
-    if cumulative_record:
-        parts.append(cumulative_record)
-    else:
-        parts.append("# 3. 累积迭代记录\n（第一轮反思，无历史记录）")
-
-    if component_delta:
-        parts.append(component_delta)
-
-    parts.append(f"# 5. 本轮训练反馈\n{feedback_md}")
-
-    if research_signal:
-        parts.append(f"# 5.5. Subagent 调研信号（基于训练数据的自动诊断）\n{research_signal}")
-
-    environment_summary = _environment_summary(environment_card_md)
-    if environment_summary:
-        parts.append(
-            "# 6. 环境事实（只据此理解任务和变量，不猜测环境名称）\n"
-            f"{environment_summary}"
-        )
-
-    if is_rebuild:
-        # Full expert context for rebuild
-        if expert_context_md:
-            parts.append(f"# 7. Formula Operator Library（完整版，用于 Level 3 重建）\n{expert_context_md}")
-    else:
-        route_context = _compact_route_context(cfg or {}, environment_card_md, expert_context_md)
-        if route_context:
-            parts.append(f"# 7. Formula switching guide\n{route_context}")
-
-    if memory_md:
-        parts.append(f"# 8. 历史记忆\n{memory_md}")
+    if is_rebuild and expert_context_md:
+        parts.append(f"# Formula Operator Library（L3 重建参考）\n{expert_context_md}")
 
     return "\n\n".join(parts)
+
+
+def _no_share_feedback(feedback_md):
+    """Strip magnitude_share, signed_contribution_share, and active_rate columns from feedback.
+
+    Keeps only episode_sum_mean — same level of detail as baseline.
+    """
+    # Remove share/rate columns from the component table
+    # Table format: | component | episode_sum_mean | signed_share | magnitude_share | active_rate |
+    # Target:       | component | episode_sum_mean |
+    lines = feedback_md.splitlines()
+    result = []
+    in_table = False
+    for line in lines:
+        if line.startswith("| component |") or line.startswith("| component "):
+            in_table = True
+            # Keep only component and episode_sum_mean columns
+            cols = line.strip("|").split("|")
+            # cols: [' component ', ' episode_sum_mean ', ' signed_share ', ' magnitude_share ', ' active_rate ']
+            result.append("| component | episode_sum_mean |")
+            continue
+        if in_table and line.startswith("|---"):
+            result.append("|---|---|")
+            continue
+        if in_table and line.startswith("|"):
+            # Data row
+            if not line.strip() or line.strip() == "|":
+                in_table = False
+                result.append(line)
+            else:
+                cols = [c.strip() for c in line.strip("|").split("|")]
+                if len(cols) >= 2:
+                    result.append(f"| {cols[0]} | {cols[1]} |")
+            continue
+        in_table = False
+        result.append(line)
+    return "\n".join(result)
 
 
 def _score_only_feedback(feedback_md):
@@ -413,51 +846,86 @@ def _tool_definitions():
         {
             "type": "function",
             "function": {
-                "name": "search_reward_design_knowledge",
-                "description": "搜索奖励设计技法库。输入症状描述（自然语言），返回匹配的技法和修复方案。",
+                "name": "read_memory",
+                "description": "Read the full reward memory table — all past iterations at a glance: iter, skeleton, score, best, delta, len, key_signal, action. Use this FIRST to see the big picture.",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_training_feedback",
+                "description": "Read the training eval_result for a specific past iteration — exact score, len, termination, and per-component ep_sum/active_rate/shares.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "症状的自然语言描述，如 'penalty dominating progress signal' 或 'landing bonus never triggers'",
-                        }
+                        "iteration": {"type": "integer", "description": "The iteration number to read (1-based)."},
                     },
-                    "required": ["query"],
+                    "required": ["iteration"],
                 },
             },
         },
         {
             "type": "function",
             "function": {
-                "name": "get_skeleton_detail",
-                "description": "获取某个骨架的数学形态、设计原理、常见陷阱和推荐配合。",
+                "name": "read_reward_code",
+                "description": "Read the reward function Python code from a specific past iteration. Use this to compare what changed at the code level between two iterations.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "skeleton_name": {
-                            "type": "string",
-                            "description": "骨架名称，如 'progress_delta_reward', 'potential_based_shaping', 'bounded_proximity_reward'",
-                        }
+                        "iteration": {"type": "integer", "description": "The iteration number to read (1-based)."},
                     },
-                    "required": ["skeleton_name"],
+                    "required": ["iteration"],
                 },
             },
         },
         {
             "type": "function",
             "function": {
-                "name": "get_reward_transformation",
-                "description": "Retrieve general reward-structure transformations from diagnosis evidence, including rationale, risks, and next-round verification targets.",
+                "name": "read_past_reflection",
+                "description": "Read your own reflection response from a past iteration — what you diagnosed, what level you chose, and what intervention you made. Use this before modifying a component to check if you already tried the same approach.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The diagnosed problem dimension or desired transformation, such as persistent proxy farming, sparse credit, product collapse, or global constraint interference.",
-                        }
+                        "iteration": {"type": "integer", "description": "The past iteration number to read (1-based, must < current iter)."},
                     },
-                    "required": ["query"],
+                    "required": ["iteration"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_component_history",
+                "description": "Get per-iteration ep_sum_mean and active_rate for a specific component across all past iterations. If values jumped 5x and magnitude_share > 90%, this component may be exploited — fix it, don't protect it. If component not found, it shows available names in history.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "component_name": {"type": "string", "description": "The exact component name as it appears in the components dict (e.g., 'success_landing_bonus')."},
+                    },
+                    "required": ["component_name"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_environment_card",
+                "description": "Read the environment card — task goal, observation space (8 fields), action space (4 discrete actions), and termination conditions. Use this when you need to verify what signals are available for reward design.",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_checkpoint_trend",
+                "description": "Read per-component checkpoint evaluation data for a specific iteration. Shows how each component's ep_sum_mean and active_rate evolved during training at 10% intervals. Use this to cross-validate your diagnosis: if contact's active surges while velocity_damping's share drops, the exploit is from speed threshold being too loose. If score peaks mid-training then drops, the reward is being exploited.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "iteration": {"type": "integer", "description": "The iteration number to read (1-based). If omitted, reads the most recent."},
+                    },
+                    "required": [],
                 },
             },
         },
@@ -466,12 +934,20 @@ def _tool_definitions():
 
 def _run_tool_call(tool_call):
     args = json.loads(tool_call.function.arguments)
-    if tool_call.function.name == "search_reward_design_knowledge":
-        result = search_reward_design_knowledge(args.get("query", ""))
-    elif tool_call.function.name == "get_skeleton_detail":
-        result = get_skeleton_detail(args.get("skeleton_name", ""))
-    elif tool_call.function.name == "get_reward_transformation":
-        result = get_reward_transformation(args.get("query", ""))
+    if tool_call.function.name == "read_memory":
+        result = read_memory()
+    elif tool_call.function.name == "read_training_feedback":
+        result = read_training_feedback(args.get("iteration", 0))
+    elif tool_call.function.name == "read_reward_code":
+        result = read_reward_code(args.get("iteration", 0))
+    elif tool_call.function.name == "read_past_reflection":
+        result = read_past_reflection(args.get("iteration", 0))
+    elif tool_call.function.name == "get_component_history":
+        result = get_component_history(args.get("component_name", ""))
+    elif tool_call.function.name == "read_environment_card":
+        result = read_environment_card()
+    elif tool_call.function.name == "read_checkpoint_trend":
+        result = read_checkpoint_trend(args.get("iteration"))
     else:
         result = f"Unknown tool: {tool_call.function.name}"
     return args, result
@@ -512,18 +988,97 @@ def run_reflection_agent(
         (run_dir / sub).mkdir(parents=True, exist_ok=True)
 
     reflection_mode = ablation_cfg.get("reflection_mode", "structured")
-    prompt_path = (
-        "prompts/reflection_agent_unconstrained_prompt.md"
-        if reflection_mode == "unconstrained"
-        else "prompts/reflection_agent_prompt.md"
-    )
+    stateless_baseline = ablation_cfg.get("stateless_baseline", False)
+    prompt_path = ablation_cfg.get("reflection_prompt_path")
+    if not prompt_path:
+        if stateless_baseline:
+            prompt_path = "prompts/paper_v4/reflection_agent_baseline_prompt.md"
+        elif reflection_mode == "unconstrained":
+            prompt_path = "prompts/paper_v4/reflection_agent_unconstrained_prompt.md"
+        elif reflection_mode == "no_share":
+            prompt_path = "prompts/paper_v4/reflection_agent_noshare_prompt.md"
+        else:
+            prompt_path = "prompts/paper_v4/reflection_agent_prompt.md"
     system_prompt = read_text(prompt_path)
     previous_code = read_text(previous_reward_path)
     feedback_md = read_text(str(Path(train_run_dir) / "training_feedback.md"))
-    if ablation_cfg.get("feedback_mode") == "score_only":
+    if reflection_mode == "no_share":
+        feedback_md = _no_share_feedback(feedback_md)
+    elif ablation_cfg.get("feedback_mode") == "score_only":
         feedback_md = _score_only_feedback(feedback_md)
     elif ablation_cfg.get("feedback_mode") == "eureka_style":
         feedback_md = _eureka_style_feedback(feedback_md)
+
+    # ── Component checkpoint trajectories (EUREKA-style) ──
+    component_stats_md = ""
+    stats_path = Path(train_run_dir) / "component_stats.md"
+    if stats_path.exists():
+        component_stats_md = read_text(str(stats_path))
+
+    # ── Checkpoint evaluation data (training trend diagnostics) ──
+    checkpoint_data = ""
+    no_share_checkpoint = (reflection_mode == "no_share")
+    ckpt_path = Path(train_run_dir) / "checkpoint_evals.json"
+    if ckpt_path.exists():
+        import json as _json
+        try:
+            ckpt_raw = _json.loads(ckpt_path.read_text())
+            if not ckpt_raw:
+                checkpoint_data = ""
+            else:
+                # Collect all component names across checkpoints
+                all_comp_names = set()
+                for r in ckpt_raw:
+                    comps = r.get("components", {})
+                    all_comp_names.update(comps.keys())
+
+                lines = [
+                    "# Checkpoint 评估（训练过程中各组件的变化趋势）",
+                    "",
+                    "每个 checkpoint 在训练到 N% 时用当前模型评估 20 集，记录每个组件的 ep_sum_mean。",
+                    "**趋势比单点数值更重要：**",
+                    "- 组件全程为 0 → 死组件，agent 在训练中忽略了它",
+                    "- 组件从 0 逐渐增长 → 正在引导学习",
+                    "- 组件骤升 → 可能被 exploit",
+                    "- 组件骤降 → agent 在学习抑制它",
+                    "",
+                    "## Overall score trend",
+                    "| " + " | ".join(f"cp{r['pct']}%" for r in ckpt_raw) + " |",
+                    "|---" * (len(ckpt_raw) + 2) + "|",
+                    "| " + " | ".join(f"{r.get('score_mean', 0):.1f}" for r in ckpt_raw) + " |",
+                ]
+
+                if all_comp_names and not no_share_checkpoint:
+                    # Per-component trend: one row per component, columns = checkpoints
+                    sorted_names = sorted(all_comp_names)
+                    lines.append("")
+                    lines.append("## Per-component ep_sum_mean trend")
+                    lines.append("| component | " + " | ".join(f"cp{r['pct']}%" for r in ckpt_raw) + " |")
+                    lines.append("|---|" + "|".join("---|" for _ in ckpt_raw))
+                    for name in sorted_names:
+                        vals = []
+                        for r in ckpt_raw:
+                            c = r.get("components", {}).get(name, {})
+                            v = c.get("episode_sum_mean", 0) if c else 0
+                            vals.append(f"{v:.3f}")
+                        lines.append(f"| {name} | " + " | ".join(vals) + " |")
+
+                    # Active rate trend
+                    lines.append("")
+                    lines.append("## Per-component active_rate trend")
+                    lines.append("| component | " + " | ".join(f"cp{r['pct']}%" for r in ckpt_raw) + " |")
+                    lines.append("|---|" + "|".join("---|" for _ in ckpt_raw))
+                    for name in sorted_names:
+                        vals = []
+                        for r in ckpt_raw:
+                            c = r.get("components", {}).get(name, {})
+                            v = (c.get("active_rate", 0) or 0) * 100
+                            vals.append(f"{v:.1f}%")
+                        lines.append(f"| {name} | " + " | ".join(vals) + " |")
+
+                checkpoint_data = "\n".join(lines)
+        except Exception:
+            checkpoint_data = ""
 
     environment_card_md = ""
     if environment_card_path and Path(environment_card_path).exists():
@@ -549,27 +1104,37 @@ def run_reflection_agent(
 
     # Generate cumulative record from all previous iterations
     cumulative_record = ""
+    # Always extract iter/prefix/seed (needed by build_user_prompt even in validation retry)
+    m_iter = re.search(r"/iter_(\d+)/", out_run_name)
+    current_iter = int(m_iter.group(1)) if m_iter else 1
+    # Extract prefix and seed from out_run_name
+    # Format: {prefix}/seed_{N}/iter_{M}/generation
+    parts = out_run_name.split("/")
+    prefix = parts[0] if len(parts) > 0 else ""
+    seed_str = ""
+    for p in parts:
+        if p.startswith("seed_"):
+            seed_str = p.replace("seed_", "")
+            break
+    # Set reflection context for history-reading tools
+    if prefix and seed_str:
+        set_reflection_context(
+            cfg["experiment"]["run_root"], prefix, seed_str, current_iter
+        )
     if not validation_retry:  # skip for pure code-fix retries
-        # Extract iter number from out_run_name like "paper_ant_v6/seed_0/iter_07/generation"
-        m_iter = re.search(r"/iter_(\d+)/", out_run_name)
-        current_iter = int(m_iter.group(1)) if m_iter else 1
-        # Extract prefix and seed from out_run_name
-        # Format: {prefix}/seed_{N}/iter_{M}/generation
-        parts = out_run_name.split("/")
-        prefix = parts[0] if len(parts) > 0 else ""
-        seed_str = ""
-        for p in parts:
-            if p.startswith("seed_"):
-                seed_str = p.replace("seed_", "")
-                break
+
         if prefix and seed_str and current_iter > 1:
             cumulative_record = _build_cumulative_record(
                 cfg["experiment"]["run_root"], prefix, seed_str, current_iter, memory_md
             )
 
-    # Build component delta from current vs previous iteration
+    # Build component evolution + numerical delta
+    component_evolution = ""
     component_delta = ""
     if not validation_retry and prefix and seed_str and current_iter > 1:
+        component_evolution = _build_component_evolution(
+            cfg["experiment"]["run_root"], prefix, seed_str, current_iter
+        )
         component_delta = _build_component_delta(
             cfg["experiment"]["run_root"], prefix, seed_str, current_iter
         )
@@ -581,17 +1146,13 @@ def run_reflection_agent(
             subagent_cfg = cfg.get("subagent_investigator", {})
             if subagent_cfg.get("enabled", True):
                 llm_cfg = cfg["llm"]
-                client = DeepSeekClient(
-                    api_key_env=llm_cfg["api_key_env"],
-                    base_url=llm_cfg["base_url"],
-                )
+                client = create_client(cfg)
                 result = run_investigator(
                     train_dir=str(train_run_dir),
                     previous_reward_path=str(previous_reward_path),
                     memory_path=str(memory_path) if Path(memory_path).exists() else "",
                     client=client,
                     model=llm_cfg.get("model_investigator", llm_cfg.get("model_reflection", llm_cfg["model_reward"])),
-                    max_turns=int(subagent_cfg.get("max_turns", 3)),
                 )
                 if result.get("research_signal_text"):
                     research_signal = result["research_signal_text"]
@@ -614,6 +1175,10 @@ def run_reflection_agent(
         except Exception as exc:
             print(f"  Subagent: error (continuing without signal) — {exc}")
 
+    # ── Run behavior analyst (replaces component_evolution) ──
+    # Disabled: user prompt now guides LLM to investigate autonomously via tools
+    analyst_report = ""
+
     if duplicate_retry:
         duplicate_draft_path = run_dir / f"reward_{reward_version}.py"
         duplicate_draft = read_text(duplicate_draft_path) if duplicate_draft_path.exists() else ""
@@ -626,19 +1191,31 @@ def run_reflection_agent(
             "Return a complete reward function whose executable code is materially different from every historical reward. "
             "Do not merely rename variables or comments.\n\n"
             f"# Rejected duplicate draft\n```python\n{duplicate_draft}\n```\n\n"
-        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_delta, is_rebuild, research_signal)
+        ) + build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_evolution, component_delta, is_rebuild, research_signal, analyst_report, stateless_baseline=stateless_baseline, component_stats_md=component_stats_md, checkpoint_data=checkpoint_data, current_iter=current_iter, prefix=prefix, seed_str=seed_str, reflection_mode=reflection_mode)
     elif validation_retry:
         failed_draft_path = run_dir / f"reward_{reward_version}.md"
         failed_draft = read_text(failed_draft_path) if failed_draft_path.exists() else ""
+        # CRITICAL: pass ALL the same context as the normal path — the LLM needs its full
+        # diagnostic memory to fix the format without losing its original reasoning.
+        # Only difference from normal path: the validation error header + failed draft prefix.
         user_prompt = (
             f"# ⚠️ 上一版代码验证失败\n"
             f"错误信息：{validation_retry}\n"
             "这是代码格式修复，不要重新诊断、不要调用工具、不要改变原定修改方向。"
             "直接输出修复后的完整 Python 代码。\n\n"
             f"# 被截断或无效的上一版草稿\n{failed_draft}\n\n"
-        ) + build_user_prompt(feedback_md, "", previous_code, best_code, environment_card_md, cfg, "", cumulative_record, "", False, research_signal)
+        ) + build_user_prompt(
+            feedback_md, memory_md, previous_code, best_code,
+            environment_card_md, cfg, expert_context_md,
+            cumulative_record, component_evolution, component_delta,
+            is_rebuild, research_signal, analyst_report,
+            stateless_baseline=stateless_baseline,
+            component_stats_md=component_stats_md,
+            checkpoint_data=checkpoint_data,
+            current_iter=current_iter,
+        )
     else:
-        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_delta, is_rebuild, research_signal)
+        user_prompt = build_user_prompt(feedback_md, memory_md, previous_code, best_code, environment_card_md, cfg, expert_context_md, cumulative_record, component_evolution, component_delta, is_rebuild, research_signal, analyst_report, stateless_baseline=stateless_baseline, component_stats_md=component_stats_md, checkpoint_data=checkpoint_data, current_iter=current_iter, prefix=prefix, seed_str=seed_str, reflection_mode=reflection_mode)
 
     write_text(run_dir / f"llm_inputs/reward_{reward_version}_reflection_agent.input.md", user_prompt)
     record_prompt(run_dir, "agent_reflection", system_prompt, user_prompt)
@@ -675,22 +1252,91 @@ def run_reflection_agent(
         out_md = MOCK_REVISION_MD
     else:
         llm_cfg = cfg["llm"]
-        client = DeepSeekClient(api_key_env=llm_cfg["api_key_env"], base_url=llm_cfg["base_url"])
+        client = create_client(cfg)
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        tools = _tool_definitions()
+        max_tool_rounds = 8
+        out_md = ""
 
         try:
-            resp = client.completion(
-                model=llm_cfg.get("model_reflection", llm_cfg["model_reward"]),
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=llm_cfg["temperature_reward_generator"],
-                max_tokens=llm_cfg["max_tokens_reward"],
-            )
+            for tool_round in range(max_tool_rounds):
+                resp = client.completion(
+                    model=llm_cfg.get("model_reflection", llm_cfg["model_reward"]),
+                    messages=messages,
+                    tools=tools,
+                    temperature=llm_cfg["temperature_reward_generator"],
+                    max_tokens=llm_cfg["max_tokens_reward"],
+                    reasoning_effort=llm_cfg.get("reasoning_reflection"),
+                )
+                msg = resp.choices[0].message
+                if msg.tool_calls:
+                    messages.append({
+                        "role": "assistant",
+                        "content": msg.content or None,
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": tc.type,
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments,
+                                },
+                            }
+                            for tc in msg.tool_calls
+                        ],
+                    })
+                else:
+                    messages.append({
+                        "role": "assistant",
+                        "content": msg.content or "",
+                    })
+
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        args, result = _run_tool_call(tc)
+                        tool_trace.append({
+                            "name": tc.function.name,
+                            "arguments": args,
+                            "result_preview": str(result)[:500],
+                        })
+                        print(f"  Tool: {tc.function.name}({json.dumps(args)}) → {len(str(result))} chars")
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": str(result),
+                        })
+                    continue
+                else:
+                    out_md = msg.content or ""
+                    break
+            else:
+                # Max tool rounds reached — force final output without tools
+                print(f"  Max tool rounds ({max_tool_rounds}) reached, forcing final output...")
+                tool_trace.append({"warning": "max_tool_rounds_reached", "rounds": max_tool_rounds})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "你已经完成了充分的调查。现在基于已收集的所有证据，"
+                        "输出你的诊断、干预层级选择、以及完整的新奖励函数代码。"
+                        "不要再调用工具，直接输出最终结果。"
+                    ),
+                })
+                resp = client.completion(
+                    model=llm_cfg.get("model_reflection", llm_cfg["model_reward"]),
+                    messages=messages,
+                    temperature=llm_cfg["temperature_reward_generator"],
+                    max_tokens=llm_cfg["max_tokens_reward"],
+                    reasoning_effort=llm_cfg.get("reasoning_reflection"),
+                )
+                out_md = resp.choices[0].message.content or ""
         except Exception:
             save_tool_trace("llm_error")
             raise
-        out_md = resp.choices[0].message.content or ""
+        out_md = out_md or ""
 
     record_response(run_dir, "agent_reflection", out_md)
     save_tool_trace("completed")

@@ -1,0 +1,61 @@
+\section{Methodology}
+\label{sec:method}
+CREATE places a reward-engineering agent above an underlying RL learner. Each round trains a fresh policy on the current generated reward, evaluates it with the native task objective, and returns the completed run to the reward-engineering agent. As shown in Fig.~\ref{fig:create_framework}, the agent issues tool calls while reasoning, reads the returned evidence, and then commits to a validated reward edit.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.98\textwidth]{Reward_Editing_Agent_Framework_Original_Icons.pdf}
+\caption{Overview of CREATE. The reward-engineering agent uses tool calls to inspect training feedback, reward code, lineage memory, and component trends before selecting a localized reward edit. Persistent memory records intervention outcomes, and the best archive retains the reward program with the highest native-task performance.}
+\label{fig:create_framework}
+\end{figure*}
+
+The resulting observe--reflect--act loop is written as
+\begin{equation}
+\begin{aligned}
+O_t&=\Phi_{\mathcal T}(\mathcal D_t),\\
+(H_t,A_t)&=\Psi(R_t,O_t,M_t,B_t),\\
+R_{t+1}&=\mathcal U(R_t,A_t),
+\end{aligned}
+\label{eq:agent_loop}
+\end{equation}
+where $\Phi_{\mathcal T}$ denotes the multi-call tool-use interface and $O_t$ is evidence returned during reasoning. The reward-engineering agent combines $O_t$, the current reward $R_t$, intervention memory $M_t$, and best archive $B_t$ to produce reflection $H_t$, reward action $A_t$, and the next executable reward program $R_{t+1}$.
+
+\subsection{Task Understanding and Reward Initialization}
+\label{sec:init}
+Given the task description, environment interface, and reward-code constraints, CREATE instantiates named components for behavior semantics such as task progress, stability, target events, and action cost. The initial reward is
+\begin{equation}
+R_0(s,a,s')=\sum_{i=1}^{m_0}w_i^{(0)}r_i^{(0)}(s,a,s'),
+\label{eq:initial_reward}
+\end{equation}
+Named components are logged independently during training, enabling component-level diagnosis in later rounds. Generated code is checked for interface and execution validity before policy training; prompts and validation rules are provided in the appendix.
+
+\subsection{Training-Evidence-Driven Observe--Reflect--Act}
+At iteration $t$, the underlying RL agent optimizes the generated reward, while CREATE evaluates the learned policy with the environment-native objective:
+\begin{equation}
+\begin{aligned}
+\pi_t &= \arg\max_{\pi}\;\mathbb E_{\tau\sim\pi}
+\left[\sum_{k=0}^{H-1}\gamma^kR_t(s_k,a_k,s_{k+1})\right],\\
+J_t &= \frac{1}{N}\sum_{n=1}^{N}\sum_{k=0}^{H_n-1}
+ r_{\mathrm{env}}(s_k^{(n)},a_k^{(n)},s_{k+1}^{(n)}).
+\end{aligned}
+\label{eq:train_eval}
+\end{equation}
+Thus, the generated reward shapes policy learning, whereas the native objective measures task completion. Each run logs episode outcomes, termination patterns, component activation and scale, temporal trends, and reward-version deltas. During reasoning, the reward-engineering agent queries these records through tools for lineage memory, training feedback, reward code, prior reflections, component history, environment context, and checkpoint trends. The returned observations support diagnosis, edit-level selection, and reward-code modification.
+
+Component statistics serve as cues rather than editing rules: inactivity suggests unreachable gates or sparse terms, excessive activation and magnitude suggest dominant proxies, and frequent activation with weak contribution suggests poor scale or mathematical form. The agent combines these cues with policy outcomes, source code, and prior interventions to identify one principal reward semantic:
+\begin{equation}
+A_t=(q_t,\ell_t,\Delta_t),
+\qquad
+\operatorname{supp}(\Delta_t)\subseteq\mathcal C(q_t),
+\label{eq:semantic_action}
+\end{equation}
+where $q_t$ is the selected semantic, $\ell_t$ the edit level, and $\mathcal C(q_t)$ the components and parameters implementing that semantic. Related components may be edited jointly only when they express the same design intent. L1 calibrates coefficients, thresholds, or gates; L2 adds, removes, or refactors components while preserving the target semantic; and L3 replans the reward structure after repeated local failure.
+
+\subsection{Intervention Memory and Best-Reward Selection}
+After each round, CREATE records the observation, diagnosed semantic, reward action, expected change, and subsequent outcome in persistent intervention memory. This history supports cross-round comparison and discourages repeated failed edits. The best archive is maintained separately from the active lineage to prevent later regressions from overwriting a previously discovered solution. After at most $K$ reward evaluations, CREATE returns
+\begin{equation}
+t^*=\arg\max_{0\leq t<K}J_t,
+\qquad R^*=R_{t^*}.
+\label{eq:best_reward}
+\end{equation}
+The selected reward--policy pair is subsequently evaluated on independent episode seeds to assess stability. Together, tool-use observation, bounded semantic editing, intervention memory, and best-reward selection turn each completed policy-training run into a diagnostic observation and each subsequent edit into a localized test of one reward semantic.

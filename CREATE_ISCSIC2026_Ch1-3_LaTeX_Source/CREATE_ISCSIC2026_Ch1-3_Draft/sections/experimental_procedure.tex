@@ -1,0 +1,29 @@
+\section{Experimental Procedure}
+\label{sec:exp_procedure}
+
+\subsection{Experimental Setup and Configuration}
+\label{sec:exp_setup}
+
+Experiments use LunarLander-v3 and BipedalWalker-v3 from Gymnasium~\cite{gymnasium}. LunarLander is the primary benchmark for baseline comparison and ablation; BipedalWalker validates continuous-action locomotion. Every reward program trains a fresh PPO policy~\cite{ppo} through Stable-Baselines3~\cite{sb3}. LunarLander uses $10^6$ environment steps per candidate and BipedalWalker uses $5\times10^6$. DeepSeek V4 Pro is the LLM backbone for all LunarLander conditions; prompts, settings, and hyperparameters are provided in the appendix.
+
+\subsection{Condition Definitions}
+\label{sec:conditions}
+
+\textbf{Five conditions} are compared on LunarLander-v3 under a shared LLM backbone, PPO budget, reward interface, and code-check pipeline. All conditions start from the same task description and environment source/interface with the reward-function portion removed from the input, giving them the same task-understanding start. Each condition contains five independent reward-search lineages and at most ten complete reward evaluations. The iterative conditions use the same initialization protocol from Section~\ref{sec:init}, but each lineage begins from its own generated first reward. Their first-reward evaluation is $-2.21\pm73.38$ with no solved lineage, confirming that plausible generated rewards are not reliably learnable without refinement.
+
+\textbf{Independent-10} serves as a budget-matched search-breadth control: it generates ten unrelated initial reward candidates, each from an independent invocation of the reward-initialization phase, and evaluates each with a separate policy-training run. The best candidate is selected post hoc. This condition tests whether evaluating ten unrelated candidates, without any cross-round information flow, can match CREATE's iterative diagnostic process.
+
+\textbf{Baseline} is the stateless sequential-revision control. It retains sequential LLM invocation but removes the tool-use interface, intervention memory, cross-round comparison, and hierarchical semantic editing. The LLM is limited to basic current-round feedback and may modify any number of components simultaneously, with no constraint on edit scope. It revises rewards based on previous outcomes and retains the best-so-far solution, but operates without memory, tool-returned evidence, or bounded reward-action constraints.
+
+\textbf{CREATE without evidence enrichment} retains memory, best archive, and bounded semantic editing, but disables tool calls over training records, reward code, lineage history, and component trends. The reward-engineering agent can consult only aggregate current-round feedback, so it lacks the component-level and cross-round observations that CREATE obtains through tool use.
+
+\textbf{CREATE without hierarchical editing} retains the same tool-use observations, memory, and best archive as CREATE, but removes the semantic-localization constraint defined in Eq.~\ref{eq:semantic_action}. The agent may therefore rewrite several unrelated reward components in one round.
+
+\textbf{CREATE} runs the complete architecture described in Section~\ref{sec:method}.
+
+\subsection{Training and Evaluation Protocol}
+\label{sec:training_protocol}
+
+Each reward-design round consists of a complete PPO training run followed by native evaluation. The policy is optimized with the generated reward $R_t$, whereas Eq.~\ref{eq:train_eval} measures candidate quality only by the untouched environment reward $r_{\mathrm{env}}$. We define \emph{search fitness} as the mean undiscounted native episodic return over 20 fixed evaluation episodes and \emph{best search fitness} as the largest value retained within a lineage. After reward selection, the returned policy is evaluated over 100 unseen episodes; this is reported as \emph{test fitness}. The task-solving thresholds are 200 for LunarLander and 300 for BipedalWalker.
+
+Between rounds, the reward-engineering agent uses the tool interface $\Phi_{\mathcal T}$ in Eq.~\ref{eq:agent_loop} to inspect selected training records, reward code, lineage memory, and component trends. It then selects one principal semantic and chooses an L1 calibration, L2 refactor, or L3 redesign action under Eq.~\ref{eq:semantic_action}. The modified program is validated before the next round. Eq.~\ref{eq:best_reward} updates the best archive only when a new candidate exceeds the current incumbent in native search fitness. On BipedalWalker-v3, the complete CREATE workflow is evaluated for cross-task validation.
