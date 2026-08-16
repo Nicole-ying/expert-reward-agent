@@ -698,8 +698,8 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code=None, env
     # Read template — select based on mode
     if reflection_mode == "unconstrained":
         template_path = Path("prompts/paper_v4/reflection_agent_unconstrained_user_prompt.md")
-    elif reflection_mode == "no_share":
-        template_path = Path("prompts/paper_v4/reflection_agent_noshare_user_prompt.md")
+    elif reflection_mode == "no_tools":
+        template_path = Path("prompts/paper_v4/reflection_agent_notools_user_prompt.md")
     else:
         template_path = Path("prompts/paper_v4/reflection_agent_user_prompt.md")
     if template_path.exists():
@@ -727,43 +727,6 @@ def build_user_prompt(feedback_md, memory_md, previous_code, best_code=None, env
         parts.append(f"# Formula Operator Library（L3 重建参考）\n{expert_context_md}")
 
     return "\n\n".join(parts)
-
-
-def _no_share_feedback(feedback_md):
-    """Strip magnitude_share, signed_contribution_share, and active_rate columns from feedback.
-
-    Keeps only episode_sum_mean — same level of detail as baseline.
-    """
-    # Remove share/rate columns from the component table
-    # Table format: | component | episode_sum_mean | signed_share | magnitude_share | active_rate |
-    # Target:       | component | episode_sum_mean |
-    lines = feedback_md.splitlines()
-    result = []
-    in_table = False
-    for line in lines:
-        if line.startswith("| component |") or line.startswith("| component "):
-            in_table = True
-            # Keep only component and episode_sum_mean columns
-            cols = line.strip("|").split("|")
-            # cols: [' component ', ' episode_sum_mean ', ' signed_share ', ' magnitude_share ', ' active_rate ']
-            result.append("| component | episode_sum_mean |")
-            continue
-        if in_table and line.startswith("|---"):
-            result.append("|---|---|")
-            continue
-        if in_table and line.startswith("|"):
-            # Data row
-            if not line.strip() or line.strip() == "|":
-                in_table = False
-                result.append(line)
-            else:
-                cols = [c.strip() for c in line.strip("|").split("|")]
-                if len(cols) >= 2:
-                    result.append(f"| {cols[0]} | {cols[1]} |")
-            continue
-        in_table = False
-        result.append(line)
-    return "\n".join(result)
 
 
 def _score_only_feedback(feedback_md):
@@ -995,16 +958,14 @@ def run_reflection_agent(
             prompt_path = "prompts/paper_v4/reflection_agent_baseline_prompt.md"
         elif reflection_mode == "unconstrained":
             prompt_path = "prompts/paper_v4/reflection_agent_unconstrained_prompt.md"
-        elif reflection_mode == "no_share":
-            prompt_path = "prompts/paper_v4/reflection_agent_noshare_prompt.md"
+        elif reflection_mode == "no_tools":
+            prompt_path = "prompts/paper_v4/reflection_agent_notools_prompt.md"
         else:
             prompt_path = "prompts/paper_v4/reflection_agent_prompt.md"
     system_prompt = read_text(prompt_path)
     previous_code = read_text(previous_reward_path)
     feedback_md = read_text(str(Path(train_run_dir) / "training_feedback.md"))
-    if reflection_mode == "no_share":
-        feedback_md = _no_share_feedback(feedback_md)
-    elif ablation_cfg.get("feedback_mode") == "score_only":
+    if ablation_cfg.get("feedback_mode") == "score_only":
         feedback_md = _score_only_feedback(feedback_md)
     elif ablation_cfg.get("feedback_mode") == "eureka_style":
         feedback_md = _eureka_style_feedback(feedback_md)
@@ -1017,7 +978,6 @@ def run_reflection_agent(
 
     # ── Checkpoint evaluation data (training trend diagnostics) ──
     checkpoint_data = ""
-    no_share_checkpoint = (reflection_mode == "no_share")
     ckpt_path = Path(train_run_dir) / "checkpoint_evals.json"
     if ckpt_path.exists():
         import json as _json
@@ -1048,7 +1008,7 @@ def run_reflection_agent(
                     "| " + " | ".join(f"{r.get('score_mean', 0):.1f}" for r in ckpt_raw) + " |",
                 ]
 
-                if all_comp_names and not no_share_checkpoint:
+                if all_comp_names:
                     # Per-component trend: one row per component, columns = checkpoints
                     sorted_names = sorted(all_comp_names)
                     lines.append("")
@@ -1258,85 +1218,101 @@ def run_reflection_agent(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        tools = _tool_definitions()
-        max_tool_rounds = 8
         out_md = ""
 
-        try:
-            for tool_round in range(max_tool_rounds):
+        # no_tools mode: single API call, no tool-calling loop
+        if reflection_mode == "no_tools":
+            try:
                 resp = client.completion(
                     model=llm_cfg.get("model_reflection", llm_cfg["model_reward"]),
                     messages=messages,
-                    tools=tools,
                     temperature=llm_cfg["temperature_reward_generator"],
                     max_tokens=llm_cfg["max_tokens_reward"],
                     reasoning_effort=llm_cfg.get("reasoning_reflection"),
                 )
-                msg = resp.choices[0].message
-                if msg.tool_calls:
-                    messages.append({
-                        "role": "assistant",
-                        "content": msg.content or None,
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "type": tc.type,
-                                "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
-                                },
-                            }
-                            for tc in msg.tool_calls
-                        ],
-                    })
-                else:
-                    messages.append({
-                        "role": "assistant",
-                        "content": msg.content or "",
-                    })
+            except Exception:
+                save_tool_trace("llm_error")
+                raise
+            out_md = resp.choices[0].message.content or ""
+        else:
+            tools = _tool_definitions()
+            max_tool_rounds = 8
 
-                if msg.tool_calls:
-                    for tc in msg.tool_calls:
-                        args, result = _run_tool_call(tc)
-                        tool_trace.append({
-                            "name": tc.function.name,
-                            "arguments": args,
-                            "result_preview": str(result)[:500],
-                        })
-                        print(f"  Tool: {tc.function.name}({json.dumps(args)}) → {len(str(result))} chars")
+            try:
+                for tool_round in range(max_tool_rounds):
+                    resp = client.completion(
+                        model=llm_cfg.get("model_reflection", llm_cfg["model_reward"]),
+                        messages=messages,
+                        tools=tools,
+                        temperature=llm_cfg["temperature_reward_generator"],
+                        max_tokens=llm_cfg["max_tokens_reward"],
+                        reasoning_effort=llm_cfg.get("reasoning_reflection"),
+                    )
+                    msg = resp.choices[0].message
+                    if msg.tool_calls:
                         messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": str(result),
+                            "role": "assistant",
+                            "content": msg.content or None,
+                            "tool_calls": [
+                                {
+                                    "id": tc.id,
+                                    "type": tc.type,
+                                    "function": {
+                                        "name": tc.function.name,
+                                        "arguments": tc.function.arguments,
+                                    },
+                                }
+                                for tc in msg.tool_calls
+                            ],
                         })
-                    continue
+                    else:
+                        messages.append({
+                            "role": "assistant",
+                            "content": msg.content or "",
+                        })
+
+                    if msg.tool_calls:
+                        for tc in msg.tool_calls:
+                            args, result = _run_tool_call(tc)
+                            tool_trace.append({
+                                "name": tc.function.name,
+                                "arguments": args,
+                                "result_preview": str(result)[:500],
+                            })
+                            print(f"  Tool: {tc.function.name}({json.dumps(args)}) \u2192 {len(str(result))} chars")
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tc.id,
+                                "content": str(result),
+                            })
+                        continue
+                    else:
+                        out_md = msg.content or ""
+                        break
                 else:
-                    out_md = msg.content or ""
-                    break
-            else:
-                # Max tool rounds reached — force final output without tools
-                print(f"  Max tool rounds ({max_tool_rounds}) reached, forcing final output...")
-                tool_trace.append({"warning": "max_tool_rounds_reached", "rounds": max_tool_rounds})
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        "你已经完成了充分的调查。现在基于已收集的所有证据，"
-                        "输出你的诊断、干预层级选择、以及完整的新奖励函数代码。"
-                        "不要再调用工具，直接输出最终结果。"
-                    ),
-                })
-                resp = client.completion(
-                    model=llm_cfg.get("model_reflection", llm_cfg["model_reward"]),
-                    messages=messages,
-                    temperature=llm_cfg["temperature_reward_generator"],
-                    max_tokens=llm_cfg["max_tokens_reward"],
-                    reasoning_effort=llm_cfg.get("reasoning_reflection"),
-                )
-                out_md = resp.choices[0].message.content or ""
-        except Exception:
-            save_tool_trace("llm_error")
-            raise
-        out_md = out_md or ""
+                    # Max tool rounds reached — force final output without tools
+                    print(f"  Max tool rounds ({max_tool_rounds}) reached, forcing final output...")
+                    tool_trace.append({"warning": "max_tool_rounds_reached", "rounds": max_tool_rounds})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "你已经完成了充分的调查。现在基于已收集的所有证据，"
+                            "输出你的诊断、干预层级选择、以及完整的新奖励函数代码。"
+                            "不要再调用工具，直接输出最终结果。"
+                        ),
+                    })
+                    resp = client.completion(
+                        model=llm_cfg.get("model_reflection", llm_cfg["model_reward"]),
+                        messages=messages,
+                        temperature=llm_cfg["temperature_reward_generator"],
+                        max_tokens=llm_cfg["max_tokens_reward"],
+                        reasoning_effort=llm_cfg.get("reasoning_reflection"),
+                    )
+                    out_md = resp.choices[0].message.content or ""
+            except Exception:
+                save_tool_trace("llm_error")
+                raise
+            out_md = out_md or ""
 
     record_response(run_dir, "agent_reflection", out_md)
     save_tool_trace("completed")

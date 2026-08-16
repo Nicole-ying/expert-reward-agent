@@ -1,0 +1,13 @@
+# Reward Memory
+
+| iter | skeleton | score | best | delta | len | key_signal | action |
+|---:|---|---:|---:|---:|---:|---|---|
+| 1 | contact_bonus + goal_proximity + orientation_penalty + velocity_penalty | -32.35 | -32.35 | 0.00 | 1000.00 | contact_bonus=2.905 goal_proximity=0.013 orientation_penalty=-0.008 velocity_penalty=-0.005 | new_best |
+| 2 | contact_bonus + fuel_penalty + goal_proximity + landing_approach + orientation_penalty + velocity_penalty | 79.79 | 79.79 | 0.00 | 315.75 | contact_bonus=3.621 fuel_penalty=-0.002 goal_proximity=-0.059 landing_approach=0.020 orientation_penalty=-0.005 | new_best |
+| 3 | contact_bonus + fuel_penalty + goal_proximity + landing_approach + orientation_penalty + velocity_penalty | 129.71 | 129.71 | 0.00 | 725.30 | contact_bonus=0.490 fuel_penalty=-0.002 goal_proximity=-0.027 landing_approach=0.282 orientation_penalty=-0.003 | new_best |
+| 4 | contact_speed_penalty + fuel_penalty + goal_proximity + landing_approach + orientation_penalty + settled_reward | 10.31 | 129.71 | -119.39 | 788.25 | contact_speed_penalty=-0.005 fuel_penalty=-0.004 goal_proximity=-0.024 landing_approach=0.072 orientation_penalty=-0.006 | no_meaningful_improvement |
+| 5 | contact_bonus + contact_speed_penalty + fuel_penalty + goal_proximity + landing_approach + orientation_penalty | 175.74 | 175.74 | 0.00 | 588.65 | contact_bonus=1.752 contact_speed_penalty=-0.006 fuel_penalty=-0.004 goal_proximity=-0.031 landing_approach=0.019 | new_best |
+| 6 | contact_bonus + contact_break_penalty + contact_speed_penalty + fuel_penalty + goal_proximity + landing_approach | 57.64 | 175.74 | -118.10 | 845.80 | contact_bonus=0.045 contact_break_penalty=-0.029 contact_speed_penalty=-0.006 fuel_penalty=-0.003 goal_proximity=-0.123 | no_meaningful_improvement |
+| 7 | contact_bonus + contact_speed_penalty + fuel_penalty + goal_proximity + landing_approach + orientation_penalty | 24.82 | 175.74 | -150.93 | 687.85 | contact_bonus=0.012 contact_speed_penalty=-0.011 fuel_penalty=-0.003 goal_proximity=-0.142 landing_approach=0.007 | no_meaningful_improvement |
+| 8 | contact_bonus + contact_speed_penalty + fuel_penalty + goal_proximity + landing_approach + orientation_penalty | 229.81 | 229.81 | 0.00 | 278.00 | contact_bonus=0.839 contact_speed_penalty=-0.011 fuel_penalty=-0.004 goal_proximity=-0.049 landing_approach=0.011 | target_solved_new_best |
+| 9 | contact_bonus + contact_speed_penalty + fuel_penalty + goal_proximity + landing_approach + orientation_penalty | 138.81 | 229.81 | -91.01 | 955.30 | contact_bonus=1.386 contact_speed_penalty=-0.008 fuel_penalty=-0.007 goal_proximity=-0.044 landing_approach=0.017 | stop_after_solved_drop_keep_best |

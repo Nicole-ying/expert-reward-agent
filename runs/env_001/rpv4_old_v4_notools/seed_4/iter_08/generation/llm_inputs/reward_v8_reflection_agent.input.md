@@ -1,0 +1,160 @@
+下面是环境描述：
+本环境是一个2D飞行器轨迹优化任务。主体从视口顶部中心附近以随机初始力开始，核心目标是**尽快到达中心的目标垫板并稳定停靠**（位置对齐、速度归零、姿态平稳、安全接触）。次要目标是在满足到达的前提下**最小化引擎推力使用**（节省燃料）。任务不能混淆为纯粹的生存平衡，因为主体必须移动到指定地点，而不是单纯保持不倒。
+
+目标得分：200
+
+### 第一原则：黑盒实验，不是代码重构
+
+你无法预知新奖励函数会引导出什么行为，只能训练完后看结果。
+**看到好趋势 → 先理解为什么好，再精准微调。**
+大规模重写等于丢弃已有实验证据，重新掷骰子。
+
+**硬约束：如果本轮得分比上一轮改善超过 30 分，你必须先回答：**
+上一轮的哪个修改促成了这个改善？证据是什么？
+**如果你回答不了，本轮只做 L1，不改数学形态。**
+
+逐组件分析，按以下顺序：
+
+(1) **如果 score 始终接近零或负**，当前奖励函数从根上错了——你必须重写整个 reward，换一个完全不同的主信号框架。
+
+(2) **如果某个组件的值在整个训练过程中几乎不变**（轨迹平坦，checkpoint 之间无差异），说明 RL 无法优化这个组件。考虑：(a) 调整它的系数或温度参数 (b) 改写成不同的数学形式 (c) 丢弃它。
+
+(3) **如果某个组件的量级远大于其他**（magnitude_share 极高），必须把它缩放到合理范围——否则 agent 只被这一个信号驱动。
+
+### 本轮数据
+
+# 上一轮训练反馈 (iter_7, score=-471.595097)
+# Training Feedback
+
+## Final-policy outcome
+score=-471.595097, len=968.100000, terminated=1/20, truncated=19/20, reward_errors=0
+score_range=[-536.351823, -144.072933]
+
+## Final-policy reward composition
+
+These statistics come from the same fixed evaluation episodes as `score`. Shares describe observed reward composition, not causal influence.
+
+| component | episode_sum_mean | signed_share | magnitude_share | active_rate |
+|---|---:|---:|---:|---:|
+| distance | 2749.543247 | 71.9% | 71.9% | 100.0% |
+| velocity | -916.312093 | -24.0% | 24.0% | 100.0% |
+| fuel | -153.015000 | -4.0% | 4.0% | 100.0% |
+| attitude | -4.137697 | -0.1% | 0.1% | 100.0% |
+| landing | 0.000000 | 0.0% | 0.0% | 0.0% |
+
+## Evaluation distribution
+- fixed_eval_seeds: 10000..10019
+- early_terminal (<150 steps and score<-50): 0/20
+- training_reward_errors_max: 0
+- full_training_distribution_stats: component_stats.md / training_summary.json (not primary reflection evidence)
+
+
+# Checkpoint 评估（训练过程中各组件的变化趋势）
+
+每个 checkpoint 在训练到 N% 时用当前模型评估 20 集，记录每个组件的 ep_sum_mean。
+**趋势比单点数值更重要：**
+- 组件全程为 0 → 死组件，agent 在训练中忽略了它
+- 组件从 0 逐渐增长 → 正在引导学习
+- 组件骤升 → 可能被 exploit
+- 组件骤降 → agent 在学习抑制它
+
+## Overall score trend
+| cp10% | cp20% | cp30% | cp40% | cp50% | cp60% | cp70% | cp80% | cp90% | cp100% |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| -873.0 | -4255.8 | -1083.8 | -651.8 | -439.1 | -630.0 | -231.9 | -154.6 | -274.3 | -578.1 |
+
+## Per-component ep_sum_mean trend
+| component | cp10% | cp20% | cp30% | cp40% | cp50% | cp60% | cp70% | cp80% | cp90% | cp100% |
+|---|---||---||---||---||---||---||---||---||---||---|
+| attitude | -373.026 | -22.665 | -4.008 | -3.992 | -4.271 | -4.240 | -4.240 | -4.020 | -3.926 | -4.088 |
+| distance | 790.302 | 730.623 | 1279.684 | 2305.635 | 2827.656 | 2598.540 | 3566.909 | 4101.764 | 3382.078 | 2621.505 |
+| fuel | -46.500 | -89.110 | -96.360 | -152.765 | -157.790 | -158.280 | -157.615 | -157.590 | -157.540 | -154.850 |
+| landing | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+| velocity | -1704.431 | -7652.102 | -1987.578 | -1241.913 | -790.281 | -1167.204 | -412.608 | -389.231 | -487.559 | -1111.426 |
+
+## Per-component active_rate trend
+| component | cp10% | cp20% | cp30% | cp40% | cp50% | cp60% | cp70% | cp80% | cp90% | cp100% |
+|---|---||---||---||---||---||---||---||---||---||---|
+| attitude | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
+| distance | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
+| fuel | 87.5% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
+| landing | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| velocity | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
+
+# 上一轮奖励函数代码
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    # --- extract signals ---
+    x_next, y_next = next_obs[0], next_obs[1]
+    vx_next, vy_next = next_obs[2], next_obs[3]
+    angle_next = next_obs[4]
+    angvel_next = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
+
+    # --- helpers ---
+    dist_next = (x_next ** 2 + y_next ** 2) ** 0.5
+    velocity_mag = (vx_next ** 2 + vy_next ** 2) ** 0.5
+
+    # === 1. distance reward — closer is better, but capped ===
+    w_dist = 10.0
+    distance_reward = w_dist * (1.0 / (1.0 + dist_next))
+
+    # === 2. global velocity penalty — force deceleration everywhere ===
+    w_vel = 5.0
+    velocity_penalty = -w_vel * velocity_mag
+
+    # === 3. attitude stabilization (as before) ===
+    w_angle = 1.0
+    w_angvel = 0.5
+    attitude_penalty = -w_angle * (angle_next ** 2) - w_angvel * (angvel_next ** 2)
+
+    # === 4. fuel penalty (same as before but slightly scaled) ===
+    if action == 0:
+        fuel_cost = 0.0
+    elif action == 2:   # main engine
+        fuel_cost = 0.2
+    else:               # side engines
+        fuel_cost = 0.1
+    fuel_penalty = -fuel_cost
+
+    # === 5. soft landing BONUS — large positive, only on successful touchdown ===
+    landing_bonus = 0.0
+    if left_contact and right_contact:
+        if dist_next < 0.2 and velocity_mag < 0.5:
+            landing_bonus = 200.0   # one-shot completion reward
+
+    # --- total ---
+    total_reward = (distance_reward +
+                    velocity_penalty +
+                    attitude_penalty +
+                    fuel_penalty +
+                    landing_bonus)
+
+    components = {
+        "distance": distance_reward,
+        "velocity": velocity_penalty,
+        "attitude": attitude_penalty,
+        "fuel": fuel_penalty,
+        "landing": landing_bonus,
+    }
+
+    return float(total_reward), components
+```
+
+---
+
+以上是本轮数据。现在开始调查，做出一个语义方向上的修改。
+
+### 输出要求
+
+**1. 诊断报告**（在代码之前）：
+- `evidence`：支持判断的关键数据和历史记录
+- `behavior_diagnosis`：策略当前的学到的行为模式是什么，是不健康的吗？结合 score、episode_length、terminated/truncated 判断。
+- `signal_completeness`：必要职责是否完备？缺什么信号？
+- `selected_level`：L1 / L2 / L3 及选择理由
+- `selected_intervention`：目标组件及具体修改内容
+- `falsifiable_hypothesis`：为什么该修预计改善策略？
+- `expected_next_round`：下一轮策略学习到的行为模式预计是什么？
+
+**2. 完整 Python 代码**（```python ... ``` 代码块）。

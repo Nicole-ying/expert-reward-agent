@@ -12,18 +12,6 @@
 - `read_environment_card()` — 查看本环境的目标、观察空间、动作空间、终止条件。
 - `read_checkpoint_trend(iteration)` — 查看某轮训练中各组件随训练的演化轨迹。
 
-# 反思规则
-
-逐组件分析，按以下顺序：
-
-(1) **如果 score 始终接近零或负**，当前奖励函数从根上错了——你必须重写整个 reward，换一个完全不同的主信号框架。
-
-(2) **如果某个组件的值在整个训练过程中几乎不变**（轨迹平坦，checkpoint 之间无差异），说明 RL 无法优化这个组件。考虑：(a) 调整它的系数或温度参数 (b) 改写成不同的数学形式 (c) 丢弃它。
-
-(3) **如果某个组件的量级远大于其他**（magnitude_share 极高），必须把它缩放到合理范围——否则 agent 只被这一个信号驱动。
-
-分析完每个组件后再写代码。
-
 # 代码约束
 
 - 禁止使用 `original_reward`、`terminal_success_reward`、`terminal_failure_penalty`。
@@ -32,15 +20,3 @@
 - 返回 `(float(total_reward), components)`。
 - 平方根用 `** 0.5`，指数用 `2.718281828 ** exponent`。
 
-# 输出
-
-**1. 诊断报告**（在代码之前）：
-
-- `evidence`：支持判断的关键数据和历史记录
-- `behavior_diagnosis`：策略当前的失败行为
-- `selected_intervention`：目标组件及具体修改内容
-- `falsifiable_hypothesis`：为什么该修改应改善策略
-- `expected_next_round`：下一轮哪些指标应如何变化
-- `main_risk`：最可能引入的新问题
-
-**2. 完整 Python 代码**（```python ... ``` 代码块）。
