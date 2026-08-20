@@ -1,0 +1,259 @@
+{
+  "runner_env_id": "Ant-v4",
+  "reward_path": "runs/env_005/paper_ant_v6/seed_0/iter_02/generation/reward_v2.py",
+  "reward_source": "generated_function",
+  "run_name": "paper_ant_v6/seed_0/iter_02/training",
+  "n_envs": 1,
+  "total_timesteps": 1000000,
+  "reward_clip": 20.0,
+  "error_fallback": "zero",
+  "ppo_args": {
+    "policy": "MlpPolicy",
+    "verbose": "1",
+    "device": "cpu",
+    "seed": "0",
+    "n_steps": "2048",
+    "batch_size": "64",
+    "gae_lambda": "0.95",
+    "gamma": "0.99",
+    "n_epochs": "10",
+    "ent_coef": "0.0",
+    "learning_rate": "0.0003",
+    "clip_range": "0.2",
+    "vf_coef": "0.5",
+    "max_grad_norm": "0.5",
+    "policy_kwargs": "{'ortho_init': True, 'activation_fn': <class 'torch.nn.modules.activation.Tanh'>, 'net_arch': {'pi': [64, 64], 'vf': [64, 64]}}",
+    "tensorboard_log": "runs/env_005/tensorboard"
+  },
+  "model_path": "runs/env_005/paper_ant_v6/seed_0/iter_02/training/model.zip",
+  "monitor_dir": "runs/env_005/paper_ant_v6/seed_0/iter_02/training/monitor",
+  "tensorboard_log": "runs/env_005/tensorboard",
+  "normalization": {
+    "normalize_obs": true,
+    "normalize_reward": false,
+    "clip_obs": 10.0,
+    "clip_normalized_reward": 10.0,
+    "vecnormalize_path": "runs/env_005/paper_ant_v6/seed_0/iter_02/training/vecnormalize.pkl"
+  },
+  "external_eval": {
+    "eval_episodes": 20,
+    "eval_seed_offset": 10000,
+    "eval_seeds": [
+      10000,
+      10001,
+      10002,
+      10003,
+      10004,
+      10005,
+      10006,
+      10007,
+      10008,
+      10009,
+      10010,
+      10011,
+      10012,
+      10013,
+      10014,
+      10015,
+      10016,
+      10017,
+      10018,
+      10019
+    ],
+    "episode_rewards": [
+      71.99750491900781,
+      54.355948172570876,
+      -36.78382701450283,
+      21.831987572045065,
+      12.041537237494296,
+      17.9936725782659,
+      16.45472142049489,
+      10.622532433789573,
+      -4.182339563758433,
+      -32.22529916365586,
+      39.29798807180288,
+      17.734047152447005,
+      47.16762929044725,
+      -61.997147786658644,
+      21.98767972421343,
+      28.868942367804355,
+      -68.7655870786607,
+      -111.28830373503718,
+      49.22652209227469,
+      -382.48886199710336
+    ],
+    "episode_lengths": [
+      1000,
+      1000,
+      503,
+      1000,
+      1000,
+      1000,
+      1000,
+      427,
+      1000,
+      1000,
+      1000,
+      1000,
+      847,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000
+    ],
+    "episode_terminated": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "mean_eval_reward": -14.40753266533595,
+    "mean_episode_length": 938.85,
+    "min_eval_reward": -382.48886199710336,
+    "max_eval_reward": 71.99750491900781,
+    "termination_breakdown": {
+      "terminated": 3,
+      "truncated": 17
+    },
+    "final_policy_component_evaluation": {
+      "forward_reward": {
+        "episode_sum_mean": 1191.7187708506615,
+        "episode_abs_sum_mean": 1191.7187708506615,
+        "signed_contribution_share": 0.941176095662407,
+        "magnitude_share": 0.941176095662407,
+        "active_rate": 0.9638387388826756
+      },
+      "height_penalty": {
+        "episode_sum_mean": -0.02179233537133507,
+        "episode_abs_sum_mean": 0.02179233537133507,
+        "signed_contribution_share": -1.7210793034264582e-05,
+        "magnitude_share": 1.7210793034264582e-05,
+        "active_rate": 0.00015976993129892953
+      },
+      "lateral_penalty": {
+        "episode_sum_mean": -74.46113524524787,
+        "episode_abs_sum_mean": 74.46113524524787,
+        "signed_contribution_share": -0.05880669354455855,
+        "magnitude_share": 0.05880669354455855,
+        "active_rate": 0.9947275922671354
+      }
+    },
+    "final_policy_component_error_count": 0
+  },
+  "train_duration_sec": 4251.8,
+  "component_summary": {
+    "steps_seen": 1001472,
+    "reward_error_count_max": 0,
+    "component_stats": {
+      "component.forward_reward": {
+        "count": 1001472,
+        "mean": 0.551647912578693,
+        "abs_mean": 0.551647912578693,
+        "nonzero_rate": 0.7559332662321063,
+        "mean_when_active": 0.7297574233349213,
+        "abs_mean_when_active": 0.7297574233349213,
+        "min": 0.0,
+        "max": 4.347963598090209
+      },
+      "component.height_penalty": {
+        "count": 1001472,
+        "mean": -0.0005861061174609972,
+        "abs_mean": 0.0005861061174609972,
+        "nonzero_rate": 0.001690511566973415,
+        "mean_when_active": -0.34670340559119894,
+        "abs_mean_when_active": 0.34670340559119894,
+        "min": -2.2508764274631465,
+        "max": -0.0
+      },
+      "component.lateral_penalty": {
+        "count": 1001472,
+        "mean": -0.09349072417977963,
+        "abs_mean": 0.09349072417977963,
+        "nonzero_rate": 0.9999241117075665,
+        "mean_when_active": -0.09349781956965303,
+        "abs_mean_when_active": 0.09349781956965303,
+        "min": -7.597813226871028,
+        "max": -5.151593669636662e-18
+      },
+      "component.total_reward": {
+        "count": 1001472,
+        "mean": 0.45757108228146826,
+        "abs_mean": 0.5543821183123634,
+        "nonzero_rate": 0.9999600587934561,
+        "mean_when_active": 0.4575893589525665,
+        "abs_mean_when_active": 0.5544042618874964,
+        "min": -7.597813226871028,
+        "max": 4.345901740881566
+      },
+      "generated_reward": {
+        "count": 1001472,
+        "mean": 0.45757108228146826,
+        "abs_mean": 0.5543821183123634,
+        "nonzero_rate": 0.9999600587934561,
+        "mean_when_active": 0.4575893589525665,
+        "abs_mean_when_active": 0.5544042618874964,
+        "min": -7.597813226871028,
+        "max": 4.345901740881566
+      },
+      "original_env_reward": {
+        "count": 1001472,
+        "mean": -0.8435339379221861,
+        "abs_mean": 1.1029804179713085,
+        "nonzero_rate": 1.0,
+        "mean_when_active": -0.8435339379221861,
+        "abs_mean_when_active": 1.1029804179713085,
+        "min": -5.875332791810768,
+        "max": 4.111433142184666
+      }
+    },
+    "episode_component_sum_stats": {
+      "forward_reward": {
+        "count": 2414,
+        "mean": 228.69541636747576,
+        "abs_mean": 228.69541636747576,
+        "min": 0.0,
+        "max": 1302.3464630787382
+      },
+      "height_penalty": {
+        "count": 2414,
+        "mean": -0.24315197417808607,
+        "abs_mean": 0.24315197417808607,
+        "min": -2.2508764274631465,
+        "max": 0.0
+      },
+      "lateral_penalty": {
+        "count": 2414,
+        "mean": -38.770731539583224,
+        "abs_mean": 38.770731539583224,
+        "min": -253.38756252269184,
+        "max": -0.36395063032096814
+      },
+      "total_reward": {
+        "count": 2414,
+        "mean": 189.68153285371437,
+        "abs_mean": 210.55172489943396,
+        "min": -243.3637530717214,
+        "max": 1234.5827038423151
+      }
+    }
+  }
+}

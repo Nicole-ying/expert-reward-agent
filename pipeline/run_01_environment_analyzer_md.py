@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 from .common import load_config, read_text, write_text, make_run_dir, record_prompt, record_response
-from llm_clients.deepseek_client import DeepSeekClient
+from llm_clients import create_client
 
 MOCK_ENV_MD = """# Env_001 环境理解卡片
 
@@ -94,7 +94,7 @@ def run(config_path, run_name, mock=False):
         env_md = MOCK_ENV_MD
     else:
         llm_cfg = cfg["llm"]
-        client = DeepSeekClient(api_key_env=llm_cfg["api_key_env"], base_url=llm_cfg["base_url"])
+        client = create_client(cfg)
         env_md = client.chat(
             model=llm_cfg["model_env"],
             system_prompt=system_prompt,
@@ -102,6 +102,7 @@ def run(config_path, run_name, mock=False):
             temperature=llm_cfg["temperature_environment_analyzer"],
             max_tokens=llm_cfg["max_tokens_env"],
             json_mode=False,
+            reasoning_effort=llm_cfg.get("reasoning_env"),
         )
 
     write_text(run_dir / "environment_card.md", env_md)

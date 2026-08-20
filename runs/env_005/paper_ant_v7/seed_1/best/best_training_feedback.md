@@ -1,8 +1,8 @@
 # Training Feedback
 
 ## Final-policy outcome
-score=2.911636, len=694.350000, terminated=10/20, truncated=10/20, reward_errors=0
-score_range=[-638.628762, 321.872725]
+score=13.548498, len=740.650000, terminated=9/20, truncated=11/20, reward_errors=0
+score_range=[-615.841894, 354.626578]
 
 ## Final-policy reward composition
 
@@ -10,8 +10,9 @@ These statistics come from the same fixed evaluation episodes as `score`. Shares
 
 | component | episode_sum_mean | signed_share | magnitude_share | active_rate |
 |---|---:|---:|---:|---:|
-| forward_gated | 728.613833 | 97.8% | 99.8% | 79.9% |
-| action_penalty | -1.445550 | -0.2% | 0.2% | 100.0% |
+| forward_gated | 823.134702 | 88.5% | 90.2% | 79.3% |
+| lateral_penalty | -59.744231 | -6.4% | 6.4% | 77.7% |
+| action_penalty | -31.733037 | -3.4% | 3.4% | 100.0% |
 
 ## Evaluation distribution
 - fixed_eval_seeds: 10000..10019

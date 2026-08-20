@@ -1,0 +1,55 @@
+{
+  "turns_used": 6,
+  "signal": {
+    "key_findings": "Score=135.20, ep_len=917.45, only 2/20 terminated. A_progress_gated is functionally dead: per-step mean=0.0008 (episode sum=0.55, 0.3% share). C_landing_steady dominates at 99.7% share (episode sum=183.84). Original env reward per-step is 0.0491 vs generated 0.1377.",
+    "component_anomalies": "A_progress_gated is effectively silenced despite 100% activation rate — the speed_gate is attenuating the progress signal to near-zero (0.0008/step). C_landing_steady dominates at 99.7% share and 74.7% active rate, but it's a terminal-state attractor that only rewards behavior after the agent is already at the pad.",
+    "training_dynamics": "No temporal snapshots available from this run. Cannot confirm early-vs-late trends or scaffold→final drift. The final policy composition shows the end-state: A_progress_gated at 0.3% share indicates the gate never relaxed across training.",
+    "signal_quality": "CRITICAL: The only shaping signal (A_progress) that could guide the agent toward the landing pad is being crushed by the speed gate. The agent has almost no gradient to follow — C_landing_steady is a reward for being at the goal, not a signal for getting there. This is a classic missing-attractor problem: the reward landscape is flat everywhere except at the target state.",
+    "confidence": "medium"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 545
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 3820
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_dynamics",
+      "args": {},
+      "result_len": 39
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 818
+    },
+    {
+      "turn": 3,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Score=135.20, ep_len=917.45, only 2/20 terminated. A_progress_gated is functionally dead: per-step mean=0.0008 (episode sum=0.55, 0.3% share). C_landing_steady dominates at 99.7% share (episode sum=183.84). Original env reward per-step is 0.0491 vs generated 0.1377.",
+        "component_anomalies": "A_progress_gated is effectively silenced despite 100% activation rate — the speed_gate is attenuating the progress signal to near-zero (0.0008/step). C_landing_steady dominates at 99.7% share and 74.7% active rate, but it's a terminal-state attractor that only rewards behavior after the agent is already at the pad.",
+        "training_dynamics": "No temporal snapshots available from this run. Cannot confirm early-vs-late trends or scaffold→final drift. The final policy composition shows the end-state: A_progress_gated at 0.3% share indicates the gate never relaxed across training.",
+        "signal_quality": "CRITICAL: The only shaping signal (A_progress) that could guide the agent toward the landing pad is being crushed by the speed gate. The agent has almost no gradient to follow — C_landing_steady is a reward for being at the goal, not a signal for getting there. This is a classic missing-attractor problem: the reward landscape is flat everywhere except at the target state.",
+        "confidence": "medium"
+      },
+      "signal_valid": true
+    }
+  ],
+  "signal_produced": true
+}

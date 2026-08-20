@@ -108,3 +108,74 @@ reason: ...
 函数签名：
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+```
+
+允许使用：
+- obs
+- action
+- next_obs
+- info 中明确允许的字段
+- training_progress 只有 prompt 明确允许时才用
+
+禁止使用：
+- original_reward
+- official_reward
+- 未声明的 info 字段
+- 未声明的 obs 切片
+
+## 7. 可用于奖励函数的信号
+- position:
+- velocity:
+- orientation:
+- contact:
+- action/engine:
+- other:
+
+## 8. 不确定或不可用的信号
+- ...
+
+## 9. 专家任务画像 expert_task_profile
+```yaml
+task_family: xxx
+dynamics_subtype: xxx
+control_type: discrete_or_continuous
+morphology:
+  body_type: xxx
+  actuator_type: xxx
+  contact_structure: xxx
+primary_objectives:
+  - ...
+secondary_objectives:
+  - ...
+main_failure_risks:
+  - ...
+```
+
+## 10. 奖励职责拆解 reward_role_decomposition
+### 10.1 主职责 mandatory_roles
+- role_id: xxx
+  purpose: ...
+  why_required: ...
+  usable_signals: [...]
+  risks: [...]
+
+### 10.2 条件职责 conditional_roles
+- role_id: xxx
+  condition_to_use: ...
+  usable_signals: [...]
+  risks: [...]
+
+### 10.3 慎用/禁用职责 avoid_roles
+- role_id: xxx
+  reason: ...
+  forbidden_or_missing_signals: [...]
+
+## 11. role_to_signal_mapping
+| role_id | usable signals | missing signals | candidate formula operators | notes |
+|---|---|---|---|---|
+| ... | ... | ... | ... | ... |
+
+## 12. 初始训练后应观察的 failure modes
+| failure_mode | evidence_to_check | possible_intervention |
+|---|---|---|
+| ... | ... | ... |

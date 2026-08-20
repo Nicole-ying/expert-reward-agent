@@ -114,3 +114,41 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 ```
 ```text
 环境事实 → 任务画像 → 奖励职责 reward roles → 职责-信号映射 → 公式算子 → reward code
+
+**2. components: dict**，记录 individual reward components。
+
+首选返回格式：
+```python
+return float(total_reward), components
+```
+
+# 代码硬约束
+
+- Python code block 里只能包含完整的 `compute_reward` 函数。
+- components 必须是 dict。
+- components 只包含被加到 total_reward 的组件（A、B、C），不包含 total_reward 本身。
+
+# Markdown 输出要求
+
+输出必须是 Markdown，但第一个 Python code block 必须只包含完整且可执行的 `compute_reward` 函数，因为 parser 会抽取第一个 Python code block。
+
+格式：
+
+# reward_v1.py
+
+```python
+def compute_reward(...):
+    ...
+```
+
+# reward_v1 设计说明
+
+必须简要说明：
+- selected task_family / dynamics_subtype；
+- selected reward roles；
+- role_to_signal_mapping；
+- 每个 role 选择的 formula operator；
+- excluded roles 及原因；
+- 为什么没有使用 terminal_success_reward / terminal_failure_penalty；
+- 哪些职责留到后续迭代；
+- 训练后应该观察哪些 failure modes。

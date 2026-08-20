@@ -1,0 +1,31 @@
+{
+  "call_count": 1,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "unbounded distance penalty dominates reward, agent reaches target vicinity but crashes on landing, state value instead of improvement delta"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## distance_gated_constraint\n- 症状：远离目标时惩罚阻碍 agent 靠近，episode 长但无进展。\n- 原理：远处需要大动作，不应施加精细约束。用距离门控让惩罚只在目标区生效。\n- 修复：penalty *= max(0, 1 - dist/gate_radius)。gate_radius 取初始距离的 30%~50%。\n---\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "unbounded distance penalty dominates reward, agent reaches target vicinity but crashes on landing, state value instead of improvement delta"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## distance_gated_constraint\n- 症状：远离目标时惩罚阻碍 agent 靠近，episode 长但无进展。\n- 原理：远处需要大动作，不应施加精细约束。用距离门控让惩罚只在目标区生效。\n- 修复：penalty *= max(0, 1 - dist/gate_radius)。gate_radius 取初始距离的 30%~50%。\n---\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。"
+    }
+  ]
+}

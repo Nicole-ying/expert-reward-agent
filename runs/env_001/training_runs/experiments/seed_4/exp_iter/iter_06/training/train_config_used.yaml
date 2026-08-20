@@ -1,0 +1,110 @@
+runner_env_id: LunarLander-v3
+reward_path: runs\env_001\experiments\seed_4\exp_iter\iter_06\generation\reward_v6.py
+run_name: experiments/seed_4/exp_iter/iter_06/training
+n_envs: 4
+total_timesteps: 1000000
+reward_clip: 20.0
+error_fallback: zero
+ppo_args:
+  policy: MlpPolicy
+  verbose: '1'
+  device: auto
+  seed: '4'
+  n_steps: '1024'
+  batch_size: '64'
+  gae_lambda: '0.98'
+  gamma: '0.999'
+  n_epochs: '4'
+  ent_coef: '0.01'
+  tensorboard_log: runs/env_001/tensorboard
+model_path: runs\env_001\training_runs\experiments\seed_4\exp_iter\iter_06\training\model.zip
+monitor_dir: runs\env_001\training_runs\experiments\seed_4\exp_iter\iter_06\training\monitor
+tensorboard_log: runs/env_001/tensorboard
+external_eval:
+  eval_episodes: 10
+  episode_rewards:
+  - 117.32162970678196
+  - 106.0544670886527
+  - 251.99152966638786
+  - 202.5069774738738
+  - 115.25305226129362
+  - 250.89726180154403
+  - 163.74335699890668
+  - 148.50541150930803
+  - 258.84700074366367
+  - 154.8682746751281
+  episode_lengths:
+  - 1000
+  - 1000
+  - 319
+  - 850
+  - 1000
+  - 439
+  - 1000
+  - 1000
+  - 289
+  - 1000
+  mean_eval_reward: 176.99889619255404
+  mean_episode_length: 789.7
+  min_eval_reward: 106.0544670886527
+  max_eval_reward: 258.84700074366367
+component_summary:
+  steps_seen: 1003520
+  reward_error_count_max: 0
+  component_stats:
+    component.approach_shaping:
+      count: 1003520
+      mean: -0.028242364869621103
+      abs_mean: 0.028242364869621103
+      nonzero_rate: 0.10970683195153061
+      min: -0.3334099352359772
+      max: 0.0
+    component.distance_reward:
+      count: 1003520
+      mean: -0.034077141404139435
+      abs_mean: 0.034077141404139435
+      nonzero_rate: 1.0
+      min: -0.1667049676179886
+      max: -1.0638246976668597e-06
+    component.landing_shaping:
+      count: 1003520
+      mean: 0.5263305338438153
+      abs_mean: 0.5263305338438153
+      nonzero_rate: 0.8796984614158163
+      min: 0.0
+      max: 0.799994707107544
+    component.progress_reward:
+      count: 1003520
+      mean: 0.006169706446011372
+      abs_mean: 0.006871943314115384
+      nonzero_rate: 0.9995416135204082
+      min: -0.054216980934143066
+      max: 0.0760989636182785
+    component.stability_penalty:
+      count: 1003520
+      mean: -0.0027226074398037678
+      abs_mean: 0.0027226074398037678
+      nonzero_rate: 1.0
+      min: -0.04061463475227356
+      max: -1.3854447367123157e-08
+    component.total_reward:
+      count: 1003520
+      mean: 0.4674581265603868
+      abs_mean: 0.5522210746942942
+      nonzero_rate: 1.0
+      min: -0.5225543975830078
+      max: 0.8009238243103027
+    generated_reward:
+      count: 1003520
+      mean: 0.4674581265603868
+      abs_mean: 0.5522210746942942
+      nonzero_rate: 1.0
+      min: -0.5225543975830078
+      max: 0.8009238243103027
+    original_env_reward:
+      count: 1003520
+      mean: 0.015592626351024614
+      abs_mean: 1.4185514366606826
+      nonzero_rate: 1.0
+      min: -100.0
+      max: 126.02289952112014

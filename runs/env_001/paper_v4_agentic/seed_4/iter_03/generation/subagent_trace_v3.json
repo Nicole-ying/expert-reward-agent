@@ -1,0 +1,55 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "Automatic fallback after 5 turns without submit. Raw data: [inspect_component_dynamics]: (no monitor snapshots — training may not have completed)\n[inspect_training_feedback]: # Training Feedback\n\n## Final-policy outcome\nscore=98.815158, len=372.450000, termin",
+    "component_anomalies": "Subagent exhausted turns without explicit submission.",
+    "training_dynamics": "No temporal analysis available.",
+    "signal_quality": "No signal quality assessment available.",
+    "confidence": "low"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 544
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 2569
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 3,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 822
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Score=98.8, 80% termination (16/20), ep_len=372.5. Reward is entirely carried by proximity_stability (100% signed share, ep_sum=2211). progress_gated contributes 0.0% share despite 70% active_rate — mean per-step value is 0.0012. Original env reward is consistently negative (-0.34/step).",
+        "component_anomalies": "progress_gated is structurally dead: 73% nonzero_rate but mean 0.0012/step, ep_sum 0.42 vs proximity_stability's 2211. The gate product (angle×vel×angvel, floor 0.001) excludes most progress events. w_progress=1.0 is drowned by w_proximity=10.0. proximity_stability dominates 100% magnitude share.",
+        "training_dynamics": "No temporal dynamics available (no monitor snapshots). Cannot assess whether progress_gated was ever functional or if the policy drifted toward pure stability. The final policy achieves success via proximity+stability without needing forward progress — the reward structure never created a progress-seeking attractor.",
+        "signal_quality": "HIGH diagnostic clarity. progress_gated is a ghost component: it fires (70% active) but delivers negligible magnitude because the triple-gate product (floor 0.1³=0.001) kills any meaningful delta_dist, and w_progress=1.0 vs w_proximity=10.0 makes it structurally invisible. The agent optimized the signal it could reach (proximity_stability) and ignored the unreachable one.",
+        "confidence": "high"
+      },
+      "validation_errors": [
+        "signal too long (1280 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 5,
+      "fallback_signal": true
+    }
+  ],
+  "signal_produced": true
+}

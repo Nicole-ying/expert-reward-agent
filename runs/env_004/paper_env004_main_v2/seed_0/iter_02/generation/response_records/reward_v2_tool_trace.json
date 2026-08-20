@@ -1,0 +1,31 @@
+{
+  "call_count": 1,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "posture factor too restrictive, multiplicative coupling between speed and posture limits forward velocity in locomotion"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## hover_or_stand_still\n- 症状：episode较长但外部得分低，alive/stability类正向贡献持续存在，前进信号弱或被动作代价压制。\n- 原理：生存和低动作成本可以形成原地不动的局部最优。\n- 修复：削弱无条件存活收益或动作代价，确保可达的前进职责是主要任务驱动；下一轮同时验证episode长度与外部得分。\n---\n## locomotion_energy_domination\n- 症状：能耗或动作惩罚绝对累计贡献过大，策略动作幅度很小且前进不足。\n- 原理：完成任务前过早优化控制成本会抑制步态探索。\n- 修复：Level 1降低单一动作代价；若仍失败，Level 2将代价门控到已具备前进能力的阶段。事件、状态值和逐步差分不能套用同一固定ratio阈值。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "posture factor too restrictive, multiplicative coupling between speed and posture limits forward velocity in locomotion"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## hover_or_stand_still\n- 症状：episode较长但外部得分低，alive/stability类正向贡献持续存在，前进信号弱或被动作代价压制。\n- 原理：生存和低动作成本可以形成原地不动的局部最优。\n- 修复：削弱无条件存活收益或动作代价，确保可达的前进职责是主要任务驱动；下一轮同时验证episode长度与外部得分。\n---\n## locomotion_energy_domination\n- 症状：能耗或动作惩罚绝对累计贡献过大，策略动作幅度很小且前进不足。\n- 原理：完成任务前过早优化控制成本会抑制步态探索。\n- 修复：Level 1降低单一动作代价；若仍失败，Level 2将代价门控到已具备前进能力的阶段。事件、状态值和逐步差分不能套用同一固定ratio阈值。"
+    }
+  ]
+}

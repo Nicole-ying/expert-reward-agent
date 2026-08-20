@@ -1,0 +1,262 @@
+第 9 轮迭代训练已结束，得分 26.451246（目标: 200）。
+
+用 `read_memory()` 快速确认全局状态，用 `get_component_history` 逐组件检查是否有死组件（active<2%）或全覆盖惩罚（active>95% 且负贡献）。
+找到问题组件后，用 `read_past_reflection` 确认你之前是否已经改过它、结果如何。
+
+实验记录目录：
+```
+rpv4_old_v3/seed_2/
+  iter_01/ ... iter_08/     ← 历史迭代
+    generation/response_records/agent_reflection.md   ← 每轮反思决策
+    generation/behavior_analyst_output_vN.md          ← Subagent 数据报告
+    training/eval_result.json                          ← 训练评估结果
+  memory/reward_memory.md                       ← 历史记忆表
+  best/best_reward.py                            ← 历史最佳奖励函数
+```
+
+# 本轮训练反馈 (score=26.451246)
+# Training Feedback
+
+## Final-policy outcome
+score=26.451246, len=206.500000, terminated=20/20, truncated=0/20, reward_errors=0
+score_range=[0.550268, 50.007715]
+
+## Final-policy reward composition
+
+These statistics come from the same fixed evaluation episodes as `score`. Shares describe observed reward composition, not causal influence.
+
+| component | episode_sum_mean | signed_share | magnitude_share | active_rate |
+|---|---:|---:|---:|---:|
+| progress | 2.666861 | 45.6% | 47.5% | 100.0% |
+| vel_damping | -1.576654 | -27.0% | 27.0% | 99.9% |
+| fuel_penalty | -1.231500 | -21.1% | 21.1% | 59.6% |
+| angle_stab | -0.263480 | -4.5% | 4.5% | 100.0% |
+
+## Evaluation distribution
+- fixed_eval_seeds: 10000..10019
+- early_terminal (<150 steps and score<-50): 0/20
+- training_reward_errors_max: 0
+- full_training_distribution_stats: component_stats.md / training_summary.json (not primary reflection evidence)
+
+
+# Checkpoint 评估
+| pct | score_mean | score_std |
+|---|---|---|
+| 40% | 0.00 | 0.00 |
+| 80% | 0.00 | 0.00 |
+
+# 上一轮奖励函数代码
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    """
+    Reward function for lunar lander style 2D flyer landing.
+    Main goal: reach target platform (x≈0, y≈0) with low velocity, upright.
+    Components:
+        A: progress (distance reduction towards target)  -- main learning signal
+        B: velocity damping (next_obs squared velocity)  -- stability constraint
+        C: orientation stabilization (next_obs angle/angular velocity) -- stability constraint
+        D: fuel penalty (per action cost)                -- efficiency / mild action cost
+    Weights chosen so that A dominates, B/C soft‑constrain, D is light.
+    """
+    # Extract states
+    x, y = obs[0], obs[1]
+    nx, ny = next_obs[0], next_obs[1]
+    
+    # Current and next distance to target (Euclidean)
+    dist = (x**2 + y**2) ** 0.5
+    next_dist = (nx**2 + ny**2) ** 0.5
+    
+    # Component A: progress – positive when moving closer to (0,0)
+    progress = dist - next_dist  # positive if approaching
+    w_progress = 2.0
+    component_A = w_progress * progress
+
+    # Component B: velocity damping – penalise large speeds in next step
+    # Using squared magnitude to keep gradient smooth
+    vx_n, vy_n = next_obs[2], next_obs[3]
+    vel_penalty = vx_n**2 + vy_n**2
+    w_vel = 0.05
+    component_B = -w_vel * vel_penalty
+
+    # Component C: orientation stabilization – penalise tilt and rotation
+    angle_n, angvel_n = next_obs[4], next_obs[5]
+    ang_penalty = angle_n**2 + angvel_n**2
+    w_ang = 0.05
+    component_C = -w_ang * ang_penalty
+
+    # Component D: fuel penalty – light cost for any engine use
+    # action 0 = no engine, others = engine firing
+    fuel_cost = 0.0 if action == 0 else 1.0
+    w_fuel = 0.01
+    component_D = -w_fuel * fuel_cost
+
+    total_reward = component_A + component_B + component_C + component_D
+
+    components = {
+        "progress": component_A,
+        "vel_damping": component_B,
+        "angle_stab": component_C,
+        "fuel_penalty": component_D
+    }
+
+    return float(total_reward), components
+```
+
+# Subagent 数据报告
+## 1. 行为事实
+- 得分：score=26.45，range=[0.55, 50.01]
+- 终止方式：terminated 20/20（全部成功终止），truncated 0/20
+- 回合长度：len=206.50
+- Checkpoint 轨迹：cp40%=0.00 ± 0.00，cp80%=0.00 ± 0.00，轨迹呈水平直线，无上升/下降趋势
+
+## 2. 骨架演进表
+| iter | score | len | term | progress_shaping_ep_sum | progress_shaping_active | action_cost_ep_sum | action_cost_active | angle_penalty_ep_sum | angle_penalty_active | landing_velocity_penalty_ep_sum | landing_velocity_penalty_active | success_landing_bonus_ep_sum | success_landing_bonus_active | crash_penalty_ep_sum | crash_penalty_active | progress_ep_sum | progress_active | vel_damping_ep_sum | vel_damping_active | angle_stab_ep_sum | angle_stab_active | fuel_penalty_ep_sum | fuel_penalty_active |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | -155.98 | 154.40 | 20/20 | 1.5822 | 100% | -1.8040 | 58.4% | -1.1405 | 100% | -0.0668 | 5.3% | — | — | — | — | — | — | — | — | — | — | — | — |
+| 2 | -119.51 | 68.30 | 20/20 | 5.5835 | 100% | -0.0710 | 5.2% | -0.2049 | 100% | — | — | 5.0000 | 0.1% | — | — | — | — | — | — | — | — | — | — |
+| 3 | -203.45 | 154.15 | 20/20 | 1.4876 | 100% | -1.4720 | 47.7% | -2.4599 | 100% | — | — | 0.0000 | 0.0% | 0.0000 | 0.0% | — | — | — | — | — | — | — | — |
+| 4 | -114.38 | 68.45 | 20/20 | 5.5969 | 100% | -0.0970 | 7.1% | -0.0866 | 100% | — | — | 30.0000 | 0.4% | — | — | — | — | — | — | — | — | — | — |
+| 5 | -46.51 | 740.15 | 7/20 (13 tr.) | 5.1046 | 99.9% | -13.4690 | 91.0% | -6.8280 | 100% | — | — | 1195.0000 | 1.6% | — | — | — | — | — | — | — | — | — | — |
+| 6 | -111.18 | 68.45 | 20/20 | 5.6029 | 100% | -0.0670 | 4.9% | -0.0200 | 100% | — | — | 0.0000 | 0.0% | — | — | — | — | — | — | — | — | — | — |
+| 7 | -98.93 | 69.60 | 20/20 | 5.5530 | 100% | -0.1780 | 12.8% | -0.2209 | 100% | — | — | 5.0000 | 0.1% | — | — | — | — | — | — | — | — | — | — |
+| 8 | 26.45 | 206.50 | 20/20 | — | — | — | — | — | — | — | — | — | — | — | — | 2.6669 | 100% | -1.5767 | 99.9% | -0.2635 | 100% | -1.2315 | 59.6% |
+
+## 3. 数字标记
+- **主导**：无（最大 magnitude_share = 47.5%）
+- **死组件**：无（最低 active_rate = 59.6%）
+- **淹没**：无（无组件同时满足 active_rate > 90% 且 magnitude_share < 3%）
+- **全覆盖惩罚**：vel_damping（active_rate=99.9%, signed_share=-27.0%），angle_stab（active_rate=100%, signed_share=-4.5%）
+- **每步均值量级排序**（ep_sum / len）  
+  最大两个（magnitude）：progress (+0.0129)，vel_damping (−0.0076)  
+  最小两个（magnitude）：angle_stab (−0.0013)，fuel_penalty (−0.0060)
+- **修改变化**（相较 iter_07）：组件集完全重构，无同名组件，Δ 不适用
+
+## 4. 语义演化
+
+| 语义功能 | 各轮组件名 | 各轮得分 | 方向切换 |
+|---|---|---|---|
+| 接近/进度信号 | progress_shaping → progress_shaping → progress_shaping → progress_shaping → progress_shaping → progress_shaping → progress_shaping → progress | -155.98 → -119.51 → -203.45 → -114.38 → -46.51 → -111.18 → -98.93 → 26.45 | 无切换（始终为连续奖励、状态改善量） |
+| 着陆/接触信号 | landing_velocity_penalty → success_landing_bonus → success_landing_bonus, crash_penalty → success_landing_bonus → success_landing_bonus → success_landing_bonus → success_landing_bonus → (无) | 同上 | 稀疏bonus↔连续奖励：1次切换（v1连续惩罚 → v2稀疏bonus） |
+| 稳定性/约束信号 | angle_penalty → angle_penalty → angle_penalty → angle_penalty → angle_penalty → angle_penalty → angle_penalty → angle_stab + vel_damping | 同上 | 无切换（始终为连续全高度惩罚） |
+| 效率/动作代价 | action_cost → action_cost → action_cost → action_cost → action_cost → action_cost → action_cost → fuel_penalty | 同上 | 无切换（始终为连续惩罚） |
+
+# 历史最佳奖励函数代码
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    """
+    Reward function for lunar lander style 2D flyer landing.
+    Main goal: reach target platform (x≈0, y≈0) with low velocity, upright.
+    Components:
+        A: progress (distance reduction towards target)  -- main learning signal
+        B: velocity damping (next_obs squared velocity)  -- stability constraint
+        C: orientation stabilization (next_obs angle/angular velocity) -- stability constraint
+        D: fuel penalty (per action cost)                -- efficiency / mild action cost
+    Weights chosen so that A dominates, B/C soft‑constrain, D is light.
+    """
+    # Extract states
+    x, y = obs[0], obs[1]
+    nx, ny = next_obs[0], next_obs[1]
+    
+    # Current and next distance to target (Euclidean)
+    dist = (x**2 + y**2) ** 0.5
+    next_dist = (nx**2 + ny**2) ** 0.5
+    
+    # Component A: progress – positive when moving closer to (0,0)
+    progress = dist - next_dist  # positive if approaching
+    w_progress = 2.0
+    component_A = w_progress * progress
+
+    # Component B: velocity damping – penalise large speeds in next step
+    # Using squared magnitude to keep gradient smooth
+    vx_n, vy_n = next_obs[2], next_obs[3]
+    vel_penalty = vx_n**2 + vy_n**2
+    w_vel = 0.05
+    component_B = -w_vel * vel_penalty
+
+    # Component C: orientation stabilization – penalise tilt and rotation
+    angle_n, angvel_n = next_obs[4], next_obs[5]
+    ang_penalty = angle_n**2 + angvel_n**2
+    w_ang = 0.05
+    component_C = -w_ang * ang_penalty
+
+    # Component D: fuel penalty – light cost for any engine use
+    # action 0 = no engine, others = engine firing
+    fuel_cost = 0.0 if action == 0 else 1.0
+    w_fuel = 0.01
+    component_D = -w_fuel * fuel_cost
+
+    total_reward = component_A + component_B + component_C + component_D
+
+    components = {
+        "progress": component_A,
+        "vel_damping": component_B,
+        "angle_stab": component_C,
+        "fuel_penalty": component_D
+    }
+
+    return float(total_reward), components
+```
+
+# 环境事实（只据此理解任务和变量）
+## 1. 任务目标
+这是一个 2D 的飞行器/着陆器轨迹优化任务。智能体从一个靠近顶部中央的位置出发，带有随机初始作用力。  
+**主目标**：尽快到达画面中央的目标平台，并安全停靠（soft landing），即要求位置收敛到平台上、速度很低、姿态竖直、支撑脚安全触地。  
+**次目标**：在完成任务的前提下，尽量少使用引擎推力（节省燃料），同时保持姿态稳定。  
+**不应混淆的目标**：该任务不是纯生存或平衡任务——到达目标平台是刚性的成功条件，能量节省只是辅助约束，不是多目标的平等折衷。
+
+## 3. 观察空间 observation_space
+- **type**: Box
+- **shape**: [8]
+- **dtype**: float32 (推断)
+- **obs[0]**: `x_position`，水平坐标（相对于目标平台中心），用于衡量横向偏移，奖励可用 ✅
+- **obs[1]**: `y_position`，垂直坐标（相对于平台高度），用于衡量高度/下降进程，奖励可用 ✅
+- **obs[2]**: `x_velocity`，水平线速度，用于减速奖励/惩罚，奖励可用 ✅
+- **obs[3]**: `y_velocity`，垂直线速度，用于减速奖励/惩罚，奖励可用 ✅
+- **obs[4]**: `body_angle`，机体角度（可能以弧度为单位，0 表示竖直），奖励可用 ✅
+- **obs[5]**: `angular_velocity`，角速度，用于稳定姿态，奖励可用 ✅
+- **obs[6]**: `left_support_contact`，左支撑脚接触标志（0/1），指示是否触地，奖励可用 ✅
+- **obs[7]**: `right_support_contact`，右支撑脚接触标志（0/1），指示是否触地，奖励可用 ✅
+
+## 4. 动作空间 action_space
+- **type**: Discrete
+- **n**: 4
+- **动作含义**：
+  - `0`: `no_engine` – 不激活任何引擎，仅靠惯性飞行。
+  - `1`: `left_orientation_engine` – 点火左定向引擎，产生一个使机体逆时针（或某一方向）旋转的力矩。
+  - `2`: `main_engine` – 点火主引擎，产生向上的推力（对抗重力并控制下降速度）。
+  - `3`: `right_orientation_engine` – 点火右定向引擎，产生与动作 1 相反的旋转力矩。
+
+## 5. step 与终止条件分析
+### 5.1 终止模式
+根据 `MASKED_STEP_SOURCE` 的 `terminated` 计算逻辑：
+- **crash_or_body_contact**：躯体发生碰撞或身体支撑点接触地面。此情景可能包括：
+  - 成功的软着陆（接触时速度极低、姿态正）。
+  - 失败的高速撞击/翻倒等。
+- **horizontal_position_outside_viewport**：x 坐标超出视区边界，明确失败。
+- **body_not_awake_or_settled**：躯体进入睡眠状态或已稳定（settled）。这可能是：
+  - 成功着陆后自然睡眠。
+  - 坠毁后物理引擎判定身体安定，属于失败。
+
+**总结终止模式**：
+- **success-like termination**：`body_not_awake_or_settled` 在速度接近于 0、位置接近目标平台、接触标志为 1 且角度接近 0 时发生。
+- **failure-like termination**：`horizontal_position_outside_viewport`；或因高速、大角度导致的 `crash_or_body_contact`/`body_not_awake_or_settled`。
+- **ambiguous termination**：`crash_or_body_contact`/`body_not_awake_or_settled` 需结合 next_obs 判定成败。
+- **truncation**：未提及，但有最大 episode 长度（通常存在），应在 reward 中注意时间步惩罚。
+
+### 5.2 success/failure 信号可用性
+- **explicit_success_flag_available**: false  
+  （`info` 字典为空，无任何显式标志）
+- **explicit_failure_flag_available**: false
+- **allowed_info_fields**: 无
+- **forbidden_or_uncertain_info_fields**: 所有 info 字段（因为没有提供）
+
+> 因此，任何成功/失败的判断必须从 `next_obs` 与 `terminated` 的组合中推断，而不能依赖 `info`。
+
+## 7. 可用于奖励函数的信号
+- **position**：`x_position`, `y_position`（相对目标），可计算到目标的欧氏距离或分别控制。
+- **velocity**：`x_velocity`, `y_velocity`，可设计近地减速、稳定约束。
+- **orientation**：`body_angle`，鼓励竖直。
+- **angular**：`angular_velocity`，鼓励旋转抑制。
+- **contact**：`left_support_contact`, `right_support_contact`，标志着陆接触已发生，可配合速度用于判定软着陆。
+- **action/engine**：`action` 选择，可用于惩罚引擎使用（燃料节省）。
+- **other**：`terminated` 标志（作为环境返回，但 `compute_reward` 接口未直接提供，可通过在调用 `compute_reward` 时传入 `done` 标志获取；我们可以在训练循环中以额外参数传递，但接口中只有 `next_obs` 和 `info`；`terminated` 通常可在调用时通过另一个变量获得，若必须在 `compute_reward` 中获取，需要从外部传入——在此假设可以在调用时提供 `done` 标志，否则可通过 `next_obs` 的特征推断终止状态。由于题干未明确禁止，但谨慎起见，直接使用 `done` 需要额外参数，在标准接口中不鼓励，所以这里只强调可从 `next_obs` 和 `info` 推断。但 info 空，所以成功稀疏奖励只能基于 `next_obs` 的状态是否符合成功条件给出，而不依赖外部 `done`。所以我们仍可以将“是否处于终止且状态符合成功条件”作为奖励计算的一部分，但必须在训练循环的每个 step 结束时调用，需要能够判断 `done`，这部分由训练框架负责。我们此处声明信号可用，但不具体到实现细节。）

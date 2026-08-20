@@ -1,0 +1,30 @@
+{
+  "call_count": 1,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "agent crashes near target, distance reward dominates and encourages fast approach, landing quality signal too weak, early termination"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## goal_near_oscillation\n- 症状：progress 正常，episode 长（>800），landing proxy 触发率 < 10%。\n- 修复：添加连续 low-speed+low-angle+proximity 乘积 shaping。关联技法 bounded_continuous_proxy, anti_oscillation_potential。\n---\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "agent crashes near target, distance reward dominates and encourages fast approach, landing quality signal too weak, early termination"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## goal_near_oscillation\n- 症状：progress 正常，episode 长（>800），landing proxy 触发率 < 10%。\n- 修复：添加连续 low-speed+low-angle+proximity 乘积 shaping。关联技法 bounded_continuous_proxy, anti_oscillation_potential。\n---\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。"
+    }
+  ]
+}

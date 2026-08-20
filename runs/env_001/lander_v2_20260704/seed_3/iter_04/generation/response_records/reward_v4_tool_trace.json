@@ -1,0 +1,68 @@
+{
+  "call_count": 3,
+  "invocation_count": 2,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "agent crashes near target platform, progress reward encourages fast approach but stability penalty too weak, early termination"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## stability_penalty_dominance\n- 症状：stability_penalty 在最终策略奖励构成中持续占主导，external 低、episode 短，且其数学形态本身尚未被证伪。对可比的dense信号，`|ratio_to_progress| > 0.5`可作为优先检查并尝试降系数的经验触发器。\n- 修复：降低惩罚系数（至少10倍）或使用距离门控。关联技法 penalty_magnitude_control。\n---\n## early_failure_or_crash\n- 症状：external score 极负（<-100），episode length 很短（<150），提前终止比例 > 50%。\n- 修复：增加密集的 safe altitude/approach 信号；大幅降低稳定性惩罚。关联技法 bounded_continuous_proxy, penalty_magnitude_control。"
+        },
+        {
+          "round": 1,
+          "name": "get_reward_transformation",
+          "arguments": {
+            "query": "global_to_local_gate: constraint that should only apply when close to target, not during early approach"
+          },
+          "result": "## global_to_local_gate\n- diagnosis: A precision, safety, or stability constraint interferes with exploration in states where it is not yet relevant.\n- transform: Gate the constraint by a task-relevant phase or continuous relevance factor, so it becomes strong only where the behavior matters.\n- why: The policy can explore globally and optimize precision locally.\n- risks: A hard or narrow gate can make the constraint unreachable or discontinuous.\n- verify_next_round: Action suppression should fall outside the relevant region while local safety or precision improves.\n---\n## state_to_improvement\n- diagnosis: A policy can remain in a rewarding state, hover, stall, or farm a persistent state bonus without completing the task.\n- transform: Replace a persistent state value q(s_next) with an improvement q(s_next)-q(s), or use a valid potential difference when appropriate.\n- why: The reward is paid for becoming better rather than for occupying the same proxy-optimal state repeatedly.\n- risks: Pure improvement rewards may not maintain a desirable terminal state and can oscillate if the quality function is poorly chosen.\n- verify_next_round: Long non-completing episodes and persistent proxy accumulation should decrease while completion or terminal quality improves.\n---\n## sparse_to_dense\n- diagnosis: A task-relevant component is rarely active and the policy receives little local evidence before success or failure.\n- transform: Replace or supplement a hard event with a continuous progress, proximity, or quality signal computed from declared observations.\n- why: This improves reachability and temporal credit assignment; it does not create a differentiable path through the environment.\n- risks: A dense proxy can become an easier objective than task completion.\n- verify_next_round: Active rate should rise, early failures should fall, and external score should improve without long high-reward non-completing episodes."
+        }
+      ]
+    },
+    {
+      "validation_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "approach reward too strong prevents agent from landing, full episode truncation, soft landing proxy never triggers"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。\n---\n## bounded_continuous_proxy\n- 症状：完成信号（如 landing bonus）的 `active_rate`（旧日志名 `nonzero_rate`）接近 0；历史经验中低于约 1%~2% 通常意味着策略几乎得不到任务相关反馈，但阈值需结合事件本身频率判断。\n- 原理：二值条件（if near and slow and upright: bonus=2）无梯度。连续乘积 near_factor * slow_factor * upright_factor 提供密集信号。1/(1+kx) 或 max(0,1-x/D) 自动 bounded 防数值爆炸。\n- 修复：用连续乘积因子取代 if 条件；每个因子用 bounded 形式 max(0, 1-dimension/D_threshold)。或使用 proximity=1/(1+5*dist)。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "agent crashes near target platform, progress reward encourages fast approach but stability penalty too weak, early termination"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## stability_penalty_dominance\n- 症状：stability_penalty 在最终策略奖励构成中持续占主导，external 低、episode 短，且其数学形态本身尚未被证伪。对可比的dense信号，`|ratio_to_progress| > 0.5`可作为优先检查并尝试降系数的经验触发器。\n- 修复：降低惩罚系数（至少10倍）或使用距离门控。关联技法 penalty_magnitude_control。\n---\n## early_failure_or_crash\n- 症状：external score 极负（<-100），episode length 很短（<150），提前终止比例 > 50%。\n- 修复：增加密集的 safe altitude/approach 信号；大幅降低稳定性惩罚。关联技法 bounded_continuous_proxy, penalty_magnitude_control。"
+    },
+    {
+      "round": 1,
+      "name": "get_reward_transformation",
+      "arguments": {
+        "query": "global_to_local_gate: constraint that should only apply when close to target, not during early approach"
+      },
+      "result": "## global_to_local_gate\n- diagnosis: A precision, safety, or stability constraint interferes with exploration in states where it is not yet relevant.\n- transform: Gate the constraint by a task-relevant phase or continuous relevance factor, so it becomes strong only where the behavior matters.\n- why: The policy can explore globally and optimize precision locally.\n- risks: A hard or narrow gate can make the constraint unreachable or discontinuous.\n- verify_next_round: Action suppression should fall outside the relevant region while local safety or precision improves.\n---\n## state_to_improvement\n- diagnosis: A policy can remain in a rewarding state, hover, stall, or farm a persistent state bonus without completing the task.\n- transform: Replace a persistent state value q(s_next) with an improvement q(s_next)-q(s), or use a valid potential difference when appropriate.\n- why: The reward is paid for becoming better rather than for occupying the same proxy-optimal state repeatedly.\n- risks: Pure improvement rewards may not maintain a desirable terminal state and can oscillate if the quality function is poorly chosen.\n- verify_next_round: Long non-completing episodes and persistent proxy accumulation should decrease while completion or terminal quality improves.\n---\n## sparse_to_dense\n- diagnosis: A task-relevant component is rarely active and the policy receives little local evidence before success or failure.\n- transform: Replace or supplement a hard event with a continuous progress, proximity, or quality signal computed from declared observations.\n- why: This improves reachability and temporal credit assignment; it does not create a differentiable path through the environment.\n- risks: A dense proxy can become an easier objective than task completion.\n- verify_next_round: Active rate should rise, early failures should fall, and external score should improve without long high-reward non-completing episodes."
+    },
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "approach reward too strong prevents agent from landing, full episode truncation, soft landing proxy never triggers"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。\n---\n## bounded_continuous_proxy\n- 症状：完成信号（如 landing bonus）的 `active_rate`（旧日志名 `nonzero_rate`）接近 0；历史经验中低于约 1%~2% 通常意味着策略几乎得不到任务相关反馈，但阈值需结合事件本身频率判断。\n- 原理：二值条件（if near and slow and upright: bonus=2）无梯度。连续乘积 near_factor * slow_factor * upright_factor 提供密集信号。1/(1+kx) 或 max(0,1-x/D) 自动 bounded 防数值爆炸。\n- 修复：用连续乘积因子取代 if 条件；每个因子用 bounded 形式 max(0, 1-dimension/D_threshold)。或使用 proximity=1/(1+5*dist)。"
+    }
+  ]
+}

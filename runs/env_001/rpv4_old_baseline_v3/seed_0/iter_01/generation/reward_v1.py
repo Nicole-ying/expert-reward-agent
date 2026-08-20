@@ -1,0 +1,54 @@
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    """
+    Reward for 2D lander: reach pad, soft landing, stable orientation, minimal fuel.
+    v1: dense progress via improvement_delta, orientation penalty,
+        soft contact proxy, and near‑pad velocity damping.
+    """
+    # Extract relevant signals
+    x_prev, y_prev = obs[0], obs[1]
+    x_curr, y_curr = next_obs[0], next_obs[1]
+    vx, vy = next_obs[2], next_obs[3]
+    angle = next_obs[4]
+    angvel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
+
+    # 1. Progress reward (improvement_delta on Euclidean distance)
+    dist_prev = (x_prev ** 2 + y_prev ** 2) ** 0.5
+    dist_curr = (x_curr ** 2 + y_curr ** 2) ** 0.5
+    progress = dist_prev - dist_curr                     # positive when approaching
+    w_progress = 1.0
+    progress_reward = w_progress * progress
+
+    # 2. Orientation penalty (quadratic_penalty)
+    w_angle = 0.2
+    w_angvel = 0.05
+    orientation_penalty = -w_angle * (angle ** 2) - w_angvel * (angvel ** 2)
+
+    # 3. Soft contact reward (joint_condition_proxy, continuous)
+    contact_flag = left_contact * right_contact          # both feet on ground
+    sigma_angle = 0.1
+    sigma_vel = 0.2
+    # exp(-angle**2 / sigma_angle**2) * exp(-(vx**2+vy**2) / sigma_vel**2)
+    angle_factor = 2.718281828 ** (- (angle ** 2) / (sigma_angle ** 2))
+    vel_factor = 2.718281828 ** (- (vx ** 2 + vy ** 2) / (sigma_vel ** 2))
+    soft_contact = contact_flag * angle_factor * vel_factor
+
+    w_contact = 2.0
+    contact_reward = w_contact * soft_contact
+
+    # 4. Near-pad velocity damping (hinge / gated penalty)
+    dist_thresh = 1.0
+    gate = max(0.0, 1.0 - dist_curr / dist_thresh)       # 0 at far, 1 at origin
+    w_vel_damp = 0.5
+    vel_damping = -w_vel_damp * gate * (abs(vx) + abs(vy))
+
+    total_reward = progress_reward + orientation_penalty + contact_reward + vel_damping
+
+    components = {
+        "progress_reward": progress_reward,
+        "orientation_penalty": orientation_penalty,
+        "contact_reward": contact_reward,
+        "vel_damping": vel_damping
+    }
+    return float(total_reward), components

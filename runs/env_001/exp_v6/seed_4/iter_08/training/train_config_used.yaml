@@ -1,0 +1,82 @@
+runner_env_id: LunarLander-v2
+reward_path: runs\env_001\exp_v6\seed_4\iter_08\generation\reward_v8.py
+run_name: exp_v6/seed_4/iter_08/training
+n_envs: 4
+total_timesteps: 1000000
+reward_clip: 20.0
+error_fallback: zero
+ppo_args:
+  policy: MlpPolicy
+  verbose: '1'
+  device: auto
+  seed: '4'
+  n_steps: '1024'
+  batch_size: '64'
+  gae_lambda: '0.98'
+  gamma: '0.999'
+  n_epochs: '4'
+  ent_coef: '0.01'
+  tensorboard_log: runs/env_001/tensorboard
+model_path: runs\env_001\exp_v6\seed_4\iter_08\training\model.zip
+monitor_dir: runs\env_001\exp_v6\seed_4\iter_08\training\monitor
+tensorboard_log: runs/env_001/tensorboard
+external_eval:
+  eval_episodes: 10
+  episode_rewards:
+  - 246.71402783071932
+  - 235.59513922470484
+  - 268.7332016246188
+  - 263.0343398280495
+  - 232.61984874925005
+  - 272.1147964992841
+  - 292.89064821098674
+  - 280.1945273875727
+  - 257.4919300082716
+  - 286.69056131994176
+  episode_lengths:
+  - 360
+  - 359
+  - 338
+  - 379
+  - 337
+  - 342
+  - 291
+  - 310
+  - 431
+  - 354
+  mean_eval_reward: 263.60790206833997
+  mean_episode_length: 350.1
+  min_eval_reward: 232.61984874925005
+  max_eval_reward: 292.89064821098674
+component_summary:
+  steps_seen: 1003520
+  reward_error_count_max: 0
+  component_stats:
+    component.shaping_reward:
+      count: 1003520
+      mean: 0.047212427930774035
+      abs_mean: 0.22984111942714214
+      nonzero_rate: 1.0
+      min: -5.968796092072504
+      max: 42.9106760515569
+    component.total_reward:
+      count: 1003520
+      mean: 0.046740432405385585
+      abs_mean: 0.22936912390175399
+      nonzero_rate: 1.0
+      min: -5.968796092072504
+      max: 20.0
+    generated_reward:
+      count: 1003520
+      mean: 0.046740432405385585
+      abs_mean: 0.22936912390175399
+      nonzero_rate: 1.0
+      min: -5.968796092072504
+      max: 20.0
+    original_env_reward:
+      count: 1003520
+      mean: 0.07103057938914614
+      abs_mean: 1.4393522290538496
+      nonzero_rate: 1.0
+      min: -100.0
+      max: 129.74623967976942

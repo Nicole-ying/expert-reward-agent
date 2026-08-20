@@ -1,0 +1,47 @@
+{
+  "call_count": 2,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "agent crashes near target despite getting close, velocity penalty activates too late, proximity gate too narrow, soft landing fails"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## goal_near_oscillation\n- 症状：progress 正常，episode 长（>800），landing proxy 触发率 < 10%。\n- 修复：添加连续 low-speed+low-angle+proximity 乘积 shaping。关联技法 bounded_continuous_proxy, anti_oscillation_potential。\n---\n## distance_gated_constraint\n- 症状：远离目标时惩罚阻碍 agent 靠近，episode 长但无进展。\n- 原理：远处需要大动作，不应施加精细约束。用距离门控让惩罚只在目标区生效。\n- 修复：penalty *= max(0, 1 - dist/gate_radius)。gate_radius 取初始距离的 30%~50%。"
+        },
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "transition-based landing bonus too sparse, contact reward active rate 1%, dual-leg contact rarely fires, credit assignment problem"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "agent crashes near target despite getting close, velocity penalty activates too late, proximity gate too narrow, soft landing fails"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## goal_near_oscillation\n- 症状：progress 正常，episode 长（>800），landing proxy 触发率 < 10%。\n- 修复：添加连续 low-speed+low-angle+proximity 乘积 shaping。关联技法 bounded_continuous_proxy, anti_oscillation_potential。\n---\n## distance_gated_constraint\n- 症状：远离目标时惩罚阻碍 agent 靠近，episode 长但无进展。\n- 原理：远处需要大动作，不应施加精细约束。用距离门控让惩罚只在目标区生效。\n- 修复：penalty *= max(0, 1 - dist/gate_radius)。gate_radius 取初始距离的 30%~50%。"
+    },
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "transition-based landing bonus too sparse, contact reward active rate 1%, dual-leg contact rarely fires, credit assignment problem"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。"
+    }
+  ]
+}

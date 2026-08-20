@@ -1,0 +1,55 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "Automatic fallback after 5 turns without submit. Raw data: [inspect_component_dynamics]: (no monitor snapshots — training may not have completed)\n[inspect_training_feedback]: # Training Feedback\n\n## Final-policy outcome\nscore=219.699783, len=446.400000, terminated=19/20, truncated=1/20, reward_errors=0\nscore",
+    "component_anomalies": "Subagent exhausted turns without explicit submission.",
+    "mechanism_hypothesis": "Insufficient evidence from subagent loops.",
+    "decision_implication": "Review training feedback directly; subagent did not complete.",
+    "confidence": "low"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 616
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 1562
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 3,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 878
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "1) approach_bonus dominates reward: episode_sum_mean=222.05, 99.2% signed share, 99.2% magnitude share — the policy essentially learns only from this component. 2) progress_reward (1.35, 0.6%) and landing_safety_penalty (0.26, 0.1%) are negligible, meaning the agent receives almost no gradient from distance-progress or safety violations. 3) Despite this imbalance, termination rate is high (19/20) and mean episode length is 446.4, suggesting the task is solved but reward shaping is severely miscalibrated.",
+        "component_anomalies": "approach_bonus is a dominant outlier at 99.2% share — its coefficient (2.0) combined with multiplicative gating (prox × speed × angle) creates a reward magnitude ~164× larger than progress_reward per episode. landing_safety_penalty is near-zero (0.1% share) because its coefficients (0.03, 0.02, 0.03) are too small relative to approach_bonus. The three components operate at entirely different scales.",
+        "mechanism_hypothesis": "The reward surface is effectively single-component: approach_bonus saturates near the target, creating a steep local gradient that overpowers the per-step progress signal. Because progress_reward contributes only 0.6% of total magnitude, the policy cannot meaningfully learn distance-minimization early in trajectories — it only learns to enter the approach_bonus activation zone, then fine-tunes locally. This explains why original_env_reward (0.058) is far below generated_reward (0.717): the shaped bonus dominates, but the bonus gradient is spatially narrow.",
+        "decision_implication": "EDIT approach_bonus: reduce its coefficient (currently 2.0) and/or remove multiplicative gating so it no longer dwarfs progress_reward. The goal is to bring component magnitude shares into rough balance (e.g., no single component >60%) so the policy receives usable gradient from all three signals. Keep the reward structure intact — just recalibrate weights.",
+        "confidence": "high"
+      },
+      "validation_errors": [
+        "signal too long (1836 chars); target ~800 max"
+      ]
+    },
+    {
+      "turn": 5,
+      "fallback_signal": true
+    }
+  ],
+  "signal_produced": true
+}

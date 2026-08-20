@@ -1,0 +1,76 @@
+{
+  "call_count": 3,
+  "invocation_count": 3,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "multiplicative posture coupling too aggressive, limiting forward speed while agent survives full episode, exponential decay factor may be too steep"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## goal_near_oscillation\n- 症状：progress 正常，episode 长（>800），landing proxy 触发率 < 10%。\n- 修复：添加连续 low-speed+low-angle+proximity 乘积 shaping。关联技法 bounded_continuous_proxy, anti_oscillation_potential。\n---\n## distance_gated_constraint\n- 症状：远离目标时惩罚阻碍 agent 靠近，episode 长但无进展。\n- 原理：远处需要大动作，不应施加精细约束。用距离门控让惩罚只在目标区生效。\n- 修复：penalty *= max(0, 1 - dist/gate_radius)。gate_radius 取初始距离的 30%~50%。"
+        }
+      ]
+    },
+    {
+      "validation_retry": true,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": []
+    },
+    {
+      "validation_retry": false,
+      "duplicate_retry": true,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "hopping locomotion sparse jumping reward agent survives but doesn't move fast enough forward velocity score plateaus"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。\n---\n## fast_then_fail\n- 症状：前进相关组件较强，但外部得分不高、episode明显偏短，策略以高速或失稳动作换取短期前进。\n- 原理：状态速度奖励可能鼓励占据高速状态，却没有表达持续通过地形的要求。\n- 修复：先检查稳定职责是否缺失；按证据选择轻量姿态约束、局部门控，或把状态速度改为兼顾持续性的有界结构。不要仅因速度高就直接增加全局重罚。"
+        },
+        {
+          "round": 1,
+          "name": "get_skeleton_detail",
+          "arguments": {
+            "skeleton_name": "progress_delta_reward"
+          },
+          "result": "NOTE: Skeleton coefficients and ratio ranges are legacy starting points, not universal constraints.\n## progress_delta_reward\n- 数学形态: delta = d(current, goal) - d(next, goal); reward = delta * scale\n- 设计原理: 每一步向目标靠近即奖励，天然有正有负。比 distance_reward 更直接反映动作效果，不会像 distance_reward 那样远距离数值爆炸。\n- 常见陷阱: 目标附近易震荡（delta 正负交替）；若 scale 过大可能主导所有信号。\n- 推荐配合: 配合 clip(delta, -0.5, 0.5) 或改用 proximity=1/(1+5*dist)。scale 需要根据环境尺度和最终策略统计验证。对同为dense逐步信号的早期学习阶段，可用 penalty/progress 约0.1（主学习信号约为惩罚10倍）作为v6经验起点，再由外部行为验证；不适用于事件奖励或不同时间语义的组件。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "multiplicative posture coupling too aggressive, limiting forward speed while agent survives full episode, exponential decay factor may be too steep"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## goal_near_oscillation\n- 症状：progress 正常，episode 长（>800），landing proxy 触发率 < 10%。\n- 修复：添加连续 low-speed+low-angle+proximity 乘积 shaping。关联技法 bounded_continuous_proxy, anti_oscillation_potential。\n---\n## distance_gated_constraint\n- 症状：远离目标时惩罚阻碍 agent 靠近，episode 长但无进展。\n- 原理：远处需要大动作，不应施加精细约束。用距离门控让惩罚只在目标区生效。\n- 修复：penalty *= max(0, 1 - dist/gate_radius)。gate_radius 取初始距离的 30%~50%。"
+    },
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "hopping locomotion sparse jumping reward agent survives but doesn't move fast enough forward velocity score plateaus"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## sparse_completion_proxy\n- 症状：completion/landing bonus 的 `active_rate`（旧名 `nonzero_rate`）低于约1%时，通常无法提供可达的学习引导；天然极低频的一次性事件需结合每回合触发次数解释。\n- 修复：用连续 bounded 函数取代硬性二值奖励。关联技法 bounded_continuous_proxy。\n---\n## fast_then_fail\n- 症状：前进相关组件较强，但外部得分不高、episode明显偏短，策略以高速或失稳动作换取短期前进。\n- 原理：状态速度奖励可能鼓励占据高速状态，却没有表达持续通过地形的要求。\n- 修复：先检查稳定职责是否缺失；按证据选择轻量姿态约束、局部门控，或把状态速度改为兼顾持续性的有界结构。不要仅因速度高就直接增加全局重罚。"
+    },
+    {
+      "round": 1,
+      "name": "get_skeleton_detail",
+      "arguments": {
+        "skeleton_name": "progress_delta_reward"
+      },
+      "result": "NOTE: Skeleton coefficients and ratio ranges are legacy starting points, not universal constraints.\n## progress_delta_reward\n- 数学形态: delta = d(current, goal) - d(next, goal); reward = delta * scale\n- 设计原理: 每一步向目标靠近即奖励，天然有正有负。比 distance_reward 更直接反映动作效果，不会像 distance_reward 那样远距离数值爆炸。\n- 常见陷阱: 目标附近易震荡（delta 正负交替）；若 scale 过大可能主导所有信号。\n- 推荐配合: 配合 clip(delta, -0.5, 0.5) 或改用 proximity=1/(1+5*dist)。scale 需要根据环境尺度和最终策略统计验证。对同为dense逐步信号的早期学习阶段，可用 penalty/progress 约0.1（主学习信号约为惩罚10倍）作为v6经验起点，再由外部行为验证；不适用于事件奖励或不同时间语义的组件。"
+    }
+  ]
+}

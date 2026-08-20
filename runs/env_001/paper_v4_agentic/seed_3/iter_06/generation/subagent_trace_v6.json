@@ -1,0 +1,65 @@
+{
+  "turns_used": 6,
+  "signal": {
+    "key_findings": "Automatic fallback after 5 turns without submit. Raw data: [inspect_component_dynamics]: (no monitor snapshots — training may not have completed)\n[inspect_previous_reward]: def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0",
+    "component_anomalies": "Subagent exhausted turns without explicit submission.",
+    "training_dynamics": "No temporal analysis available.",
+    "signal_quality": "No signal quality assessment available.",
+    "confidence": "low"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 749
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 984
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 2066
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {},
+      "validation_errors": [
+        "missing required field: key_findings",
+        "missing required field: component_anomalies",
+        "missing required field: training_dynamics",
+        "missing required field: signal_quality",
+        "confidence must be low/medium/high"
+      ]
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {},
+      "validation_errors": [
+        "missing required field: key_findings",
+        "missing required field: component_anomalies",
+        "missing required field: training_dynamics",
+        "missing required field: signal_quality",
+        "confidence must be low/medium/high"
+      ]
+    },
+    {
+      "turn": 5,
+      "fallback_signal": true
+    }
+  ],
+  "signal_produced": true
+}

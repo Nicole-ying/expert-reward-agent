@@ -1,0 +1,14 @@
+# Reward Memory
+
+| iter | skeleton | score | best | delta | len | key_signal | action |
+|---:|---|---:|---:|---:|---:|---|---|
+| 1 | angle_penalty + contact_quality + goal_proximity + success_proxy + thrust_penalty + velocity_penalty | -121.00 | -121.00 | 0.00 | 68.35 | angle_penalty=-0.544 contact_quality=0.021 goal_proximity=-2.156 success_proxy=0.037 thrust_penalty=-0.024 | new_best |
+| 2 | angle_penalty + contact_quality + goal_proximity + success_proxy + thrust_penalty + velocity_penalty | -183.32 | -121.00 | -62.32 | 947.35 | angle_penalty=-0.207 contact_quality=0.896 goal_proximity=-1.565 success_proxy=7.092 thrust_penalty=-0.040 | no_meaningful_improvement |
+| 3 | angle_penalty + contact_quality + goal_proximity + success_proxy + thrust_penalty + velocity_penalty | -120.25 | -120.25 | 0.00 | 68.40 | angle_penalty=-0.563 contact_quality=0.022 goal_proximity=-2.285 success_proxy=0.037 thrust_penalty=-0.022 | new_best |
+| 4 | angle_penalty + contact_quality + goal_proximity + soft_success + thrust_penalty + velocity_penalty | -1471.59 | -120.25 | -1351.33 | 435.40 | angle_penalty=-0.217 contact_quality=0.033 goal_proximity=0.946 soft_success=28.967 thrust_penalty=-0.044 | unsolved_stagnation_fresh_restart |
+| 5 | goal_distance_progress + landing_contact_success + orientation_penalty + soft_landing | -63.97 | -63.97 | 0.00 | 963.75 | goal_distance_progress=0.013 landing_contact_success=0.915 orientation_penalty=-0.014 soft_landing=-0.021 | new_best |
+| 6 | goal_distance_progress + landing_contact_success + orientation_penalty + soft_landing | -37.58 | -37.58 | 0.00 | 947.65 | goal_distance_progress=0.013 landing_contact_success=2.123 orientation_penalty=-0.016 soft_landing=-0.023 | new_best |
+| 7 | goal_distance_progress + landing_contact_success + orientation_penalty + soft_landing | 156.75 | 156.75 | 0.00 | 577.95 | goal_distance_progress=0.014 landing_contact_success=1.327 orientation_penalty=-0.014 soft_landing=-0.022 | new_best |
+| 8 | goal_distance_progress + landing_contact_success + orientation_penalty + soft_landing | -18.99 | 156.75 | -175.74 | 1000.00 | goal_distance_progress=0.012 landing_contact_success=1.333 orientation_penalty=-0.016 soft_landing=-0.038 | no_meaningful_improvement |
+| 9 | goal_distance_progress + landing_contact_success + orientation_penalty + soft_landing | -12.57 | 156.75 | -169.32 | 1000.00 | goal_distance_progress=0.015 landing_contact_success=1.505 orientation_penalty=-0.010 soft_landing=-0.004 | no_meaningful_improvement |
+| 10 | goal_distance_progress + landing_contact_success + orientation_penalty + soft_landing + thrust_penalty | -36.07 | 156.75 | -192.81 | 961.85 | goal_distance_progress=0.014 landing_contact_success=1.552 orientation_penalty=-0.013 soft_landing=-0.023 thrust_penalty=-0.030 | unsolved_high_achievement_continue_from_best |

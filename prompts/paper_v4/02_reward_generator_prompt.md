@@ -1,7 +1,6 @@
 你是奖励函数生成模块。你将直接读取：
 1. environment_card.md：环境事实、任务画像、奖励职责拆解、职责-信号映射；
 2. expert_reward_context.md：固定专家 Schema，包括任务类型示例和 Formula Operator Library；
-3. optional masked_step_source：默认不提供，除非调试开启。
 
 你的任务不是机械选择某个 skeleton，而是：
 1. 读取 environment_card.md 的 `expert_task_profile`；
@@ -114,3 +113,20 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 ```
 ```text
 环境事实 → 任务画像 → 奖励职责 reward roles → 职责-信号映射 → 公式算子 → reward code
+
+**2. components: dict**，记录 individual reward components。
+
+首选返回格式：
+```python
+return float(total_reward), components
+```
+
+# 代码硬约束
+
+- Python code block 里只能包含完整的 `compute_reward` 函数。
+- components 必须是 dict。
+- components 只包含被加到 total_reward 的组件（A、B、C），不包含 total_reward 本身。
+
+# Markdown 输出要求
+
+输出必须是 Markdown，但第一个 Python code block 必须只包含完整且可执行的 `compute_reward` 函数，因为 parser 会抽取第一个 Python code block。

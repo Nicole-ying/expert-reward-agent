@@ -1,0 +1,47 @@
+{
+  "call_count": 2,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "state-based proximity reward exploited by agent hovering near target without completing task, continuous reward for being close allows infinite accumulation"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。"
+        },
+        {
+          "round": 1,
+          "name": "get_reward_transformation",
+          "arguments": {
+            "query": "state_to_improvement: agent exploits continuous state-based reward by staying in good state without completing task"
+          },
+          "result": "## state_to_improvement\n- diagnosis: A policy can remain in a rewarding state, hover, stall, or farm a persistent state bonus without completing the task.\n- transform: Replace a persistent state value q(s_next) with an improvement q(s_next)-q(s), or use a valid potential difference when appropriate.\n- why: The reward is paid for becoming better rather than for occupying the same proxy-optimal state repeatedly.\n- risks: Pure improvement rewards may not maintain a desirable terminal state and can oscillate if the quality function is poorly chosen.\n- verify_next_round: Long non-completing episodes and persistent proxy accumulation should decrease while completion or terminal quality improves.\n---\n## sparse_to_dense\n- diagnosis: A task-relevant component is rarely active and the policy receives little local evidence before success or failure.\n- transform: Replace or supplement a hard event with a continuous progress, proximity, or quality signal computed from declared observations.\n- why: This improves reachability and temporal credit assignment; it does not create a differentiable path through the environment.\n- risks: A dense proxy can become an easier objective than task completion.\n- verify_next_round: Active rate should rise, early failures should fall, and external score should improve without long high-reward non-completing episodes.\n---\n## global_to_local_gate\n- diagnosis: A precision, safety, or stability constraint interferes with exploration in states where it is not yet relevant.\n- transform: Gate the constraint by a task-relevant phase or continuous relevance factor, so it becomes strong only where the behavior matters.\n- why: The policy can explore globally and optimize precision locally.\n- risks: A hard or narrow gate can make the constraint unreachable or discontinuous.\n- verify_next_round: Action suppression should fall outside the relevant region while local safety or precision improves."
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "state-based proximity reward exploited by agent hovering near target without completing task, continuous reward for being close allows infinite accumulation"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## contact_reward_hacking\n- 症状：contact 相关奖励高，但 external score 低。\n- 修复：contact 奖励只能在 near target + low speed + stable angle + both supports 下触发。关联技法 bounded_continuous_proxy。\n---\n## high_reward_without_success\n- 症状：generated_reward 高（>0），但 external score 差（<-50）。\n- 修复：重新检查各组件与 external 相关性，移除可钻空子的项。关联技法 penalty_magnitude_control。"
+    },
+    {
+      "round": 1,
+      "name": "get_reward_transformation",
+      "arguments": {
+        "query": "state_to_improvement: agent exploits continuous state-based reward by staying in good state without completing task"
+      },
+      "result": "## state_to_improvement\n- diagnosis: A policy can remain in a rewarding state, hover, stall, or farm a persistent state bonus without completing the task.\n- transform: Replace a persistent state value q(s_next) with an improvement q(s_next)-q(s), or use a valid potential difference when appropriate.\n- why: The reward is paid for becoming better rather than for occupying the same proxy-optimal state repeatedly.\n- risks: Pure improvement rewards may not maintain a desirable terminal state and can oscillate if the quality function is poorly chosen.\n- verify_next_round: Long non-completing episodes and persistent proxy accumulation should decrease while completion or terminal quality improves.\n---\n## sparse_to_dense\n- diagnosis: A task-relevant component is rarely active and the policy receives little local evidence before success or failure.\n- transform: Replace or supplement a hard event with a continuous progress, proximity, or quality signal computed from declared observations.\n- why: This improves reachability and temporal credit assignment; it does not create a differentiable path through the environment.\n- risks: A dense proxy can become an easier objective than task completion.\n- verify_next_round: Active rate should rise, early failures should fall, and external score should improve without long high-reward non-completing episodes.\n---\n## global_to_local_gate\n- diagnosis: A precision, safety, or stability constraint interferes with exploration in states where it is not yet relevant.\n- transform: Gate the constraint by a task-relevant phase or continuous relevance factor, so it becomes strong only where the behavior matters.\n- why: The policy can explore globally and optimize precision locally.\n- risks: A hard or narrow gate can make the constraint unreachable or discontinuous.\n- verify_next_round: Action suppression should fall outside the relevant region while local safety or precision improves."
+    }
+  ]
+}

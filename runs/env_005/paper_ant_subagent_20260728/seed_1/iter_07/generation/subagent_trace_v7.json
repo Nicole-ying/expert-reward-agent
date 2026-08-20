@@ -1,0 +1,63 @@
+{
+  "turns_used": 6,
+  "signal": {
+    "key_findings": "Score=-231.68, 80% termination (16/20), ep_len=320. Generated reward per-step is positive (+0.35) but original_env_reward=-0.91/step. The agent earns ~687 generated reward per episode while the environment kills it. Score range [-1129, +32] — one seed hit positive, most crash hard.",
+    "component_anomalies": "upright_penalty is dead in final policy (0.0% active, ep_sum=-0.01) despite 53% nonzero during training — the hinge at body_up_z<0 is never crossed. forward dominates at 56% magnitude share. lateral_penalty (41% active) and vertical_penalty (27% active) contribute negligible penalty.",
+    "training_dynamics": "No temporal snapshots available. Cross-sectional evidence: forward grew from per-step training mean 0.65 to final-policy ep_sum 380 (≈1.19/step). height_factor stable at ~1.0. upright penalty vanished from training (53%→0%), suggesting policy learned to avoid tilt entirely.",
+    "signal_quality": "Dead gate: upright_penalty hinge at body_up_z=0 is never crossed — no corrective gradient when agent is nearly upright but unstable. Generated reward is decoupled from survival: +0.35/step gen vs -0.91 env. The agent optimizes forward velocity successfully but ignores the termination signal that kills it.",
+    "confidence": "high"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 742
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 1883
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 980
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Score=-231.68, ep_len=320, 80% terminated (16/20). Generated reward +0.35/step vs env reward -0.91/step — a gap of 1.26 per step. The agent earns positive self-reward while the environment punishes heavily, indicating severe reward misalignment. Score range spans [-1129, +31], with only one episode positive.",
+        "component_anomalies": "upright_penalty is effectively dead: active_rate=0.0% in final policy, episode_sum_mean=-0.012 (functionally zero despite summary showing 53% step-level nonzero). Its threshold (body_up_z<0, i.e., past horizontal) fires too late to prevent failure. forward dominates at 50.1% signed share; lateral_penalty (-1.0%) and vertical_penalty (-0.6%) are negligible.",
+        "training_dynamics": "No checkpoint dynamics available (no monitor snapshots). Cross-sectional evidence shows forward=0.65/step with height_factor=0.85 — both fully active. The agent achieves modest forward velocity (~0.33 m/s) but fails to survive, suggesting forward reward alone cannot counteract catastrophic failure modes that the dead upright penalty was meant to address.",
+        "signal_quality": "upright_penalty gate (body_up_z<0) is unreachable as a preventive signal — by the time the agent crosses horizontal, it's already falling terminally. The penalty provides no gradient during the pre-tilt regime where corrective action is possible. The height_factor gate (0.20-0.30 and 0.90-1.00 ranges) likely never activates during normal walking either, making it a passive pass-through.",
+        "confidence": "medium"
+      },
+      "validation_errors": [
+        "signal too long (1418 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Score=-231.68, 80% termination (16/20), ep_len=320. Generated reward per-step is positive (+0.35) but original_env_reward=-0.91/step. The agent earns ~687 generated reward per episode while the environment kills it. Score range [-1129, +32] — one seed hit positive, most crash hard.",
+        "component_anomalies": "upright_penalty is dead in final policy (0.0% active, ep_sum=-0.01) despite 53% nonzero during training — the hinge at body_up_z<0 is never crossed. forward dominates at 56% magnitude share. lateral_penalty (41% active) and vertical_penalty (27% active) contribute negligible penalty.",
+        "training_dynamics": "No temporal snapshots available. Cross-sectional evidence: forward grew from per-step training mean 0.65 to final-policy ep_sum 380 (≈1.19/step). height_factor stable at ~1.0. upright penalty vanished from training (53%→0%), suggesting policy learned to avoid tilt entirely.",
+        "signal_quality": "Dead gate: upright_penalty hinge at body_up_z=0 is never crossed — no corrective gradient when agent is nearly upright but unstable. Generated reward is decoupled from survival: +0.35/step gen vs -0.91 env. The agent optimizes forward velocity successfully but ignores the termination signal that kills it.",
+        "confidence": "high"
+      },
+      "signal_valid": true
+    }
+  ],
+  "signal_produced": true
+}

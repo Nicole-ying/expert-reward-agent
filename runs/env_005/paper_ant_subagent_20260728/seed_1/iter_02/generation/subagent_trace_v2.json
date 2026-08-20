@@ -1,0 +1,55 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "Score=-11.32, all 20 episodes terminated early (mean len=59.2 steps). Forward reward dominates magnitude share at 92.8% (ep sum ~72.3), while upright penalty is 100% active but only -6.9% signed share (ep sum ~-5.4). Generated and original env rewards are nearly identical (~-0.77/step).",
+    "component_anomalies": "Height penalty is dead: 2.5% active rate, 0.2% magnitude share, ep sum ~-0.17. Upright penalty fires on 100% of steps — no differentiation between good/bad posture, acts as a constant negative bias rather than a behavioral signal. Forward reward is the only meaningful component but insufficient to offset poor original env reward.",
+    "training_dynamics": "No temporal snapshots available. Cannot assess early vs late training drift or scaffold evolution. Only final-policy composition is observable.",
+    "signal_quality": "Height penalty threshold likely unreachable under current policy — 2.5% activation means the gate almost never opens. Upright penalty has no dynamic range (100% active, constant magnitude), so it cannot guide learning toward better posture. Both penalty components lack an attractor: the agent gets penalized regardless of behavior, providing no gradient toward the desired outcome.",
+    "confidence": "medium"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 606
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 862
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {},
+      "validation_errors": [
+        "missing required field: key_findings",
+        "missing required field: component_anomalies",
+        "missing required field: training_dynamics",
+        "missing required field: signal_quality",
+        "confidence must be low/medium/high"
+      ]
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Score=-11.32, all 20 episodes terminated early (mean len=59.2 steps). Forward reward dominates magnitude share at 92.8% (ep sum ~72.3), while upright penalty is 100% active but only -6.9% signed share (ep sum ~-5.4). Generated and original env rewards are nearly identical (~-0.77/step).",
+        "component_anomalies": "Height penalty is dead: 2.5% active rate, 0.2% magnitude share, ep sum ~-0.17. Upright penalty fires on 100% of steps — no differentiation between good/bad posture, acts as a constant negative bias rather than a behavioral signal. Forward reward is the only meaningful component but insufficient to offset poor original env reward.",
+        "training_dynamics": "No temporal snapshots available. Cannot assess early vs late training drift or scaffold evolution. Only final-policy composition is observable.",
+        "signal_quality": "Height penalty threshold likely unreachable under current policy — 2.5% activation means the gate almost never opens. Upright penalty has no dynamic range (100% active, constant magnitude), so it cannot guide learning toward better posture. Both penalty components lack an attractor: the agent gets penalized regardless of behavior, providing no gradient toward the desired outcome.",
+        "confidence": "medium"
+      },
+      "signal_valid": true
+    }
+  ],
+  "signal_produced": true
+}

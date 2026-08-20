@@ -528,20 +528,7 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                 bp = experiment_root_for(cfg, prefix, seed) / "best" / "best_reward.py"
                 if bp.exists():
                     best_reward = str(bp)
-        # Check if reconstructed state already meets restart conditions
-        stuck_rounds = same_skeleton_count
-        if (not solved_seen) and same_skeleton_count >= 4 and (best_score is not None and best_score < 0):
-            force_fresh_restart = True
-            restart_count += 1
-            same_skeleton_count = 0
-            no_improve_count = 0
-            print(f">>> Resume: same skeleton for {stuck_rounds} rounds, best={best_score:.1f} still negative. Triggering fresh restart immediately.")
-        elif (not solved_seen) and same_skeleton_count >= 4 and (best_score is not None and best_score > 0) and no_improve_count >= 1:
-            force_fresh_restart = True
-            restart_count += 1
-            same_skeleton_count = 0
-            no_improve_count = 0
-            print(f">>> Resume: same skeleton for {stuck_rounds} rounds, best={best_score:.1f} positive but oscillating. Triggering fresh restart immediately.")
+        # ── Auto-restart disabled: reflection agent decides L3, not the pipeline ──
     else:
         maybe_reset_memory(memory_path, bool(iter_cfg.get("reset_memory_at_start", True)))
 
@@ -582,14 +569,21 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
             else:
                 version = iteration_index
             force_fresh_restart = False
-            run_cmd([
-                "python", "-m", "pipeline.run_direct_generation_pipeline",
-                "--config", config_path,
-                "--run-name", paths["gen_run_name"],
-                "--seed", str(seed + restart_count * 100),
-                *mock_args,
-            ])
-            current_reward = reward_path_for(cfg, paths["gen_run_name"], 1)
+
+            # Skip generation if iter_01 already exists (e.g. copied from another experiment)
+            existing_reward = reward_path_for(cfg, paths["gen_run_name"], 1)
+            if not force_fresh_restart and iteration_index == 1 and Path(existing_reward).exists():
+                print(f"  [skip] iter_01 generation already exists: {existing_reward}")
+                current_reward = existing_reward
+            else:
+                run_cmd([
+                    "python", "-m", "pipeline.run_direct_generation_pipeline",
+                    "--config", config_path,
+                    "--run-name", paths["gen_run_name"],
+                    "--seed", str(seed + restart_count * 100),
+                    *mock_args,
+                ])
+                current_reward = reward_path_for(cfg, paths["gen_run_name"], 1)
         else:
             prev_paths = build_paths(cfg, prefix, iteration_index - 1, seed)
 
@@ -709,36 +703,12 @@ def run_iterative_experiment(config_path, prefix=None, rounds=None, total_timest
                     cmd += mock_args
                 run_cmd(cmd)
         if not valid:
-            print("Invalid code after 3 retries. Skipping iteration, forcing fresh restart next.")
-            force_fresh_restart = True
+            print("Invalid code after 3 retries. Skipping iteration, reflection agent will handle next round.")
             restart_count += 1
             no_improve_count += 1
             continue
 
-        # Agent-driven Level 3 rebuild: if the agent diagnosed Level 3, re-run in rebuild mode
-        if use_reflection_agent and iteration_index > 1 and not force_fresh_restart:
-            if _agent_recommended_level3(paths["gen_run_name"], cfg["experiment"]["run_root"]):
-                print(">>> Agent recommended Level 3 rebuild. Re-running reflection in REBUILD MODE.")
-                rebuild_cmd = [
-                    "python", "-m", "pipeline.run_reflection_agent",
-                    "--config", config_path,
-                    "--previous-reward", str(previous_reward),
-                    "--environment-card", str(build_paths(cfg, prefix, 1, seed)["gen_dir"] / "environment_card.md"),
-                    "--train-run-dir", str(prev_paths["train_dir"]),
-                    "--memory", agent_memory_path,
-                    "--out-run-name", paths["gen_run_name"],
-                    "--reward-version", f"v{version}",
-                    "--rebuild",
-                ]
-                if best_reward and str(best_reward) != str(previous_reward):
-                    rebuild_cmd += ["--best-reward", str(best_reward)]
-                rebuild_cmd += mock_args
-                run_cmd(rebuild_cmd)
-                current_reward = reward_path_for(cfg, paths["gen_run_name"], version)
-                try:
-                    check_reward_valid(cfg, paths["gen_run_name"], version, True)
-                except (RuntimeError, FileNotFoundError) as exc:
-                    print(f"Rebuild produced invalid code: {exc}")
+        # ── L3 rebuild disabled: reflection agent handles its own level decision ──
 
         # Check if current reward is identical to best (not just previous) — skip redundant training
         duplicate_match = find_identical_historical_reward(

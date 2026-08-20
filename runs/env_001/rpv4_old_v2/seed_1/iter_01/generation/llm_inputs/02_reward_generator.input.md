@@ -1,0 +1,299 @@
+# environment_card.md
+
+# 匿名环境理解卡片
+
+## 1. 任务目标
+主目标：控制一个 2D 平面内的刚体飞行器（带有主引擎和两侧姿态引擎），从初始偏高位置出发，尽可能快地下降并稳定、安全地停在中央目标垫上。停靠时要求速度极低、姿态竖直、双腿同时接触垫面（soft settling）。  
+次要目标：在达成主目标的前提下，最小化引擎推力使用（燃料效率），并避免坠毁、飞出视口或粗鲁撞击。  
+不应混淆的目标：单纯省燃料而拒绝降落、长时间悬停但不靠近垫子、快速但剧烈碰撞都属于失败行为。
+
+## 2. 任务类型选择
+**selected_route_id:** `navigation_goal_reaching`  
+**confidence:** high  
+**reason:** 核心任务是“到达指定目标位置并稳定停靠”——存在明确的目标垫坐标，必须移动至该位置并满足接触/稳定条件。燃料效率仅为次要优化，不构成多目标冲突。该路由最贴合任务本质。
+
+## 3. 观察空间 observation_space
+- **type:** Box  
+- **shape:** [8]  
+- **dtype:** 假定为 float32，连续值；最后两维为 float 但实际是 0/1  
+- **各维含义（下述均为可用于奖励计算的信号）：**  
+
+| index | name                         | meaning                                                                   | reward_usable |
+|-------|------------------------------|---------------------------------------------------------------------------|---------------|
+| 0     | x_position                   | 刚体中心相对于目标垫中心的水平距离（正方向未知，可正可负）               | true          |
+| 1     | y_position                   | 刚体中心相对于目标垫高度的垂直距离（正值表示在垫上方）                   | true          |
+| 2     | x_velocity                   | 水平线速度                                                                 | true          |
+| 3     | y_velocity                   | 垂直线速度（正值向上）                                                     | true          |
+| 4     | body_angle                   | 刚体姿态角（弧度），0 可能表示竖直向上                                     | true          |
+| 5     | angular_velocity             | 角速度                                                                     | true          |
+| 6     | left_support_contact         | 左支撑腿是否接触目标垫/地面（1：接触，0：未接触）                         | true          |
+| 7     | right_support_contact        | 右支撑腿是否接触目标垫/地面（1：接触，0：未接触）                         | true          |
+
+## 4. 动作空间 action_space
+- **type:** Discrete  
+- **n:** 4  
+- **动作说明：**  
+
+| action_id | name                        | meaning                           |
+|-----------|-----------------------------|-----------------------------------|
+| 0         | no_engine                   | 不点火任何引擎（滑行）            |
+| 1         | left_orientation_engine     | 点燃左侧姿态引擎（产生一个力矩和可能的侧向推力） |
+| 2         | main_engine                 | 点燃主引擎（产生向上的推力，可能带少量横向分量） |
+| 3         | right_orientation_engine    | 点燃右侧姿态引擎（与左引擎对称）  |
+
+## 5. step 与终止条件分析
+### 5.1 终止模式
+- **success‑like termination:** `body_not_awake_or_settled` —— 当刚体速度/角速度低到被视为“睡着”或稳定停靠时触发，这极有可能是成功着陆的信号（双腿接触、速度近零）。  
+- **failure‑like termination:**  
+   - `crash_or_body_contact` —— 与目标垫以外的其他物体（如地面、边界）发生危险碰撞或翻滚。  
+   - `horizontal_position_outside_viewport` —— 飞出水平视口，代表完全失控。  
+- **ambiguous termination:** `body_not_awake_or_settled` 也可能因为某些物理休眠设定错误触发，但通常视为成功。  
+- **truncation:** 当前环境未提供明确的截断条件（可能具有最大步数限制，未在 spec 中列出，属于环境内部实现）。
+
+### 5.2 success/failure 信号可用性
+- **explicit_success_flag_available:** false（`info` 字典为空 {}，无 success 标记）  
+- **explicit_failure_flag_available:** false（同上）  
+- **allowed_info_fields:** 无（`info` 为空，不可用任何字段）  
+- **forbidden_or_uncertain_info_fields:** 所有 `info` 字段均禁止使用；`original_reward` 必须被屏蔽，禁止读取。
+
+## 6. reward 函数接口契约
+函数签名：
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+```
+**允许使用：**
+- `obs`：  当前步完整的 8 维观察（含位置、速度、角度、接触标志）
+- `action`： 当前步执行的动作（0‑3 离散值）
+- `next_obs`： 执行动作后下一时刻的完整 8 维观察
+- `info`：  仅限明确声明为可用的字段，当前环境中 `info` 为空，因此不可用
+- `training_progress`： 本提示未明确允许使用，**禁止**使用
+
+**严格禁止：**
+- `original_reward`（官方奖励）
+- 未在 spec 中列出的任何 `info` 字段
+- 假设存在 `info["success"]`、`info["failure"]` 等信号
+- 读取代环境的内部状态或通过任意方式获取终止原因
+
+## 7. 可用于奖励函数的信号
+- **位置相关：**
+  - `obs[0]`（x_position） / `next_obs[0]`
+  - `obs[1]`（y_position） / `next_obs[1]`
+- **速度相关：**
+  - `obs[2]`（x_velocity） / `next_obs[2]`
+  - `obs[3]`（y_velocity） / `next_obs[3]`
+- **姿态相关：**
+  - `obs[4]`（body_angle） / `next_obs[4]`
+  - `obs[5]`（angular_velocity） / `next_obs[5]`
+- **接触/着陆信号：**
+  - `obs[6]`（left_support_contact） / `next_obs[6]`
+  - `obs[7]`（right_support_contact） / `next_obs[7]`
+- **动作/推力：**
+  - `action` （离散值）可用来推断哪个引擎被点燃，从而施加推力惩罚
+- **其他派生信号：**
+  - 从原始信号可以衍生出 `dist_to_target = sqrt(x^2 + y^2)`、`speed = sqrt(vx^2 + vy^2)`、`both_legs_contact = left_contact & right_contact` 等，均为合法使用。
+
+## 8. 不确定或不可用的信号
+- 终止原因（crash / settle / out‑of‑viewport）—— 不可在 reward 中直接获取
+- 引擎推力大小 —— 未直接给出，只能通过动作推断是否点火
+- 燃料/剩余燃料 —— 未提供
+- 到目标垫的距离角度 —— 只能从位置间接计算
+- 任何来自 `info` 的字段 —— 当前为空，不可用
+- `original_reward` —— 绝对禁止使用
+
+## 9. 专家任务画像 expert_task_profile
+```yaml
+task_family: navigation_goal_reaching
+dynamics_subtype: goal_approach_and_soft_contact
+control_type: discrete  # 引擎为离散开关
+morphology:
+  body_type: rigid_body_with_two_legs  # 类似着陆器
+  actuator_type: main_engine + two_lateral_orientation_thrusters
+  contact_structure: two_leg_contacts (left/right)
+primary_objectives:
+  - 到达目标垫正上方（x≈0, y≈0）
+  - 以极低速度完成两条腿同时与垫面稳定接触（soft settling）
+secondary_objectives:
+  - 最小化引擎使用量（燃料经济性）
+  - 在下降过程中保持姿态稳定（接近竖直）
+  - 尽快完成着陆（时间效率）
+main_failure_risks:
+  - 与地面或其他构件发生剧烈碰撞（crash）
+  - 水平位置飞出视口（完全失控）
+  - 反复弹跳或无法稳定接触，导致进入不理想的状态并触发睡眠判定
+  - 为了省燃料而悬停不降，任务不终止
+```
+
+## 10. 奖励职责拆解 reward_role_decomposition
+### 10.1 主职责 mandatory_roles
+- **role_id:** `goal_proximity`  
+  **purpose:** 鼓励 agent 不断接近目标垫中心（x=0, y=0），是完成导航的核心驱动力。  
+  **why_required:** 没有该信号，agent 无法知道应该前往何处，任务无法完成。  
+  **usable_signals:** [obs[0], obs[1], next_obs[0], next_obs[1]]  
+  **risks:** 纯距离奖励可能导致 agent 高速撞向目标，因此必须配合软着陆限制。
+
+- **role_id:** `soft_landing_contact`  
+  **purpose:** 促使 agent 在到达目标时速度极低、姿态竖直，且双腿同时接触垫面，实现安全稳定停靠。  
+  **why_required:** 任务明确要求 “settle at a central target pad”，且减少坠毁风险。  
+  **usable_signals:** [obs[2..7], next_obs[2..7]]（速度、角度、角速度、双腿接触）  
+  **risks:** 若权重不当，可能使 agent 过于谨慎而在高处长时间微调，降低效率；需与进度奖励平衡。
+
+- **role_id:** `fuel_penalty`  
+  **purpose:** 惩罚引擎使用，促进燃料效率。  
+  **why_required:** 任务描述明确要求 “using as little engine thrust as possible”。  
+  **usable_signals:** [action]（通过动作推断引擎是否点燃）  
+  **risks:** 过强惩罚可能导致 agent 完全不用引擎，无法调整轨迹；需在训练初期较弱或仅在接近目标时启用。
+
+### 10.2 条件职责 conditional_roles
+- **role_id:** `orientation_stability`  
+  **condition_to_use:** 当 agent 已非常靠近目标（例如 dist < 某个阈值）时，额外惩罚角度偏差和角速度，确保竖直姿态。全局施加可能导致前期抑制必要的姿态调整，因此推荐有条件使用。  
+  **usable_signals:** [obs[4], obs[5], next_obs[4], next_obs[5]]  
+  **risks:** 过早施加会限制 agent 探索必要的倾斜机动，可能无法成功导航。
+
+### 10.3 慎用/禁用职责 avoid_roles
+- **role_id:** `success_bonus` （基于显式成功标志）  
+  **reason:** 环境不提供任何 explicit success flag；info 为空，无法可靠获得成功事件。  
+  **forbidden_or_missing_signals:** 禁止使用任何 `info["success"]` 或类似字段。
+
+- **role_id:** `terminal_state_reward` （基于终止原因）  
+  **reason:** 终止原因在 reward 函数内不可获取，且有的终止（crash）是失败，有的是成功，错误分类会严重误导学习。  
+  **forbidden_or_missing_signals:** 没有可用的终止原因标识。
+
+- **role_id:** `shaped_energy_limit` （对剩余燃料的约束）  
+  **reason:** 没有燃料相关信号，无法实现。
+
+## 11. role_to_signal_mapping
+| role_id                | usable signals                                        | missing signals                      | candidate formula operators           | notes |
+|------------------------|-------------------------------------------------------|--------------------------------------|----------------------------------------|-------|
+| goal_proximity         | obs[0], obs[1]                                        | none                                 | dense_state_signal (negative L2 distance), bounded_signal | 核心驱动，全训练阶段有效 |
+| soft_landing_contact   | obs[2], obs[3], obs[4], obs[5], obs[6], obs[7]        | explicit success flag               | quadratic_penalty on speed/angle, contact_bonus (both legs) | 速度、角度用连续惩罚，接触用离散奖励；速度项建议使用 next_obs 以保证安全 |
+| fuel_penalty           | action                                                | fuel consumption (直接值)           | sparse_penalty (per engine fire)      | 可针对 main_engine 施加更高惩罚，姿态引擎惩罚较轻 |
+| orientation_stability  | obs[4], obs[5]                                        | none                                 | quadratic_penalty, bounded_signal     | 推荐在接近目标（如高度 < 1.0）时激活 |
+
+## 12. 初始训练后应观察的 failure modes
+| failure_mode                              | evidence_to_check                                       | possible_intervention |
+|-------------------------------------------|---------------------------------------------------------|-----------------------|
+| 始终悬停在高空，不下落                     | y_position 长期大于某值，速度接近零，引擎几乎不点燃  | 增强 goal_proximity 对高度的权重，或给较低高度以额外奖励 |
+| 高速撞击目标垫，导致 crash                | 靠近目标时速度极大，其后 episode 终止且 reward 骤降   | 强化 soft_landing_contact 的速度惩罚，或启动阶段弱化速度惩罚 |
+| 反复弹跳无法稳定（残存速度或角速度）       | 双腿交替接触，接触后 y_velocity 仍震荡                 | 增加稳定接触后的持续奖励（如连续多步双腿接触且速度低给 bonus），惩罚未接触时的速度 |
+| 飞出水平边界                              | x_position 绝对值快速增大 → episode 终止               | 添加对横向位置偏离的二次惩罚，或对 near‑boundary 的线性惩罚 |
+| 姿态失控翻滚                              | angle 和 angular_velocity 持续大幅波动                  | 对 angular_velocity 施加强惩罚，或在下降阶段激活 orientation_stability |
+| 只满足单腿接触，另一腿悬空但被判定 settled | 接触标志某一维度为 0，但 episode 终止（可能是误判成功） | 在奖励中要求双腿同时接触；若此行为出现且 episode 被视为成功，则必须修改终止条件或观察环境，奖励无法单独解决 |
+
+
+
+# expert_reward_context.md
+
+# Expert Schema Context（非检索版）
+
+这份内容不是 RAG 检索结果，也不是按 benchmark 名称写死的奖励模板。它是给 Reward Generator 使用的固定专家 Schema：先读 environment_card.md 中的任务画像和奖励职责拆解，再从下面的小型公式算子库中选择合适数学形式。
+
+核心顺序必须是：
+
+```text
+环境事实 → 任务画像 → 奖励职责 reward roles → 职责-信号映射 → 公式算子 → reward code
+```
+
+---
+
+## 1. Expert Schema 使用规则
+
+- environment_card.md 中的任务画像和可用信号优先级最高。
+- 本文件只提供通用公式算子，不替代环境卡片。
+- 先选 role（任务需要什么类型的奖励信号），再选 signal（哪个观测维度承载这个 role），再选 formula operator（用什么数学形式表达），最后写代码。
+- 如果某个 role 需要的信号在观测空间中不可用，必须排除，不得硬写。
+- 如果任务画像与模板不完全一致，以 environment_card.md 的可用信号和禁止信号为准。
+- reward_v1 以主学习信号和必要的稳定/安全约束为重点。效率、能耗、复杂门控和动态权重可以在后续迭代中按需加入，但不应因"模板没列"而排除合理的设计。
+
+---
+
+## 2. 信号完备性自查清单
+
+在完成初始设计后，逐一检查以下信号类型是否被覆盖——不是每个任务都需要全部，但每一项的缺失应是有意选择：
+
+- **主进展信号**：agent 朝任务目标前进时是否获得正向反馈？该信号是否每步都有梯度？
+- **灾难性失败信号**：是否存在明确的终止惩罚（如摔倒、飞出边界）？如果观测中可推断失败状态，是否给予了足够强的负向信号？
+- **效率/代价信号**：连续动作空间中是否有能量消耗或控制代价约束？离散动作空间中是否有不必要的动作惩罚？
+- **任务完成信号**：终止条件中是否包含 success-like 条件？相应的观测是否可被用来构造任务完成的软近似信号？
+- **健康/稳定约束**：agent 是否因缺少姿态/速度/位置约束而产生不安全行为？
+
+---
+
+## 3. Formula Operator Library
+
+每个算子包含：数学形式、使用条件、适用证据。
+
+### 3.1 dense_state_signal
+数学形式：
+  - positive (线性): `w * signal`
+  - positive (凸化): `w * signal**2`
+  - penalty (二次): `-w * error**2`
+  - penalty (hinge): `-w * max(0, threshold - signal)` 或 `-w * max(0, signal - upper)`
+使用条件：该状态信号每步可观测，且与某项任务职责直接相关。
+适用证据：
+  - 凸化 → episode 长度正常但 score 停滞在低水平，且该信号的 episode_sum_mean 始终偏小（agent 满足于低水平稳态）。
+  - hinge → 约束组件的 active_rate≈100%（全时惩罚）但 terminated 率仍高，说明 agent 在安全范围内也被持续惩罚，需要只在越界时生效的 hinge。
+风险：线性正奖励在信号平台期无梯度；凸化权重过大可能诱导极端行为；hinge 的 threshold 需根据环境卡片的观测范围设定。
+
+### 3.2 improvement_delta
+数学形式：`old_measure - new_measure`（期望减少时）或 `next_value - current_value`（期望增加时）
+使用条件：obs 和 next_obs 中存在可比较的标量度量，该度量沿最优路径应单调变化。
+适用证据：有明确的进展度量（位置、距离、高度、角度等），且该度量的变化比瞬时速率更能反映真实进展。
+与 dense_state_signal 的选择：如果要鼓励"处于某种好状态"，用 `w * signal`。如果要鼓励"朝好方向改变"，用 delta。delta 的优势是 agent 无法在好状态上停滞不前，必须持续改善。适合：agent 当前的绝对状态值不能完全反映进展（如位置——站在原点不动 vs. 走到终点但位置绝对值可能相同）。
+注意：对观测中直接给出的速度信号（如 `horizontal_velocity`）不要做 delta——速度本身已经是变化率。对观测中的位置/角度/距离类信号优先考虑 delta。
+
+### 3.3 potential_based_shaping
+数学形式：`potential(next_obs) - potential(obs)`
+使用条件：(1) 任务有一个可量化的进展度量（如位置、距离、高度）；(2) 该度量沿最优路径应单调变化；(3) 能从观测中构造一个标量的 potential function。
+如何构造 potential：从观测中选择一个在任务完成时达到极值、且沿最优路径单调变化的信号（或信号组合）。potential 的计算只能依赖观测，不能依赖环境内部状态。
+与 improvement_delta 的关系：两者数学上等价。potential_based_shaping 的优势在于允许将多个信号编码到一个 potential 中（如同时考虑位置和姿态），而 improvement_delta 通常用于单个度量。
+风险：potential 若与任务目标不一致会系统性地误导策略。reward_v1 中如果存在天然的进展度量，优先使用 improvement_delta 的简单形式；当需要组合多个信号构造进展度量时，使用 potential_based_shaping。
+
+### 3.4 quadratic_penalty
+数学形式：`-w * error**2` 或 `-w * sum(action_i**2)`
+使用条件：约束信号连续可观测，惩罚不应压制主学习信号。用于轻量抑制——需要约束但不至于触发终止的行为。
+适用证据：某维度出现高频大幅波动或极端值但未触发终止。
+与 hinge 的选择：如果约束有明确的安全边界（如身体倾角超过 X 度必摔），用 hinge（3.1）。如果只是希望"越小越好"没有硬边界（如控制代价、小幅抖动），用 quadratic。
+风险：权重过大导致 agent 不敢行动。
+
+### 3.5 soft_health_gate
+数学形式：`main_reward * gate_factor`，gate_factor ∈ [0, 1] 在身体状态恶化时平滑衰减。
+  - 倒数门: `1 / (1 + k * abs(posture_error))`
+  - 线性衰减门: `max(0, min(1, (safe_bound - current) / margin))`
+使用条件：terminated 主要由健康/安全违规导致，且主奖励在失败回合中仍然显著为正。
+适用证据：terminated 率高（>50%）且主进展信号在失败回合的 episode_sum 仍 >0——agent 在"先冲后死"，需要在健康恶化时切断主奖励而非额外加罚。
+风险：gate 太严格抑制探索；衰减区间应设在"接近危险但尚未终止"的范围内。
+
+### 3.6 terminal_event
+数学形式：`if failure_condition: reward = -PENALTY`（硬覆盖 per-step 奖励），或 `if success_condition: reward = +BONUS`
+使用条件：(1) 存在可从观测推断的灾难性失败状态（如身体倾角超过阈值 + 接触地面）或任务完成状态；(2) 环境 info 为空因此无法直接读取终止原因。
+如何构造：不要依赖 info 字段判断终止原因。可从观测推断：摔倒 → hull_angle 突然偏转 + 身体位置急剧下降；到达终点 → 持续前进中 episode 突然终止（truncated）；出界 → 位置坐标超出有效范围。
+适用证据：agent 频繁触发某种终止模式，但当前奖励没有针对该模式提供差异化信号——比如所有终止回合 reward 都一样，agent 无法区分成功和失败。
+与 hinge/gate 的区别：hinge 在越界前提供连续梯度，gate 在恶化时衰减主信号。terminal_event 在事件发生的那一刻提供硬信号——没有梯度，但语义明确（"这就是你应该避免/追求的结果"）。
+
+### 3.7 action_efficiency
+数学形式：`-w * sum(|action_i|)` 或 `-w * sum(action_i**2)`
+使用条件：动作空间 ≥ 2 维连续控制，且任务包含隐含的效率需求（如 locomotion、manipulation）。
+适用证据：agent 学会完成任务但动作幅度异常大、能耗高——说明缺效率约束。通常系数较小（主信号 per-step 的 1-5%），避免压制探索。
+注意：离散动作空间通常不需要此算子，因为离散动作的选择隐含了代价。首次迭代可不加入，后续迭代若观察到无效动作频繁出现再考虑。
+
+### 3.8 joint_condition_proxy
+数学形式：`factor_1 * factor_2 * ...`（每个 factor 为连续 bounded 形式）或 `(f1 + f2 + ...) / n` 或 `(f1 * f2 * ...) ** (1/n)`
+使用条件：没有显式 success flag，但有连续信号可构造任务完成的软近似。
+适用证据：agent 能在各子条件分别取得进展但无法同时满足。
+风险：乘积塌缩（一个 factor→0 则整体→0）；用几何平均或算术平均可缓解。
+
+### 3.9 bounded_signal
+数学形式：`x / (1 + abs(x))` 或 `1 / (1 + k * abs(error))` 或 `max(0, 1 - abs(error) / threshold)`
+使用条件：原始信号可能过大、尺度不稳定，或信号容易被刷分。用于压缩极端值而非施加约束。
+与 hinge 的区别：bounded 是从两端压缩信号范围，hinge 是只在超出阈值时施加惩罚。如果目标是"值不应超过 X"，用 hinge；如果目标是"值不应该爆炸但无所谓具体范围"，用 bounded。
+
+### 3.10 preview_conditioned_reward
+数学形式：`main_reward * preview_factor`，preview_factor 基于观测中能反映**未来状态**的信号（如距离传感器、高度采样、前方地形探测），在不利前景下从 1 平滑衰减到下限。
+使用条件：(1) 观测中存在提供前方/未来信息的维度；(2) 该维度可以映射到"前景好/坏"的连续度量；(3) agent 的失败模式与"无法提前调整行为以应对即将到来的状态变化"相关。
+如何构造：从提供未来信息的观测中选择一个标量信号，设计一个在安全前景下接近 1、危险前景下接近下限（如 0.3-0.5）的衰减函数。下限不为零以避免完全抑制探索。
+适用证据：agent 在相似的瞬时状态下表现差异大（同样的速度/姿态，有时成功有时失败），说明当前状态本身不足以区分好坏——缺少关于"接下来会发生什么"的信息。
+与 soft_health_gate 的区别：gate 用当前的**身体状态**乘主奖励（"我已经歪了，别冲了"——被动响应）。preview 用**未来信息**乘主奖励（"前面是坑，别冲了"——主动预判）。两者可以共存：`main_reward * health_gate * preview_factor`。
+风险：preview 信号若有噪声会导致主奖励波动；衰减下限设太低会抑制必要探索。
+
+---
+
