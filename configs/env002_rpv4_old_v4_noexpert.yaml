@@ -1,0 +1,15 @@
+extends: env002_rpv4_old_v4.yaml
+
+# ── rpv4_old_v4_noexpert: w/o Expert Schema (Formula Operator Library) ablation ──
+# Same paper_v4 prompts + tool-calling reflection as rpv4_old_v4, but the fixed
+# Expert Schema (expert_reward_context.md: formula-operator library + task
+# templates) is dropped. disable_expert_rag=true makes run_02_build_expert_context
+# write a placeholder instead of calling build_expert_reward_context, so BOTH the
+# initial reward generator (run_03) and the reflection agent read "expert schema
+# disabled" and must design rewards from environment facts only.
+ablation:
+  disable_expert_rag: true
+
+iteration:
+  experiment_prefix: rpv4_old_v4_noexpert
+  total_rounds: 10

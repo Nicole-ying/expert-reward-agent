@@ -1,0 +1,488 @@
+{
+  "call_count": 34,
+  "invocation_count": 3,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "llm_error",
+      "calls": []
+    },
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "name": "read_memory",
+          "arguments": {},
+          "result_preview": "# Reward Memory\n\n| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|\n| 1 | balance_penalty + forward_reward | 278.88 | 278.88 | 0.00 | 1077.70 | balance_penalty=-0.031 forward_reward=0.187 | new_best |\n| 2 | balance_penalty + forward_reward | 285.19 | 285.19 | 0.00 | 1110.50 | balance_penalty=-0.040 forward_reward=0.279 | new_best |\n| 3 | balance_penalty + forward_reward | 281.28 | 285.19 | -3.91 | 1160.15 | balance_penalty=-0.047 forward"
+        },
+        {
+          "name": "read_environment_card",
+          "arguments": {},
+          "result_preview": "# 匿名环境理解卡片\n\n## 1. 任务目标\n本环境是一个匿名 2D 双足运动任务。智能体控制一个两腿躯干，通过髋、膝共 4 个连续力矩动作，在不规则地形上稳定向前行走。任务主目标是尽可能远、尽可能快地前进；必要健康约束是保持身体不倒，因为摔倒会立即终止回合。次要目标是降低能量消耗或关节力矩成本。\n\n该任务不应被理解为纯平衡任务：保持平衡是完成前进目标的条件，而不是最终目标。也不应把“站立不动但保持平衡”当作成功。\n\n## 2. 任务类型选择\nselected_route_id: locomotion_continuous_control\n\nconfidence: high\n\nreason: 核心目标是控制腿部关节产生连续步态，在不规则地形上持续前进；动作是连续力矩；没有固定到达点，没有抓取操作，也没有多个权重相当且冲突的核心目标。摔倒只是失败/终止约束，不构成独立的多目标核心。\n\n## 3. 观察空间 observation_space\n- type: Box\n- shape: [24]\n- dtype: 未显式给出，按常规推断为 float32\n- obs[0]: hull_ang"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 1
+          },
+          "result_preview": "(no reflection record for iteration 1)"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 2
+          },
+          "result_preview": "(iteration 2 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n**evidence**\n- `iter_1` score=278.88 / target=300，差距 21.1 分（≈7%），处于“接近目标”区间；len=1077.7，terminated=20/20，truncated=0/20，且 `early_terminal(<150 且 score<-50)` 为 0/20，说明没有早期摔倒的灾难样本。\n- 组件组成：`forward_reward` ep_sum=488.8（magnitude_share 97.5%），`balance_penalty` ep_sum=-12.35（2.5%）。平均前向速度 ≈ 488.8/1077.7 ≈ 0.45 m/s，躯干倾斜惩罚很小 → 策略已经稳定向前走。\n- checkpoint 趋势：forward_reward 从 cp10 的 1"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 3
+          },
+          "result_preview": "(iteration 3 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n**evidence**\n- 历史得分：iter1 = 278.88 → iter2 = 285.19（+6.31），目标 300，当前差距 14.81（约 4.9%）。\n- iter1→iter2 的唯一改动是把 `forward_reward` 系数从 1.0 提到 1.5（L1），`forward_reward` ep_sum 从 488.8 → 756.2，几乎按系数线性放大，说明速度信号有效传导。\n- `balance_penalty` 从 -12.35 → -32.25（随速度提高而增大），但 magnitude_share 只有 4.1%，远没有支配奖励，说明稳定性没有成为主要瓶颈。\n- checkpoint 趋势：前 60% 训练得分长期为负，70% 时从 -53.3 跳到 256.4，之后稳步上升到 284.3，`f"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "(iteration 4 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n### evidence\n- 历史得分：iter1=278.88 → iter2=285.19（c=1.5，历史最佳）→ iter3=281.28（c=2.0 回退）。目标 300，当前差距约 4.9%，属于「接近目标」区间。\n- **iter3 关键新证据**：`score_range=[-51.748, 300.544]`，且 `early_terminal(<150 steps 且 score<-50)=0/20`。这说明存在「走得很好但**后期摔倒**」的回合（摔倒时官方任务给 -100 terminal penalty，把整轮拉到负）。同时存在接近满分 300.5 的成功回合。\n- 反推分布：1 个摔倒回合（-51.7）拖低均值，其余回合均值约 298.8——即**非摔倒回合已经逼近 300**，缺口主要来自摔倒，而不是速度"
+        },
+        {
+          "name": "read_reward_code",
+          "arguments": {
+            "iteration": 1
+          },
+          "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v1 reward: 前向速度驱动 + 躯干/身体稳定性正则。\n    # info 为空，不使用 info。\n    # explicit success/failure flags 均不可用，因此不包含 terminal reward。\n    _ = training_progress\n\n    # 主学习信号：前向水平速度。obs[2] / next_obs[2] 约定为前向为正。\n    forward_reward = 1.0 * next_obs[2]\n\n    # 稳定性/防摔倒约束：惩罚躯干倾斜、剧烈角速度和过度垂直运动。\n    tilt_penalty = 1.0 * next_obs[0] ** 2\n    angular_velocity_penalty = 0.2 * next_obs[1] ** 2\n    vertical_velocity_penalty = 0.1"
+        },
+        {
+          "name": "read_reward_code",
+          "arguments": {
+            "iteration": 2
+          },
+          "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v2 reward: 强化前向速度驱动，保持躯干/身体稳定性正则。\n    # 诊断：v1 已稳定行走（balance_penalty 仅 2.5% magnitude_share），\n    # 剩余缺口是前进速度不够快。因此 L1 提高 forward_reward 系数，\n    # 让 speed/stability 权衡点向\"更快\"移动。\n    # info 为空，不使用；无显式 success/failure 标志，不包含 terminal reward。\n    _ = training_progress\n\n    # 主学习信号：前向水平速度。obs[2] / next_obs[2] 约定为前向为正。\n    forward_reward = 1.5 * next_obs[2]\n\n    # 稳定性/防摔倒约束：惩罚躯干倾斜、剧烈角速度和过度垂直运动。\n    tilt_penal"
+        },
+        {
+          "name": "read_reward_code",
+          "arguments": {
+            "iteration": 3
+          },
+          "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v3 reward: 延续 v1->v2 已验证的语义方向——加强前向速度驱动。\n    # 证据：v2 将 forward_reward 系数从 1.0 提到 1.5 后，score 从 278.88 升到 285.19，\n    # forward_reward ep_sum 从 488.8 升到 756.2，而 balance_penalty magnitude_share 仅 4.1%。\n    # 说明稳定性已不是瓶颈，剩余缺口是前进速度略低。当前距目标 300 差约 4.9%，做 L1 微调：\n    # 仅把 forward_reward 系数 1.5 -> 2.0，继续把 speed/stability 权衡点推向更快。\n    # info 为空，不使用；无显式 success/failure 标志，不包含 terminal reward。\n    _ = training_pro"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 3
+          },
+          "result_preview": "=== Iteration 3 training feedback ===\nscore: 281.28\nlen: 1160.2\nterminated: 20/20\n\nComponents:\n  balance_penalty: ep_sum=-21.042, active=100.0%, magnitude_share=2.1%, signed_share=-2.1%\n  forward_reward: ep_sum=967.042, active=100.0%, magnitude_share=97.9%, signed_share=97.8%"
+        },
+        {
+          "name": "get_component_history",
+          "arguments": {
+            "component_name": "forward_reward"
+          },
+          "result_preview": "=== History of component 'forward_reward' ===\n\n  iter_01: ep_sum_mean=488.806, active_rate=100.0%, signed_share=97.3%, magnitude_share=97.5%\n  iter_02: ep_sum_mean=756.202, active_rate=100.0%, signed_share=95.9%, magnitude_share=95.9%\n  iter_03: ep_sum_mean=967.042, active_rate=100.0%, signed_share=97.8%, magnitude_share=97.9%\n  iter_04: ep_sum_mean=288.207, active_rate=100.0%, signed_share=64.4%, magnitude_share=64.4%\n"
+        },
+        {
+          "name": "get_component_history",
+          "arguments": {
+            "component_name": "balance_penalty"
+          },
+          "result_preview": "=== History of component 'balance_penalty' ===\n\n  iter_01: ep_sum_mean=-12.353, active_rate=100.0%, signed_share=-2.5%, magnitude_share=2.5%\n  iter_02: ep_sum_mean=-32.246, active_rate=100.0%, signed_share=-4.1%, magnitude_share=4.1%\n  iter_03: ep_sum_mean=-21.042, active_rate=100.0%, signed_share=-2.1%, magnitude_share=2.1%\n"
+        },
+        {
+          "name": "get_component_history",
+          "arguments": {
+            "component_name": "fall_risk_penalty"
+          },
+          "result_preview": "=== History of component 'fall_risk_penalty' ===\n\n  iter_04: ep_sum_mean=-158.048, active_rate=7.4%, signed_share=-35.3%, magnitude_share=35.3%\n"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "=== Iteration 4 training feedback ===\nscore: 29.83\nlen: 844.8\nterminated: 10/20\n\nComponents:\n  fall_risk_penalty: ep_sum=-158.048, active=7.4%, magnitude_share=35.3%, signed_share=-35.3%\n  forward_reward: ep_sum=288.207, active=100.0%, magnitude_share=64.4%, signed_share=64.4%\n  stability_penalty: ep_sum=-1.278, active=100.0%, magnitude_share=0.3%, signed_share=-0.3%"
+        },
+        {
+          "name": "read_checkpoint_trend",
+          "arguments": {
+            "iteration": 2
+          },
+          "result_preview": "=== Checkpoint trend for iteration 2 ===\n\nscore:  cp10%=-44.6  cp20%=-96.6  cp30%=-101.0  cp40%=-89.9  cp50%=-84.5  cp60%=-53.3  cp70%=256.4  cp80%=274.5  cp90%=279.6  cp100%=284.3\n\nbalance_penalty (ep_sum):  cp10%=-9.152  cp20%=-3.928  cp30%=-1.697  cp40%=-1.769  cp50%=-3.173  cp60%=-12.499  cp70%=-28.755  cp80%=-19.834  cp90%=-20.718  cp100%=-31.248\nforward_reward (ep_sum):  cp10%=-15.872  cp20%=14.398  cp30%=5.420  cp40%=30.902  cp50%=44.870  cp60%=130.696  cp70%=726.203  cp80%=722.934  cp90%"
+        }
+      ]
+    },
+    {
+      "validation_retry": false,
+      "duplicate_retry": true,
+      "status": "completed",
+      "calls": [
+        {
+          "name": "read_memory",
+          "arguments": {},
+          "result_preview": "# Reward Memory\n\n| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|\n| 1 | balance_penalty + forward_reward | 278.88 | 278.88 | 0.00 | 1077.70 | balance_penalty=-0.031 forward_reward=0.187 | new_best |\n| 2 | balance_penalty + forward_reward | 285.19 | 285.19 | 0.00 | 1110.50 | balance_penalty=-0.040 forward_reward=0.279 | new_best |\n| 3 | balance_penalty + forward_reward | 281.28 | 285.19 | -3.91 | 1160.15 | balance_penalty=-0.047 forward"
+        },
+        {
+          "name": "read_environment_card",
+          "arguments": {},
+          "result_preview": "# 匿名环境理解卡片\n\n## 1. 任务目标\n本环境是一个匿名 2D 双足运动任务。智能体控制一个两腿躯干，通过髋、膝共 4 个连续力矩动作，在不规则地形上稳定向前行走。任务主目标是尽可能远、尽可能快地前进；必要健康约束是保持身体不倒，因为摔倒会立即终止回合。次要目标是降低能量消耗或关节力矩成本。\n\n该任务不应被理解为纯平衡任务：保持平衡是完成前进目标的条件，而不是最终目标。也不应把“站立不动但保持平衡”当作成功。\n\n## 2. 任务类型选择\nselected_route_id: locomotion_continuous_control\n\nconfidence: high\n\nreason: 核心目标是控制腿部关节产生连续步态，在不规则地形上持续前进；动作是连续力矩；没有固定到达点，没有抓取操作，也没有多个权重相当且冲突的核心目标。摔倒只是失败/终止约束，不构成独立的多目标核心。\n\n## 3. 观察空间 observation_space\n- type: Box\n- shape: [24]\n- dtype: 未显式给出，按常规推断为 float32\n- obs[0]: hull_ang"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 1
+          },
+          "result_preview": "(no reflection record for iteration 1)"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 2
+          },
+          "result_preview": "(iteration 2 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n**evidence**\n- `iter_1` score=278.88 / target=300，差距 21.1 分（≈7%），处于“接近目标”区间；len=1077.7，terminated=20/20，truncated=0/20，且 `early_terminal(<150 且 score<-50)` 为 0/20，说明没有早期摔倒的灾难样本。\n- 组件组成：`forward_reward` ep_sum=488.8（magnitude_share 97.5%），`balance_penalty` ep_sum=-12.35（2.5%）。平均前向速度 ≈ 488.8/1077.7 ≈ 0.45 m/s，躯干倾斜惩罚很小 → 策略已经稳定向前走。\n- checkpoint 趋势：forward_reward 从 cp10 的 1"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 3
+          },
+          "result_preview": "(iteration 3 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n**evidence**\n- 历史得分：iter1 = 278.88 → iter2 = 285.19（+6.31），目标 300，当前差距 14.81（约 4.9%）。\n- iter1→iter2 的唯一改动是把 `forward_reward` 系数从 1.0 提到 1.5（L1），`forward_reward` ep_sum 从 488.8 → 756.2，几乎按系数线性放大，说明速度信号有效传导。\n- `balance_penalty` 从 -12.35 → -32.25（随速度提高而增大），但 magnitude_share 只有 4.1%，远没有支配奖励，说明稳定性没有成为主要瓶颈。\n- checkpoint 趋势：前 60% 训练得分长期为负，70% 时从 -53.3 跳到 256.4，之后稳步上升到 284.3，`f"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "(iteration 4 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n### evidence\n- 历史得分：iter1=278.88 → iter2=285.19（c=1.5，历史最佳）→ iter3=281.28（c=2.0 回退）。目标 300，当前差距约 4.9%，属于「接近目标」区间。\n- **iter3 关键新证据**：`score_range=[-51.748, 300.544]`，且 `early_terminal(<150 steps 且 score<-50)=0/20`。这说明存在「走得很好但**后期摔倒**」的回合（摔倒时官方任务给 -100 terminal penalty，把整轮拉到负）。同时存在接近满分 300.5 的成功回合。\n- 反推分布：1 个摔倒回合（-51.7）拖低均值，其余回合均值约 298.8——即**非摔倒回合已经逼近 300**，缺口主要来自摔倒，而不是速度"
+        },
+        {
+          "name": "read_reward_code",
+          "arguments": {
+            "iteration": 1
+          },
+          "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v1 reward: 前向速度驱动 + 躯干/身体稳定性正则。\n    # info 为空，不使用 info。\n    # explicit success/failure flags 均不可用，因此不包含 terminal reward。\n    _ = training_progress\n\n    # 主学习信号：前向水平速度。obs[2] / next_obs[2] 约定为前向为正。\n    forward_reward = 1.0 * next_obs[2]\n\n    # 稳定性/防摔倒约束：惩罚躯干倾斜、剧烈角速度和过度垂直运动。\n    tilt_penalty = 1.0 * next_obs[0] ** 2\n    angular_velocity_penalty = 0.2 * next_obs[1] ** 2\n    vertical_velocity_penalty = 0.1"
+        },
+        {
+          "name": "read_reward_code",
+          "arguments": {
+            "iteration": 2
+          },
+          "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v2 reward: 强化前向速度驱动，保持躯干/身体稳定性正则。\n    # 诊断：v1 已稳定行走（balance_penalty 仅 2.5% magnitude_share），\n    # 剩余缺口是前进速度不够快。因此 L1 提高 forward_reward 系数，\n    # 让 speed/stability 权衡点向\"更快\"移动。\n    # info 为空，不使用；无显式 success/failure 标志，不包含 terminal reward。\n    _ = training_progress\n\n    # 主学习信号：前向水平速度。obs[2] / next_obs[2] 约定为前向为正。\n    forward_reward = 1.5 * next_obs[2]\n\n    # 稳定性/防摔倒约束：惩罚躯干倾斜、剧烈角速度和过度垂直运动。\n    tilt_penal"
+        },
+        {
+          "name": "read_reward_code",
+          "arguments": {
+            "iteration": 3
+          },
+          "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v3 reward: 延续 v1->v2 已验证的语义方向——加强前向速度驱动。\n    # 证据：v2 将 forward_reward 系数从 1.0 提到 1.5 后，score 从 278.88 升到 285.19，\n    # forward_reward ep_sum 从 488.8 升到 756.2，而 balance_penalty magnitude_share 仅 4.1%。\n    # 说明稳定性已不是瓶颈，剩余缺口是前进速度略低。当前距目标 300 差约 4.9%，做 L1 微调：\n    # 仅把 forward_reward 系数 1.5 -> 2.0，继续把 speed/stability 权衡点推向更快。\n    # info 为空，不使用；无显式 success/failure 标志，不包含 terminal reward。\n    _ = training_pro"
+        },
+        {
+          "name": "read_reward_code",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v4 reward: 主信号仍为前向速度，但把\"稳定性\"从全局弱平方惩罚\n    # 改为\"摔倒风险\"死区铰链惩罚。\n    #\n    # 证据：iter3 最终评估 score_range=[-51.748, 300.544] 且\n    # early_terminal(<150 且 score<-50)=0/20，说明存在\"走得很好但后期摔倒\"\n    # 的回合（官方摔倒给 -100 terminal penalty，把整轮拉到负），\n    # 非摔倒回合均值已约 298.8。缺口在摔倒，不在速度。\n    # 此前奖励只有 1.0*hull_angle^2 的弱平滑惩罚，且 info 为空，\n    # agent 训练时感知不到官方 -100，缺少临近摔倒的强信号。\n    #\n    # 本轮 L2：把 tilt 惩罚从\"全量程平方\"改为\"死区铰链平方\"，\n    # 仅在 |hu"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 1
+          },
+          "result_preview": "=== Iteration 1 training feedback ===\nscore: 278.88\nlen: 1077.7\nterminated: 20/20\n\nComponents:\n  balance_penalty: ep_sum=-12.353, active=100.0%, magnitude_share=2.5%, signed_share=-2.5%\n  forward_reward: ep_sum=488.806, active=100.0%, magnitude_share=97.5%, signed_share=97.3%"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 2
+          },
+          "result_preview": "=== Iteration 2 training feedback ===\nscore: 285.19\nlen: 1110.5\nterminated: 20/20\n\nComponents:\n  balance_penalty: ep_sum=-32.246, active=100.0%, magnitude_share=4.1%, signed_share=-4.1%\n  forward_reward: ep_sum=756.202, active=100.0%, magnitude_share=95.9%, signed_share=95.9%"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 3
+          },
+          "result_preview": "=== Iteration 3 training feedback ===\nscore: 281.28\nlen: 1160.2\nterminated: 20/20\n\nComponents:\n  balance_penalty: ep_sum=-21.042, active=100.0%, magnitude_share=2.1%, signed_share=-2.1%\n  forward_reward: ep_sum=967.042, active=100.0%, magnitude_share=97.9%, signed_share=97.8%"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "=== Iteration 4 training feedback ===\nscore: 29.83\nlen: 844.8\nterminated: 10/20\n\nComponents:\n  fall_risk_penalty: ep_sum=-158.048, active=7.4%, magnitude_share=35.3%, signed_share=-35.3%\n  forward_reward: ep_sum=288.207, active=100.0%, magnitude_share=64.4%, signed_share=64.4%\n  stability_penalty: ep_sum=-1.278, active=100.0%, magnitude_share=0.3%, signed_share=-0.3%"
+        },
+        {
+          "name": "get_component_history",
+          "arguments": {
+            "component_name": "balance_penalty"
+          },
+          "result_preview": "=== History of component 'balance_penalty' ===\n\n  iter_01: ep_sum_mean=-12.353, active_rate=100.0%, signed_share=-2.5%, magnitude_share=2.5%\n  iter_02: ep_sum_mean=-32.246, active_rate=100.0%, signed_share=-4.1%, magnitude_share=4.1%\n  iter_03: ep_sum_mean=-21.042, active_rate=100.0%, signed_share=-2.1%, magnitude_share=2.1%\n"
+        },
+        {
+          "name": "get_component_history",
+          "arguments": {
+            "component_name": "forward_reward"
+          },
+          "result_preview": "=== History of component 'forward_reward' ===\n\n  iter_01: ep_sum_mean=488.806, active_rate=100.0%, signed_share=97.3%, magnitude_share=97.5%\n  iter_02: ep_sum_mean=756.202, active_rate=100.0%, signed_share=95.9%, magnitude_share=95.9%\n  iter_03: ep_sum_mean=967.042, active_rate=100.0%, signed_share=97.8%, magnitude_share=97.9%\n  iter_04: ep_sum_mean=288.207, active_rate=100.0%, signed_share=64.4%, magnitude_share=64.4%\n"
+        },
+        {
+          "name": "get_component_history",
+          "arguments": {
+            "component_name": "fall_risk_penalty"
+          },
+          "result_preview": "=== History of component 'fall_risk_penalty' ===\n\n  iter_04: ep_sum_mean=-158.048, active_rate=7.4%, signed_share=-35.3%, magnitude_share=35.3%\n"
+        },
+        {
+          "name": "read_checkpoint_trend",
+          "arguments": {
+            "iteration": 2
+          },
+          "result_preview": "=== Checkpoint trend for iteration 2 ===\n\nscore:  cp10%=-44.6  cp20%=-96.6  cp30%=-101.0  cp40%=-89.9  cp50%=-84.5  cp60%=-53.3  cp70%=256.4  cp80%=274.5  cp90%=279.6  cp100%=284.3\n\nbalance_penalty (ep_sum):  cp10%=-9.152  cp20%=-3.928  cp30%=-1.697  cp40%=-1.769  cp50%=-3.173  cp60%=-12.499  cp70%=-28.755  cp80%=-19.834  cp90%=-20.718  cp100%=-31.248\nforward_reward (ep_sum):  cp10%=-15.872  cp20%=14.398  cp30%=5.420  cp40%=30.902  cp50%=44.870  cp60%=130.696  cp70%=726.203  cp80%=722.934  cp90%"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "(iteration 4 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n### evidence\n- 历史得分：iter1=278.88 → iter2=285.19（c=1.5，历史最佳）→ iter3=281.28（c=2.0 回退）。目标 300，当前差距约 4.9%，属于「接近目标」区间。\n- **iter3 关键新证据**：`score_range=[-51.748, 300.544]`，且 `early_terminal(<150 steps 且 score<-50)=0/20`。这说明存在「走得很好但**后期摔倒**」的回合（摔倒时官方任务给 -100 terminal penalty，把整轮拉到负）。同时存在接近满分 300.5 的成功回合。\n- 反推分布：1 个摔倒回合（-51.7）拖低均值，其余回合均值约 298.8——即**非摔倒回合已经逼近 300**，缺口主要来自摔倒，而不是速度"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "name": "read_memory",
+      "arguments": {},
+      "result_preview": "# Reward Memory\n\n| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|\n| 1 | balance_penalty + forward_reward | 278.88 | 278.88 | 0.00 | 1077.70 | balance_penalty=-0.031 forward_reward=0.187 | new_best |\n| 2 | balance_penalty + forward_reward | 285.19 | 285.19 | 0.00 | 1110.50 | balance_penalty=-0.040 forward_reward=0.279 | new_best |\n| 3 | balance_penalty + forward_reward | 281.28 | 285.19 | -3.91 | 1160.15 | balance_penalty=-0.047 forward"
+    },
+    {
+      "name": "read_environment_card",
+      "arguments": {},
+      "result_preview": "# 匿名环境理解卡片\n\n## 1. 任务目标\n本环境是一个匿名 2D 双足运动任务。智能体控制一个两腿躯干，通过髋、膝共 4 个连续力矩动作，在不规则地形上稳定向前行走。任务主目标是尽可能远、尽可能快地前进；必要健康约束是保持身体不倒，因为摔倒会立即终止回合。次要目标是降低能量消耗或关节力矩成本。\n\n该任务不应被理解为纯平衡任务：保持平衡是完成前进目标的条件，而不是最终目标。也不应把“站立不动但保持平衡”当作成功。\n\n## 2. 任务类型选择\nselected_route_id: locomotion_continuous_control\n\nconfidence: high\n\nreason: 核心目标是控制腿部关节产生连续步态，在不规则地形上持续前进；动作是连续力矩；没有固定到达点，没有抓取操作，也没有多个权重相当且冲突的核心目标。摔倒只是失败/终止约束，不构成独立的多目标核心。\n\n## 3. 观察空间 observation_space\n- type: Box\n- shape: [24]\n- dtype: 未显式给出，按常规推断为 float32\n- obs[0]: hull_ang"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 1
+      },
+      "result_preview": "(no reflection record for iteration 1)"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 2
+      },
+      "result_preview": "(iteration 2 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n**evidence**\n- `iter_1` score=278.88 / target=300，差距 21.1 分（≈7%），处于“接近目标”区间；len=1077.7，terminated=20/20，truncated=0/20，且 `early_terminal(<150 且 score<-50)` 为 0/20，说明没有早期摔倒的灾难样本。\n- 组件组成：`forward_reward` ep_sum=488.8（magnitude_share 97.5%），`balance_penalty` ep_sum=-12.35（2.5%）。平均前向速度 ≈ 488.8/1077.7 ≈ 0.45 m/s，躯干倾斜惩罚很小 → 策略已经稳定向前走。\n- checkpoint 趋势：forward_reward 从 cp10 的 1"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 3
+      },
+      "result_preview": "(iteration 3 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n**evidence**\n- 历史得分：iter1 = 278.88 → iter2 = 285.19（+6.31），目标 300，当前差距 14.81（约 4.9%）。\n- iter1→iter2 的唯一改动是把 `forward_reward` 系数从 1.0 提到 1.5（L1），`forward_reward` ep_sum 从 488.8 → 756.2，几乎按系数线性放大，说明速度信号有效传导。\n- `balance_penalty` 从 -12.35 → -32.25（随速度提高而增大），但 magnitude_share 只有 4.1%，远没有支配奖励，说明稳定性没有成为主要瓶颈。\n- checkpoint 趋势：前 60% 训练得分长期为负，70% 时从 -53.3 跳到 256.4，之后稳步上升到 284.3，`f"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "(iteration 4 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n### evidence\n- 历史得分：iter1=278.88 → iter2=285.19（c=1.5，历史最佳）→ iter3=281.28（c=2.0 回退）。目标 300，当前差距约 4.9%，属于「接近目标」区间。\n- **iter3 关键新证据**：`score_range=[-51.748, 300.544]`，且 `early_terminal(<150 steps 且 score<-50)=0/20`。这说明存在「走得很好但**后期摔倒**」的回合（摔倒时官方任务给 -100 terminal penalty，把整轮拉到负）。同时存在接近满分 300.5 的成功回合。\n- 反推分布：1 个摔倒回合（-51.7）拖低均值，其余回合均值约 298.8——即**非摔倒回合已经逼近 300**，缺口主要来自摔倒，而不是速度"
+    },
+    {
+      "name": "read_reward_code",
+      "arguments": {
+        "iteration": 1
+      },
+      "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v1 reward: 前向速度驱动 + 躯干/身体稳定性正则。\n    # info 为空，不使用 info。\n    # explicit success/failure flags 均不可用，因此不包含 terminal reward。\n    _ = training_progress\n\n    # 主学习信号：前向水平速度。obs[2] / next_obs[2] 约定为前向为正。\n    forward_reward = 1.0 * next_obs[2]\n\n    # 稳定性/防摔倒约束：惩罚躯干倾斜、剧烈角速度和过度垂直运动。\n    tilt_penalty = 1.0 * next_obs[0] ** 2\n    angular_velocity_penalty = 0.2 * next_obs[1] ** 2\n    vertical_velocity_penalty = 0.1"
+    },
+    {
+      "name": "read_reward_code",
+      "arguments": {
+        "iteration": 2
+      },
+      "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v2 reward: 强化前向速度驱动，保持躯干/身体稳定性正则。\n    # 诊断：v1 已稳定行走（balance_penalty 仅 2.5% magnitude_share），\n    # 剩余缺口是前进速度不够快。因此 L1 提高 forward_reward 系数，\n    # 让 speed/stability 权衡点向\"更快\"移动。\n    # info 为空，不使用；无显式 success/failure 标志，不包含 terminal reward。\n    _ = training_progress\n\n    # 主学习信号：前向水平速度。obs[2] / next_obs[2] 约定为前向为正。\n    forward_reward = 1.5 * next_obs[2]\n\n    # 稳定性/防摔倒约束：惩罚躯干倾斜、剧烈角速度和过度垂直运动。\n    tilt_penal"
+    },
+    {
+      "name": "read_reward_code",
+      "arguments": {
+        "iteration": 3
+      },
+      "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v3 reward: 延续 v1->v2 已验证的语义方向——加强前向速度驱动。\n    # 证据：v2 将 forward_reward 系数从 1.0 提到 1.5 后，score 从 278.88 升到 285.19，\n    # forward_reward ep_sum 从 488.8 升到 756.2，而 balance_penalty magnitude_share 仅 4.1%。\n    # 说明稳定性已不是瓶颈，剩余缺口是前进速度略低。当前距目标 300 差约 4.9%，做 L1 微调：\n    # 仅把 forward_reward 系数 1.5 -> 2.0，继续把 speed/stability 权衡点推向更快。\n    # info 为空，不使用；无显式 success/failure 标志，不包含 terminal reward。\n    _ = training_pro"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 3
+      },
+      "result_preview": "=== Iteration 3 training feedback ===\nscore: 281.28\nlen: 1160.2\nterminated: 20/20\n\nComponents:\n  balance_penalty: ep_sum=-21.042, active=100.0%, magnitude_share=2.1%, signed_share=-2.1%\n  forward_reward: ep_sum=967.042, active=100.0%, magnitude_share=97.9%, signed_share=97.8%"
+    },
+    {
+      "name": "get_component_history",
+      "arguments": {
+        "component_name": "forward_reward"
+      },
+      "result_preview": "=== History of component 'forward_reward' ===\n\n  iter_01: ep_sum_mean=488.806, active_rate=100.0%, signed_share=97.3%, magnitude_share=97.5%\n  iter_02: ep_sum_mean=756.202, active_rate=100.0%, signed_share=95.9%, magnitude_share=95.9%\n  iter_03: ep_sum_mean=967.042, active_rate=100.0%, signed_share=97.8%, magnitude_share=97.9%\n  iter_04: ep_sum_mean=288.207, active_rate=100.0%, signed_share=64.4%, magnitude_share=64.4%\n"
+    },
+    {
+      "name": "get_component_history",
+      "arguments": {
+        "component_name": "balance_penalty"
+      },
+      "result_preview": "=== History of component 'balance_penalty' ===\n\n  iter_01: ep_sum_mean=-12.353, active_rate=100.0%, signed_share=-2.5%, magnitude_share=2.5%\n  iter_02: ep_sum_mean=-32.246, active_rate=100.0%, signed_share=-4.1%, magnitude_share=4.1%\n  iter_03: ep_sum_mean=-21.042, active_rate=100.0%, signed_share=-2.1%, magnitude_share=2.1%\n"
+    },
+    {
+      "name": "get_component_history",
+      "arguments": {
+        "component_name": "fall_risk_penalty"
+      },
+      "result_preview": "=== History of component 'fall_risk_penalty' ===\n\n  iter_04: ep_sum_mean=-158.048, active_rate=7.4%, signed_share=-35.3%, magnitude_share=35.3%\n"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "=== Iteration 4 training feedback ===\nscore: 29.83\nlen: 844.8\nterminated: 10/20\n\nComponents:\n  fall_risk_penalty: ep_sum=-158.048, active=7.4%, magnitude_share=35.3%, signed_share=-35.3%\n  forward_reward: ep_sum=288.207, active=100.0%, magnitude_share=64.4%, signed_share=64.4%\n  stability_penalty: ep_sum=-1.278, active=100.0%, magnitude_share=0.3%, signed_share=-0.3%"
+    },
+    {
+      "name": "read_checkpoint_trend",
+      "arguments": {
+        "iteration": 2
+      },
+      "result_preview": "=== Checkpoint trend for iteration 2 ===\n\nscore:  cp10%=-44.6  cp20%=-96.6  cp30%=-101.0  cp40%=-89.9  cp50%=-84.5  cp60%=-53.3  cp70%=256.4  cp80%=274.5  cp90%=279.6  cp100%=284.3\n\nbalance_penalty (ep_sum):  cp10%=-9.152  cp20%=-3.928  cp30%=-1.697  cp40%=-1.769  cp50%=-3.173  cp60%=-12.499  cp70%=-28.755  cp80%=-19.834  cp90%=-20.718  cp100%=-31.248\nforward_reward (ep_sum):  cp10%=-15.872  cp20%=14.398  cp30%=5.420  cp40%=30.902  cp50%=44.870  cp60%=130.696  cp70%=726.203  cp80%=722.934  cp90%"
+    },
+    {
+      "name": "read_memory",
+      "arguments": {},
+      "result_preview": "# Reward Memory\n\n| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|\n| 1 | balance_penalty + forward_reward | 278.88 | 278.88 | 0.00 | 1077.70 | balance_penalty=-0.031 forward_reward=0.187 | new_best |\n| 2 | balance_penalty + forward_reward | 285.19 | 285.19 | 0.00 | 1110.50 | balance_penalty=-0.040 forward_reward=0.279 | new_best |\n| 3 | balance_penalty + forward_reward | 281.28 | 285.19 | -3.91 | 1160.15 | balance_penalty=-0.047 forward"
+    },
+    {
+      "name": "read_environment_card",
+      "arguments": {},
+      "result_preview": "# 匿名环境理解卡片\n\n## 1. 任务目标\n本环境是一个匿名 2D 双足运动任务。智能体控制一个两腿躯干，通过髋、膝共 4 个连续力矩动作，在不规则地形上稳定向前行走。任务主目标是尽可能远、尽可能快地前进；必要健康约束是保持身体不倒，因为摔倒会立即终止回合。次要目标是降低能量消耗或关节力矩成本。\n\n该任务不应被理解为纯平衡任务：保持平衡是完成前进目标的条件，而不是最终目标。也不应把“站立不动但保持平衡”当作成功。\n\n## 2. 任务类型选择\nselected_route_id: locomotion_continuous_control\n\nconfidence: high\n\nreason: 核心目标是控制腿部关节产生连续步态，在不规则地形上持续前进；动作是连续力矩；没有固定到达点，没有抓取操作，也没有多个权重相当且冲突的核心目标。摔倒只是失败/终止约束，不构成独立的多目标核心。\n\n## 3. 观察空间 observation_space\n- type: Box\n- shape: [24]\n- dtype: 未显式给出，按常规推断为 float32\n- obs[0]: hull_ang"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 1
+      },
+      "result_preview": "(no reflection record for iteration 1)"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 2
+      },
+      "result_preview": "(iteration 2 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n**evidence**\n- `iter_1` score=278.88 / target=300，差距 21.1 分（≈7%），处于“接近目标”区间；len=1077.7，terminated=20/20，truncated=0/20，且 `early_terminal(<150 且 score<-50)` 为 0/20，说明没有早期摔倒的灾难样本。\n- 组件组成：`forward_reward` ep_sum=488.8（magnitude_share 97.5%），`balance_penalty` ep_sum=-12.35（2.5%）。平均前向速度 ≈ 488.8/1077.7 ≈ 0.45 m/s，躯干倾斜惩罚很小 → 策略已经稳定向前走。\n- checkpoint 趋势：forward_reward 从 cp10 的 1"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 3
+      },
+      "result_preview": "(iteration 3 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n**evidence**\n- 历史得分：iter1 = 278.88 → iter2 = 285.19（+6.31），目标 300，当前差距 14.81（约 4.9%）。\n- iter1→iter2 的唯一改动是把 `forward_reward` 系数从 1.0 提到 1.5（L1），`forward_reward` ep_sum 从 488.8 → 756.2，几乎按系数线性放大，说明速度信号有效传导。\n- `balance_penalty` 从 -12.35 → -32.25（随速度提高而增大），但 magnitude_share 只有 4.1%，远没有支配奖励，说明稳定性没有成为主要瓶颈。\n- checkpoint 趋势：前 60% 训练得分长期为负，70% 时从 -53.3 跳到 256.4，之后稳步上升到 284.3，`f"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "(iteration 4 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n### evidence\n- 历史得分：iter1=278.88 → iter2=285.19（c=1.5，历史最佳）→ iter3=281.28（c=2.0 回退）。目标 300，当前差距约 4.9%，属于「接近目标」区间。\n- **iter3 关键新证据**：`score_range=[-51.748, 300.544]`，且 `early_terminal(<150 steps 且 score<-50)=0/20`。这说明存在「走得很好但**后期摔倒**」的回合（摔倒时官方任务给 -100 terminal penalty，把整轮拉到负）。同时存在接近满分 300.5 的成功回合。\n- 反推分布：1 个摔倒回合（-51.7）拖低均值，其余回合均值约 298.8——即**非摔倒回合已经逼近 300**，缺口主要来自摔倒，而不是速度"
+    },
+    {
+      "name": "read_reward_code",
+      "arguments": {
+        "iteration": 1
+      },
+      "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v1 reward: 前向速度驱动 + 躯干/身体稳定性正则。\n    # info 为空，不使用 info。\n    # explicit success/failure flags 均不可用，因此不包含 terminal reward。\n    _ = training_progress\n\n    # 主学习信号：前向水平速度。obs[2] / next_obs[2] 约定为前向为正。\n    forward_reward = 1.0 * next_obs[2]\n\n    # 稳定性/防摔倒约束：惩罚躯干倾斜、剧烈角速度和过度垂直运动。\n    tilt_penalty = 1.0 * next_obs[0] ** 2\n    angular_velocity_penalty = 0.2 * next_obs[1] ** 2\n    vertical_velocity_penalty = 0.1"
+    },
+    {
+      "name": "read_reward_code",
+      "arguments": {
+        "iteration": 2
+      },
+      "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v2 reward: 强化前向速度驱动，保持躯干/身体稳定性正则。\n    # 诊断：v1 已稳定行走（balance_penalty 仅 2.5% magnitude_share），\n    # 剩余缺口是前进速度不够快。因此 L1 提高 forward_reward 系数，\n    # 让 speed/stability 权衡点向\"更快\"移动。\n    # info 为空，不使用；无显式 success/failure 标志，不包含 terminal reward。\n    _ = training_progress\n\n    # 主学习信号：前向水平速度。obs[2] / next_obs[2] 约定为前向为正。\n    forward_reward = 1.5 * next_obs[2]\n\n    # 稳定性/防摔倒约束：惩罚躯干倾斜、剧烈角速度和过度垂直运动。\n    tilt_penal"
+    },
+    {
+      "name": "read_reward_code",
+      "arguments": {
+        "iteration": 3
+      },
+      "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v3 reward: 延续 v1->v2 已验证的语义方向——加强前向速度驱动。\n    # 证据：v2 将 forward_reward 系数从 1.0 提到 1.5 后，score 从 278.88 升到 285.19，\n    # forward_reward ep_sum 从 488.8 升到 756.2，而 balance_penalty magnitude_share 仅 4.1%。\n    # 说明稳定性已不是瓶颈，剩余缺口是前进速度略低。当前距目标 300 差约 4.9%，做 L1 微调：\n    # 仅把 forward_reward 系数 1.5 -> 2.0，继续把 speed/stability 权衡点推向更快。\n    # info 为空，不使用；无显式 success/failure 标志，不包含 terminal reward。\n    _ = training_pro"
+    },
+    {
+      "name": "read_reward_code",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # v4 reward: 主信号仍为前向速度，但把\"稳定性\"从全局弱平方惩罚\n    # 改为\"摔倒风险\"死区铰链惩罚。\n    #\n    # 证据：iter3 最终评估 score_range=[-51.748, 300.544] 且\n    # early_terminal(<150 且 score<-50)=0/20，说明存在\"走得很好但后期摔倒\"\n    # 的回合（官方摔倒给 -100 terminal penalty，把整轮拉到负），\n    # 非摔倒回合均值已约 298.8。缺口在摔倒，不在速度。\n    # 此前奖励只有 1.0*hull_angle^2 的弱平滑惩罚，且 info 为空，\n    # agent 训练时感知不到官方 -100，缺少临近摔倒的强信号。\n    #\n    # 本轮 L2：把 tilt 惩罚从\"全量程平方\"改为\"死区铰链平方\"，\n    # 仅在 |hu"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 1
+      },
+      "result_preview": "=== Iteration 1 training feedback ===\nscore: 278.88\nlen: 1077.7\nterminated: 20/20\n\nComponents:\n  balance_penalty: ep_sum=-12.353, active=100.0%, magnitude_share=2.5%, signed_share=-2.5%\n  forward_reward: ep_sum=488.806, active=100.0%, magnitude_share=97.5%, signed_share=97.3%"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 2
+      },
+      "result_preview": "=== Iteration 2 training feedback ===\nscore: 285.19\nlen: 1110.5\nterminated: 20/20\n\nComponents:\n  balance_penalty: ep_sum=-32.246, active=100.0%, magnitude_share=4.1%, signed_share=-4.1%\n  forward_reward: ep_sum=756.202, active=100.0%, magnitude_share=95.9%, signed_share=95.9%"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 3
+      },
+      "result_preview": "=== Iteration 3 training feedback ===\nscore: 281.28\nlen: 1160.2\nterminated: 20/20\n\nComponents:\n  balance_penalty: ep_sum=-21.042, active=100.0%, magnitude_share=2.1%, signed_share=-2.1%\n  forward_reward: ep_sum=967.042, active=100.0%, magnitude_share=97.9%, signed_share=97.8%"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "=== Iteration 4 training feedback ===\nscore: 29.83\nlen: 844.8\nterminated: 10/20\n\nComponents:\n  fall_risk_penalty: ep_sum=-158.048, active=7.4%, magnitude_share=35.3%, signed_share=-35.3%\n  forward_reward: ep_sum=288.207, active=100.0%, magnitude_share=64.4%, signed_share=64.4%\n  stability_penalty: ep_sum=-1.278, active=100.0%, magnitude_share=0.3%, signed_share=-0.3%"
+    },
+    {
+      "name": "get_component_history",
+      "arguments": {
+        "component_name": "balance_penalty"
+      },
+      "result_preview": "=== History of component 'balance_penalty' ===\n\n  iter_01: ep_sum_mean=-12.353, active_rate=100.0%, signed_share=-2.5%, magnitude_share=2.5%\n  iter_02: ep_sum_mean=-32.246, active_rate=100.0%, signed_share=-4.1%, magnitude_share=4.1%\n  iter_03: ep_sum_mean=-21.042, active_rate=100.0%, signed_share=-2.1%, magnitude_share=2.1%\n"
+    },
+    {
+      "name": "get_component_history",
+      "arguments": {
+        "component_name": "forward_reward"
+      },
+      "result_preview": "=== History of component 'forward_reward' ===\n\n  iter_01: ep_sum_mean=488.806, active_rate=100.0%, signed_share=97.3%, magnitude_share=97.5%\n  iter_02: ep_sum_mean=756.202, active_rate=100.0%, signed_share=95.9%, magnitude_share=95.9%\n  iter_03: ep_sum_mean=967.042, active_rate=100.0%, signed_share=97.8%, magnitude_share=97.9%\n  iter_04: ep_sum_mean=288.207, active_rate=100.0%, signed_share=64.4%, magnitude_share=64.4%\n"
+    },
+    {
+      "name": "get_component_history",
+      "arguments": {
+        "component_name": "fall_risk_penalty"
+      },
+      "result_preview": "=== History of component 'fall_risk_penalty' ===\n\n  iter_04: ep_sum_mean=-158.048, active_rate=7.4%, signed_share=-35.3%, magnitude_share=35.3%\n"
+    },
+    {
+      "name": "read_checkpoint_trend",
+      "arguments": {
+        "iteration": 2
+      },
+      "result_preview": "=== Checkpoint trend for iteration 2 ===\n\nscore:  cp10%=-44.6  cp20%=-96.6  cp30%=-101.0  cp40%=-89.9  cp50%=-84.5  cp60%=-53.3  cp70%=256.4  cp80%=274.5  cp90%=279.6  cp100%=284.3\n\nbalance_penalty (ep_sum):  cp10%=-9.152  cp20%=-3.928  cp30%=-1.697  cp40%=-1.769  cp50%=-3.173  cp60%=-12.499  cp70%=-28.755  cp80%=-19.834  cp90%=-20.718  cp100%=-31.248\nforward_reward (ep_sum):  cp10%=-15.872  cp20%=14.398  cp30%=5.420  cp40%=30.902  cp50%=44.870  cp60%=130.696  cp70%=726.203  cp80%=722.934  cp90%"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "(iteration 4 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 诊断报告\n\n### evidence\n- 历史得分：iter1=278.88 → iter2=285.19（c=1.5，历史最佳）→ iter3=281.28（c=2.0 回退）。目标 300，当前差距约 4.9%，属于「接近目标」区间。\n- **iter3 关键新证据**：`score_range=[-51.748, 300.544]`，且 `early_terminal(<150 steps 且 score<-50)=0/20`。这说明存在「走得很好但**后期摔倒**」的回合（摔倒时官方任务给 -100 terminal penalty，把整轮拉到负）。同时存在接近满分 300.5 的成功回合。\n- 反推分布：1 个摔倒回合（-51.7）拖低均值，其余回合均值约 298.8——即**非摔倒回合已经逼近 300**，缺口主要来自摔倒，而不是速度"
+    }
+  ]
+}
