@@ -1,0 +1,14 @@
+# Reward Memory
+
+| iter | skeleton | score | best | delta | len | key_signal | action |
+|---:|---|---:|---:|---:|---:|---|---|
+| 1 | approach_reward + landing_bonus + stability_penalty + thrust_cost | -84.02 | -84.02 | 0.00 | 69.70 | approach_reward=1.560 landing_bonus=0.776 stability_penalty=-0.151 thrust_cost=-0.014 | new_best |
+| 2 | approach_reward + landing_bonus + stability_penalty + thrust_cost + unbalanced_penalty + vel_penalty | -114.20 | -84.02 | -30.18 | 68.35 | approach_reward=0.470 landing_bonus=2.074 stability_penalty=-0.759 thrust_cost=-0.014 unbalanced_penalty=-0.799 | no_meaningful_improvement |
+| 3 | altitude_reward + approach_reward + landing_bonus + stability_penalty + thrust_cost + vel_penalty | -185.72 | -84.02 | -101.70 | 576.15 | altitude_reward=3.891 approach_reward=0.037 landing_bonus=60.135 stability_penalty=-0.515 thrust_cost=-0.023 | no_meaningful_improvement |
+| 4 | contact_reward + landing_bonus + pos_attract + progress_reward + stability_penalty + step_cost | -113.10 | -84.02 | -29.07 | 994.80 | contact_reward=0.969 landing_bonus=78.377 pos_attract=1.157 progress_reward=0.022 stability_penalty=-0.158 | unsolved_stagnation_fresh_restart |
+| 5 | angle_penalty + contact_reward + fuel_penalty + shaping_reward + vel_penalty | -115.52 | -84.02 | -31.49 | 68.35 | angle_penalty=-0.005 contact_reward=0.008 fuel_penalty=-0.005 shaping_reward=0.031 vel_penalty=-0.135 | no_meaningful_improvement |
+| 6 | ang_vel_penalty + angle_penalty + boundary_x_penalty + boundary_y_penalty + crash_penalty + fuel_penalty | -59.12 | -59.12 | 0.00 | 72.65 | ang_vel_penalty=-0.001 angle_penalty=-0.007 boundary_x_penalty=0.000 boundary_y_penalty=0.000 crash_penalty=-0.012 | new_best |
+| 7 | angle_penalty + angvel_penalty + approach_bonus + contact_continuous + crash_penalty + descending_penalty | -5.05 | -5.05 | 0.00 | 888.30 | angle_penalty=-0.067 angvel_penalty=-0.006 approach_bonus=0.248 contact_continuous=0.060 crash_penalty=-0.205 | new_best |
+| 8 | angle_penalty + angvel_penalty + contact_continuous + crash_penalty + fuel_penalty + shaping | -113.49 | -5.05 | -108.44 | 68.40 | angle_penalty=-0.022 angvel_penalty=-0.004 contact_continuous=0.005 crash_penalty=-0.001 fuel_penalty=-0.012 | no_meaningful_improvement |
+| 9 | angle_penalty + angvel_penalty + contact_continuous + crash_penalty + fuel_penalty + ground_danger_penalty | -125.71 | -5.05 | -120.66 | 68.40 | angle_penalty=-0.010 angvel_penalty=-0.005 contact_continuous=0.009 crash_penalty=-0.006 fuel_penalty=-0.019 | no_meaningful_improvement |
+| 10 | angle_penalty + angvel_penalty + contact_reward + fuel_penalty + horizontal_speed_penalty + shaping | -7.15 | -5.05 | -2.10 | 838.50 | angle_penalty=-0.067 angvel_penalty=-0.005 contact_reward=0.784 fuel_penalty=-0.052 horizontal_speed_penalty=-0.130 | unsolved_stagnation_fresh_restart |

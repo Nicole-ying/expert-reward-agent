@@ -1,0 +1,14 @@
+# Reward Memory
+
+| iter | skeleton | score | best | delta | len | key_signal | action |
+|---:|---|---:|---:|---:|---:|---|---|
+| 1 | attitude_constraint + fuel_efficiency + goal_proximity + landing_contact + settling_stability | -121.51 | -121.51 | 0.00 | 68.50 | attitude_constraint=-0.021 fuel_efficiency=-0.006 goal_proximity=0.031 landing_contact=0.011 settling_stability=0.007 | new_best |
+| 2 | attitude_constraint + fuel_efficiency + goal_proximity + landing_contact + settling_stability | -119.34 | -119.34 | 0.00 | 68.30 | attitude_constraint=-0.248 fuel_efficiency=-0.020 goal_proximity=-1.336 landing_contact=0.047 settling_stability=-1.756 | new_best |
+| 3 | attitude_constraint + fuel_efficiency + goal_proximity + landing_contact + settling_stability | -65.00 | -65.00 | 0.00 | 1000.00 | attitude_constraint=-0.321 fuel_efficiency=-0.037 goal_proximity=1.966 landing_contact=8.361 settling_stability=-0.113 | new_best |
+| 4 | attitude_constraint + fuel_efficiency + goal_proximity + landing_contact + settling_stability | -109.73 | -65.00 | -44.73 | 68.50 | attitude_constraint=-0.155 fuel_efficiency=-0.017 goal_proximity=0.115 landing_contact=0.187 settling_stability=-0.414 | same_skeleton_persistent_negative_fresh_restart |
+| 5 | angle_penalty + approach_reward + boundary_penalty + landing_bonus + velocity_penalty | -98.30 | -65.00 | -33.30 | 68.85 | angle_penalty=-0.002 approach_reward=-0.567 boundary_penalty=0.000 landing_bonus=0.000 velocity_penalty=-0.027 | no_meaningful_improvement |
+| 6 | angle_penalty + approach_reward + boundary_penalty + fuel_penalty + landing_bonus + proximity_warmth | -5.35 | -5.35 | 0.00 | 1000.00 | angle_penalty=-0.017 approach_reward=0.051 boundary_penalty=0.000 fuel_penalty=-0.021 landing_bonus=3.655 | new_best |
+| 7 | angle_penalty + approach_reward + boundary_penalty + close_proximity + contact_reward + fuel_penalty | -115.61 | -5.35 | -110.26 | 948.45 | angle_penalty=-0.057 approach_reward=0.094 boundary_penalty=0.000 close_proximity=0.036 contact_reward=18.704 | no_meaningful_improvement |
+| 8 | angle_penalty + approach_reward + boundary_penalty + contact_reward + fuel_penalty + landing_readiness | -45.74 | -5.35 | -40.39 | 1000.00 | angle_penalty=-0.022 approach_reward=0.085 boundary_penalty=0.000 contact_reward=6.073 fuel_penalty=-0.021 | no_meaningful_improvement |
+| 9 | angle_penalty + approach_reward + boundary_penalty + contact_reward + fuel_penalty + landing_potential | -39.07 | -5.35 | -33.72 | 940.05 | angle_penalty=-0.012 approach_reward=0.111 boundary_penalty=0.000 contact_reward=7.393 fuel_penalty=-0.021 | unsolved_stagnation_fresh_restart |
+| 10 | action_penalty + contact_bonus + progress_delta + stability_penalty | -120.21 | -5.35 | -114.86 | 68.30 | action_penalty=-0.002 contact_bonus=0.010 progress_delta=0.054 stability_penalty=-0.019 | no_meaningful_improvement |

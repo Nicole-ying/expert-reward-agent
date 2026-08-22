@@ -22,10 +22,9 @@
 
 # 总体设计原则
 
-- 从简单到复杂，但”简单”不等于只有一个组件。
-- 不要用”最多几个组件”来机械限制 reward，而要用 role-based component budget 控制复杂度。
+- 从简单到复杂，但“简单”不等于只有一个组件。
+- 不要用“最多几个组件”来机械限制 reward，而要用 role-based component budget 控制复杂度。
 - reward_v1 应覆盖主要学习信号，同时避免过早堆叠太多目标。
-- 写完 reward 后自检：① 每个终止条件是否有前兆软信号？② 任务目标是否有直接的进度信号？③ 动作维度 ≥ 6 时，是否缺少效率约束（即使权重很小）？
 - 不要机械照抄 expert template 或 formula operator。
 - 不要使用 original_reward。
 - 不要计算 fitness_score 或 fitness_score components。
@@ -113,10 +112,10 @@ v1 推荐使用 2~4 个组件，按以下角色组织。专家模板和公式算
 ```python
 def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
 ```
+```text
+环境事实 → 任务画像 → 奖励职责 reward roles → 职责-信号映射 → 公式算子 → reward code
 
-最终 reward 函数输出必须包含：
-1. total_reward: float
-2. components: dict，记录 individual reward components
+**2. components: dict**，记录 individual reward components。
 
 首选返回格式：
 ```python
@@ -126,15 +125,6 @@ return float(total_reward), components
 # 代码硬约束
 
 - Python code block 里只能包含完整的 `compute_reward` 函数。
-- 不要写 import。
-- 不要写 class。
-- 不要写 try/except。
-- 不要写 eval/exec/open。
-- 不要创建额外函数。
-- 不要引入新的输入变量。
-- 不要传 self；当前项目接口不是 Eureka 原版 self 接口。
-- 不要使用 self attributes。
-- 不要使用原始环境 reward。
 - components 必须是 dict。
 - components 只包含被加到 total_reward 的组件（A、B、C），不包含 total_reward 本身。
 

@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 from .common import load_config, read_text, write_text, write_json, record_prompt, record_response
-from llm_clients.deepseek_client import DeepSeekClient
+from llm_clients import create_client
 
 MOCK_REWARD_MD = """# reward_v1.py
 
@@ -52,6 +52,11 @@ def compute_reward(obs, action, next_obs, original_reward, info, training_progre
 
 
 def extract_code(md):
+    # Prefer code block containing the reward function definition
+    for m in re.finditer(r"```python\s*(.*?)```", md, flags=re.S):
+        if "def compute_reward" in m.group(1):
+            return m.group(1).strip()
+    # Fallback: first python code block
     m = re.search(r"```python\s*(.*?)```", md, flags=re.S)
     if m:
         return m.group(1).strip()
@@ -125,7 +130,13 @@ def validate_code(code):
         errors.append("缺少准确函数签名")
 
     body = code.replace(exact_sig, "")
-    if "original_reward" in body:
+    # Strip comments and strings before checking, so mentions in comments
+    # (e.g. "# Note: original_reward is not used") don't trigger false positives.
+    import re as _re
+    _stripped_body = _re.sub(r'#.*$', '', body, flags=_re.MULTILINE)
+    _stripped_body = _re.sub(r'""".*?"""', '', _stripped_body, flags=_re.DOTALL)
+    _stripped_body = _re.sub(r"'''.*?'''", '', _stripped_body, flags=_re.DOTALL)
+    if "original_reward" in _stripped_body:
         errors.append("函数体中使用了 original_reward")
 
     forbidden = [
@@ -212,7 +223,7 @@ def run(config_path, run_name, mock=False, seed=0, validation_retry=None):
         out_md = MOCK_REWARD_MD
     else:
         llm_cfg = cfg["llm"]
-        client = DeepSeekClient(api_key_env=llm_cfg["api_key_env"], base_url=llm_cfg["base_url"])
+        client = create_client(cfg)
         out_md = client.chat(
             model=llm_cfg["model_reward"],
             system_prompt=system_prompt,
@@ -220,6 +231,7 @@ def run(config_path, run_name, mock=False, seed=0, validation_retry=None):
             temperature=llm_cfg["temperature_reward_generator"],
             max_tokens=llm_cfg["max_tokens_reward"],
             json_mode=False,
+            reasoning_effort=llm_cfg.get("reasoning_generator"),
         )
 
     code = extract_code(out_md)

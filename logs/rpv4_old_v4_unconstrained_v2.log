@@ -1,0 +1,234 @@
+============================================================
+Multi-seed iterative experiment
+============================================================
+config          : configs/env001_rpv4_old_v4_unconstrained.yaml
+prefix          : rpv4_old_v4_unconstrained
+rounds          : 10
+start_seed      : 0
+num_seeds       : 5
+total_timesteps : 1000000
+mock            : False
+
+############################################################
+ SEED 0  (1 / 5)
+############################################################
+============================================================
+Config-driven iterative reward experiment
+============================================================
+config          : configs/env001_rpv4_old_v4_unconstrained.yaml
+prefix          : rpv4_old_v4_unconstrained
+seed            : 0
+rounds          : 10
+start_iter      : 1
+target_score    : 200.0
+total_timesteps : 1000000
+eval_episodes   : 20
+memory_path     : runs/env_001/rpv4_old_v4_unconstrained/seed_0/memory/reward_memory.md
+cards_path      : knowledge_base/iteration/reward_misalignment_cards.md
+cards_top_k     : 4
+mock_llm        : False
+
+------------------------------------------------------------
+Iteration 1/10
+------------------------------------------------------------
+
+$ /home/utseus22/anaconda3/envs/eureka/bin/python -m pipeline.run_direct_generation_pipeline --config configs/env001_rpv4_old_v4_unconstrained.yaml --run-name rpv4_old_v4_unconstrained/seed_0/iter_01/generation --seed 0
+Traceback (most recent call last):
+  File "/home/utseus22/anaconda3/envs/eureka/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/utseus22/anaconda3/envs/eureka/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/utseus22/expert-reward-agent/pipeline/run_direct_generation_pipeline.py", line 29, in <module>
+    main()
+  File "/home/utseus22/expert-reward-agent/pipeline/run_direct_generation_pipeline.py", line 17, in main
+    run_env(args.config, args.run_name, mock=args.mock)
+  File "/home/utseus22/expert-reward-agent/pipeline/run_01_environment_analyzer_md.py", line 97, in run
+    client = create_client(cfg)
+  File "/home/utseus22/expert-reward-agent/llm_clients/__init__.py", line 29, in create_client
+    return DeepSeekClient(api_key_env=api_key_env, base_url=base_url)
+  File "/home/utseus22/expert-reward-agent/llm_clients/deepseek_client.py", line 14, in __init__
+    if not api_key: raise RuntimeError(f"Missing API key environment variable: {api_key_env}")
+RuntimeError: Missing API key environment variable: DEEPSEEK_API_KEY
+SEED 0 FAILED: Command '['/home/utseus22/anaconda3/envs/eureka/bin/python', '-m', 'pipeline.run_direct_generation_pipeline', '--config', 'configs/env001_rpv4_old_v4_unconstrained.yaml', '--run-name', 'rpv4_old_v4_unconstrained/seed_0/iter_01/generation', '--seed', '0']' returned non-zero exit status 1.
+Failure record: runs/env_001/rpv4_old_v4_unconstrained/seed_0/seed_failure.txt
+Continuing with the next seed.
+
+############################################################
+ SEED 1  (2 / 5)
+############################################################
+============================================================
+Config-driven iterative reward experiment
+============================================================
+config          : configs/env001_rpv4_old_v4_unconstrained.yaml
+prefix          : rpv4_old_v4_unconstrained
+seed            : 1
+rounds          : 10
+start_iter      : 1
+target_score    : 200.0
+total_timesteps : 1000000
+eval_episodes   : 20
+memory_path     : runs/env_001/rpv4_old_v4_unconstrained/seed_1/memory/reward_memory.md
+cards_path      : knowledge_base/iteration/reward_misalignment_cards.md
+cards_top_k     : 4
+mock_llm        : False
+
+------------------------------------------------------------
+Iteration 1/10
+------------------------------------------------------------
+
+$ /home/utseus22/anaconda3/envs/eureka/bin/python -m pipeline.run_direct_generation_pipeline --config configs/env001_rpv4_old_v4_unconstrained.yaml --run-name rpv4_old_v4_unconstrained/seed_1/iter_01/generation --seed 1
+Traceback (most recent call last):
+  File "/home/utseus22/anaconda3/envs/eureka/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/utseus22/anaconda3/envs/eureka/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/utseus22/expert-reward-agent/pipeline/run_direct_generation_pipeline.py", line 29, in <module>
+    main()
+  File "/home/utseus22/expert-reward-agent/pipeline/run_direct_generation_pipeline.py", line 17, in main
+    run_env(args.config, args.run_name, mock=args.mock)
+  File "/home/utseus22/expert-reward-agent/pipeline/run_01_environment_analyzer_md.py", line 97, in run
+    client = create_client(cfg)
+  File "/home/utseus22/expert-reward-agent/llm_clients/__init__.py", line 29, in create_client
+    return DeepSeekClient(api_key_env=api_key_env, base_url=base_url)
+  File "/home/utseus22/expert-reward-agent/llm_clients/deepseek_client.py", line 14, in __init__
+    if not api_key: raise RuntimeError(f"Missing API key environment variable: {api_key_env}")
+RuntimeError: Missing API key environment variable: DEEPSEEK_API_KEY
+SEED 1 FAILED: Command '['/home/utseus22/anaconda3/envs/eureka/bin/python', '-m', 'pipeline.run_direct_generation_pipeline', '--config', 'configs/env001_rpv4_old_v4_unconstrained.yaml', '--run-name', 'rpv4_old_v4_unconstrained/seed_1/iter_01/generation', '--seed', '1']' returned non-zero exit status 1.
+Failure record: runs/env_001/rpv4_old_v4_unconstrained/seed_1/seed_failure.txt
+Continuing with the next seed.
+
+############################################################
+ SEED 2  (3 / 5)
+############################################################
+============================================================
+Config-driven iterative reward experiment
+============================================================
+config          : configs/env001_rpv4_old_v4_unconstrained.yaml
+prefix          : rpv4_old_v4_unconstrained
+seed            : 2
+rounds          : 10
+start_iter      : 1
+target_score    : 200.0
+total_timesteps : 1000000
+eval_episodes   : 20
+memory_path     : runs/env_001/rpv4_old_v4_unconstrained/seed_2/memory/reward_memory.md
+cards_path      : knowledge_base/iteration/reward_misalignment_cards.md
+cards_top_k     : 4
+mock_llm        : False
+
+------------------------------------------------------------
+Iteration 1/10
+------------------------------------------------------------
+
+$ /home/utseus22/anaconda3/envs/eureka/bin/python -m pipeline.run_direct_generation_pipeline --config configs/env001_rpv4_old_v4_unconstrained.yaml --run-name rpv4_old_v4_unconstrained/seed_2/iter_01/generation --seed 2
+Traceback (most recent call last):
+  File "/home/utseus22/anaconda3/envs/eureka/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/utseus22/anaconda3/envs/eureka/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/utseus22/expert-reward-agent/pipeline/run_direct_generation_pipeline.py", line 29, in <module>
+    main()
+  File "/home/utseus22/expert-reward-agent/pipeline/run_direct_generation_pipeline.py", line 17, in main
+    run_env(args.config, args.run_name, mock=args.mock)
+  File "/home/utseus22/expert-reward-agent/pipeline/run_01_environment_analyzer_md.py", line 97, in run
+    client = create_client(cfg)
+  File "/home/utseus22/expert-reward-agent/llm_clients/__init__.py", line 29, in create_client
+    return DeepSeekClient(api_key_env=api_key_env, base_url=base_url)
+  File "/home/utseus22/expert-reward-agent/llm_clients/deepseek_client.py", line 14, in __init__
+    if not api_key: raise RuntimeError(f"Missing API key environment variable: {api_key_env}")
+RuntimeError: Missing API key environment variable: DEEPSEEK_API_KEY
+SEED 2 FAILED: Command '['/home/utseus22/anaconda3/envs/eureka/bin/python', '-m', 'pipeline.run_direct_generation_pipeline', '--config', 'configs/env001_rpv4_old_v4_unconstrained.yaml', '--run-name', 'rpv4_old_v4_unconstrained/seed_2/iter_01/generation', '--seed', '2']' returned non-zero exit status 1.
+Failure record: runs/env_001/rpv4_old_v4_unconstrained/seed_2/seed_failure.txt
+Continuing with the next seed.
+
+############################################################
+ SEED 3  (4 / 5)
+############################################################
+============================================================
+Config-driven iterative reward experiment
+============================================================
+config          : configs/env001_rpv4_old_v4_unconstrained.yaml
+prefix          : rpv4_old_v4_unconstrained
+seed            : 3
+rounds          : 10
+start_iter      : 1
+target_score    : 200.0
+total_timesteps : 1000000
+eval_episodes   : 20
+memory_path     : runs/env_001/rpv4_old_v4_unconstrained/seed_3/memory/reward_memory.md
+cards_path      : knowledge_base/iteration/reward_misalignment_cards.md
+cards_top_k     : 4
+mock_llm        : False
+
+------------------------------------------------------------
+Iteration 1/10
+------------------------------------------------------------
+
+$ /home/utseus22/anaconda3/envs/eureka/bin/python -m pipeline.run_direct_generation_pipeline --config configs/env001_rpv4_old_v4_unconstrained.yaml --run-name rpv4_old_v4_unconstrained/seed_3/iter_01/generation --seed 3
+Traceback (most recent call last):
+  File "/home/utseus22/anaconda3/envs/eureka/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/utseus22/anaconda3/envs/eureka/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/utseus22/expert-reward-agent/pipeline/run_direct_generation_pipeline.py", line 29, in <module>
+    main()
+  File "/home/utseus22/expert-reward-agent/pipeline/run_direct_generation_pipeline.py", line 17, in main
+    run_env(args.config, args.run_name, mock=args.mock)
+  File "/home/utseus22/expert-reward-agent/pipeline/run_01_environment_analyzer_md.py", line 97, in run
+    client = create_client(cfg)
+  File "/home/utseus22/expert-reward-agent/llm_clients/__init__.py", line 29, in create_client
+    return DeepSeekClient(api_key_env=api_key_env, base_url=base_url)
+  File "/home/utseus22/expert-reward-agent/llm_clients/deepseek_client.py", line 14, in __init__
+    if not api_key: raise RuntimeError(f"Missing API key environment variable: {api_key_env}")
+RuntimeError: Missing API key environment variable: DEEPSEEK_API_KEY
+SEED 3 FAILED: Command '['/home/utseus22/anaconda3/envs/eureka/bin/python', '-m', 'pipeline.run_direct_generation_pipeline', '--config', 'configs/env001_rpv4_old_v4_unconstrained.yaml', '--run-name', 'rpv4_old_v4_unconstrained/seed_3/iter_01/generation', '--seed', '3']' returned non-zero exit status 1.
+Failure record: runs/env_001/rpv4_old_v4_unconstrained/seed_3/seed_failure.txt
+Continuing with the next seed.
+
+############################################################
+ SEED 4  (5 / 5)
+############################################################
+============================================================
+Config-driven iterative reward experiment
+============================================================
+config          : configs/env001_rpv4_old_v4_unconstrained.yaml
+prefix          : rpv4_old_v4_unconstrained
+seed            : 4
+rounds          : 10
+start_iter      : 1
+target_score    : 200.0
+total_timesteps : 1000000
+eval_episodes   : 20
+memory_path     : runs/env_001/rpv4_old_v4_unconstrained/seed_4/memory/reward_memory.md
+cards_path      : knowledge_base/iteration/reward_misalignment_cards.md
+cards_top_k     : 4
+mock_llm        : False
+
+------------------------------------------------------------
+Iteration 1/10
+------------------------------------------------------------
+
+$ /home/utseus22/anaconda3/envs/eureka/bin/python -m pipeline.run_direct_generation_pipeline --config configs/env001_rpv4_old_v4_unconstrained.yaml --run-name rpv4_old_v4_unconstrained/seed_4/iter_01/generation --seed 4
+Traceback (most recent call last):
+  File "/home/utseus22/anaconda3/envs/eureka/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/utseus22/anaconda3/envs/eureka/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/utseus22/expert-reward-agent/pipeline/run_direct_generation_pipeline.py", line 29, in <module>
+    main()
+  File "/home/utseus22/expert-reward-agent/pipeline/run_direct_generation_pipeline.py", line 17, in main
+    run_env(args.config, args.run_name, mock=args.mock)
+  File "/home/utseus22/expert-reward-agent/pipeline/run_01_environment_analyzer_md.py", line 97, in run
+    client = create_client(cfg)
+  File "/home/utseus22/expert-reward-agent/llm_clients/__init__.py", line 29, in create_client
+    return DeepSeekClient(api_key_env=api_key_env, base_url=base_url)
+  File "/home/utseus22/expert-reward-agent/llm_clients/deepseek_client.py", line 14, in __init__
+    if not api_key: raise RuntimeError(f"Missing API key environment variable: {api_key_env}")
+RuntimeError: Missing API key environment variable: DEEPSEEK_API_KEY
+SEED 4 FAILED: Command '['/home/utseus22/anaconda3/envs/eureka/bin/python', '-m', 'pipeline.run_direct_generation_pipeline', '--config', 'configs/env001_rpv4_old_v4_unconstrained.yaml', '--run-name', 'rpv4_old_v4_unconstrained/seed_4/iter_01/generation', '--seed', '4']' returned non-zero exit status 1.
+Failure record: runs/env_001/rpv4_old_v4_unconstrained/seed_4/seed_failure.txt
+Continuing with the next seed.
+
+============================================================
+All seeds done.
+============================================================

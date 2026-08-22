@@ -1,0 +1,11 @@
+# Subagent Research Signal
+
+**Key Findings**: mean_eval_reward=5.5, termination=2/20 (10%), forward_progress signed share=88.5%, descent_early_penalty dead (<0.1% share, active 9.1%)
+
+**Component Anomalies**: descent_early_penalty dead (mean -0.0009, negligible); forward_progress dominates (88.5% signed share >70%)
+
+**Training Dynamics**: no temporal snapshots; cannot assess growth/decay or checkpoint drift
+
+**Signal Quality**: dead gate: descent_early_penalty condition (z_vel<0 & z<0.5) rarely active; low termination suggests missing attractor for task completion
+
+**Evidence Confidence**: `medium`

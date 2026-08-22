@@ -1,0 +1,11 @@
+# Subagent Research Signal
+
+**训练过程**: No survival learned. Crash rate remained 100% across early, mid, late phases. Episode length stable ~70 steps. Avg score slightly improved from -61.3 (early) to -58.9 (late), but all episodes still ended in crash.
+
+**组件健康**: Height penalty, progress, speed penalty, orientation, engine penalty active (nonzero rate 100% except engine 54.9%). contact_reward fired on only 3.5% of steps; landing_bonus virtually dead (0.4% nonzero rate), never guiding landing behavior.
+
+**奖励对齐**: Generated reward per step (-0.872) less negative than original env reward (-1.677), but evaluation mean reward -114.5 with 100% crash indicates misalignment: agent maximizes shaped components (e.g., progress, height) without achieving task, exploiting easy rewards.
+
+**异常检测**: Agent plateaued early: persistent 100% crash rate throughout training, no improvement in survival. Likely converged to local optimum that avoids landing bonus and contact events entirely.
+
+**置信度**: `high`

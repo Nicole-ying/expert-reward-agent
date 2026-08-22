@@ -1,0 +1,24 @@
+# Training Feedback
+
+## Final-policy outcome
+score=-185.719849, len=576.150000, terminated=19/20, truncated=1/20, reward_errors=0
+score_range=[-232.937948, -112.939579]
+
+## Final-policy reward composition
+
+These statistics come from the same fixed evaluation episodes as `score`. Shares describe observed reward composition, not causal influence.
+
+| component | episode_sum_mean | signed_share | magnitude_share | active_rate |
+|---|---:|---:|---:|---:|
+| altitude_reward | 778.118141 | 61.5% | 61.5% | 100.0% |
+| vel_penalty | -434.385011 | -34.4% | 34.4% | 100.0% |
+| stability_penalty | -29.978593 | -2.4% | 2.4% | 100.0% |
+| thrust_cost | -17.250000 | -1.4% | 1.4% | 99.8% |
+| approach_reward | -2.254687 | -0.2% | 0.4% | 100.0% |
+| landing_bonus | 0.000000 | 0.0% | 0.0% | 0.0% |
+
+## Evaluation distribution
+- fixed_eval_seeds: 10000..10019
+- early_terminal (<150 steps and score<-50): 0/20
+- training_reward_errors_max: 0
+- full_training_distribution_stats: component_stats.md / training_summary.json (not primary reflection evidence)

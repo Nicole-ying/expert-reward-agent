@@ -1,0 +1,55 @@
+{
+  "turns_used": 5,
+  "signal": {
+    "key_findings": "Automatic fallback after 5 turns without submit. Raw data: [inspect_component_dynamics]: (no monitor snapshots — training may not have completed)\n[inspect_training_feedback]: # Training Feedback\n\n## Final-policy outcome\nscore=145.467167, len=1000.000000, term",
+    "component_anomalies": "Subagent exhausted turns without explicit submission.",
+    "training_dynamics": "No temporal analysis available.",
+    "signal_quality": "No signal quality assessment available.",
+    "confidence": "low"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 543
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 2577
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 3,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 821
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Score=145.5, episode length=1000 (max), 0/20 terminations. C_landing_steady dominates: episode sum mean=197.8 vs A_progress_gated=5.6 — a 35:1 ratio. The agent runs full episodes without landing, yet the landing component supplies 97% of total reward. A_progress_gated is 100% active but contributes only 2.8% signed share.",
+        "component_anomalies": "C_landing_steady is massively dominant (97.0% signed share, 74.9% active rate) despite zero successful landings. This is a leaky reward: the landing gate fires on partial posture matches without requiring actual touchdown. A_progress_gated is functionally dead — 100% nonzero but mean per-step is 0.0108, drowned out by the landing signal.",
+        "training_dynamics": "No temporal snapshots available from this run. Final-policy composition shows a severely unbalanced reward structure: the progress component is present but irrelevant, while the landing component dominates without guiding toward the true termination condition.",
+        "signal_quality": "The landing reward lacks a required attractor: it rewards being near the pad with feet down but the termination threshold is never crossed. The progress gate is too weak (10x scaling insufficient vs 0.3 landing coefficient). There's no coupling between progress and landing — they operate independently, so the agent can collect landing rewards indefinitely without progressing to touchdown.",
+        "confidence": "medium"
+      },
+      "validation_errors": [
+        "signal too long (1319 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 5,
+      "fallback_signal": true
+    }
+  ],
+  "signal_produced": true
+}

@@ -1,0 +1,12 @@
+{
+  "turns_used": 1,
+  "signal": {
+    "training_progress": "Agent failed to learn survival: crash rate held at 100% across early→late. Mean episode length stuck at 70, while generated_reward slightly rose from 5.41 to 6.07 per step. Original_env_reward stayed negative (-100/step in monitor, -1.67 in stats), indicating no task progress despite increasing shaped reward.",
+    "component_health": "Most components active: approach_reward, speed_penalty, survival_bonus, angle_penalty, angvel_penalty all 99–100% nonzero. landing_success_reward rare (0.4%, mean 200 when active), contact_bonus 3.2%, engine_penalty 11.2%. No dead components except near-zero for landing.",
+    "reward_alignment": "Severe misalignment: generated_reward mean 0.17/step (positive) vs original_env_reward -1.67 to -100/step (negative). Agent exploited shaping terms (approach, survival, contact) to accumulate positive score without ever landing, causing persistent crashes.",
+    "anomalies": "100% crash rate throughout training; no improvement in landing despite steady rise in generated_reward. Early convergence to reward-hacking behavior.",
+    "confidence": "medium"
+  },
+  "tool_trace": [],
+  "signal_produced": true
+}

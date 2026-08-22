@@ -1,0 +1,150 @@
+# Duplicate reward retry
+The previous generation duplicated iter 5 (runs/env_001/rpv4_old_v4_notools/seed_2/iter_05/generation/reward_v5.py). Retry 2: generate a materially different reward function.
+The previous draft is semantically identical to the previous trained reward and is not a valid search intervention. Re-analyze the full environment facts, training feedback, Agent Memory, previous reward, and best reward below. Choose a different evidence-based modification plan, then implement one concrete tune/delete/add/mix change. Return a complete reward function whose executable code is materially different from every historical reward. Do not merely rename variables or comments.
+
+# Rejected duplicate draft
+```python
+
+```
+
+下面是环境描述：
+本环境是一个 2D 飞行器/着陆器轨迹优化任务。智能体（飞行器）起始于视口顶部中央附近，需要通过学习控制其主引擎与姿态引擎，**到达并稳定停靠在中央目标平台上**。
+**主目标：尽可能快地到达目标平台并实现稳定、安全的接触（着陆）。**
+**重要次目标（效率约束）：在完成主目标的过程中，尽量减少引擎推力使用（节约燃料）。**
+**不该混淆的目标：** 此任务的核心是导航到达，而非单纯的存活平衡或持续前进。
+
+目标得分：200
+
+### 第一原则：黑盒实验，不是代码重构
+
+你无法预知新奖励函数会引导出什么行为，只能训练完后看结果。
+**看到好趋势 → 先理解为什么好，再精准微调。**
+大规模重写等于丢弃已有实验证据，重新掷骰子。
+
+**硬约束：如果本轮得分比上一轮改善超过 30 分，你必须先回答：**
+上一轮的哪个修改促成了这个改善？证据是什么？
+**如果你回答不了，本轮只做 L1，不改数学形态。**
+
+逐组件分析，按以下顺序：
+
+(1) **如果 score 始终接近零或负**，当前奖励函数从根上错了——你必须重写整个 reward，换一个完全不同的主信号框架。
+
+(2) **如果某个组件的值在整个训练过程中几乎不变**（轨迹平坦，checkpoint 之间无差异），说明 RL 无法优化这个组件。考虑：(a) 调整它的系数或温度参数 (b) 改写成不同的数学形式 (c) 丢弃它。
+
+(3) **如果某个组件的量级远大于其他**（magnitude_share 极高），必须把它缩放到合理范围——否则 agent 只被这一个信号驱动。
+
+### 本轮数据
+
+# 上一轮训练反馈 (iter_5, score=-64.224908)
+# Training Feedback
+
+## Final-policy outcome
+score=-64.224908, len=70.350000, terminated=20/20, truncated=0/20, reward_errors=0
+score_range=[-98.598884, -34.943701]
+
+## Final-policy reward composition
+
+These statistics come from the same fixed evaluation episodes as `score`. Shares describe observed reward composition, not causal influence.
+
+| component | episode_sum_mean | signed_share | magnitude_share | active_rate |
+|---|---:|---:|---:|---:|
+| proximity_pressure | -26.833816 | -82.8% | 82.8% | 100.0% |
+| progress | 2.225617 | 6.9% | 7.1% | 100.0% |
+| velocity_penalty | -1.785585 | -5.5% | 5.5% | 99.9% |
+| contact_state | 1.155000 | 3.6% | 3.6% | 3.4% |
+| orientation_penalty | -0.334188 | -1.0% | 1.0% | 100.0% |
+
+## Evaluation distribution
+- fixed_eval_seeds: 10000..10019
+- early_terminal (<150 steps and score<-50): 17/20
+- training_reward_errors_max: 0
+- full_training_distribution_stats: component_stats.md / training_summary.json (not primary reflection evidence)
+
+
+# Checkpoint 评估（训练过程中各组件的变化趋势）
+
+每个 checkpoint 在训练到 N% 时用当前模型评估 20 集，记录每个组件的 ep_sum_mean。
+**趋势比单点数值更重要：**
+- 组件全程为 0 → 死组件，agent 在训练中忽略了它
+- 组件从 0 逐渐增长 → 正在引导学习
+- 组件骤升 → 可能被 exploit
+- 组件骤降 → agent 在学习抑制它
+
+## Overall score trend
+| cp10% | cp20% | cp30% | cp40% | cp50% | cp60% | cp70% | cp80% | cp90% | cp100% |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| -113.2 | -110.2 | -105.5 | -107.7 | -89.5 | -85.1 | -85.5 | -81.5 | -72.8 | -65.8 |
+
+## Per-component ep_sum_mean trend
+| component | cp10% | cp20% | cp30% | cp40% | cp50% | cp60% | cp70% | cp80% | cp90% | cp100% |
+|---|---||---||---||---||---||---||---||---||---||---|
+| contact_state | 1.170 | 1.035 | 1.065 | 1.020 | 1.155 | 1.200 | 1.185 | 1.185 | 1.155 | 1.110 |
+| orientation_penalty | -0.884 | -0.546 | -0.438 | -0.577 | -0.475 | -0.424 | -0.371 | -0.319 | -0.370 | -0.349 |
+| progress | 2.235 | 2.243 | 2.244 | 2.239 | 2.240 | 2.240 | 2.243 | 2.239 | 2.236 | 2.226 |
+| proximity_pressure | -26.743 | -26.595 | -26.601 | -26.609 | -26.676 | -26.683 | -26.675 | -26.697 | -26.762 | -26.815 |
+| velocity_penalty | -1.862 | -1.858 | -1.852 | -1.858 | -1.833 | -1.823 | -1.822 | -1.828 | -1.792 | -1.787 |
+
+## Per-component active_rate trend
+| component | cp10% | cp20% | cp30% | cp40% | cp50% | cp60% | cp70% | cp80% | cp90% | cp100% |
+|---|---||---||---||---||---||---||---||---||---||---|
+| contact_state | 4.1% | 3.3% | 3.2% | 3.1% | 3.5% | 3.5% | 3.5% | 3.5% | 3.4% | 3.3% |
+| orientation_penalty | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
+| progress | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
+| proximity_pressure | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
+| velocity_penalty | 99.8% | 99.6% | 99.4% | 99.9% | 99.9% | 99.9% | 99.7% | 99.6% | 99.7% | 99.9% |
+
+# 上一轮奖励函数代码
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    # --- continuous proximity signal (absolute distance penalty + incremental progress)
+    dist_prev = (obs[0] ** 2 + obs[1] ** 2) ** 0.5
+    dist_next = (next_obs[0] ** 2 + next_obs[1] ** 2) ** 0.5
+
+    # global pressure to reduce distance (cannot be evaded by local oscillation)
+    proximity_pressure = -0.4 * dist_next
+
+    # incremental progress – strong shaping towards the target
+    progress = 2.0 * (dist_prev - dist_next)
+
+    # --- simple velocity penalty (no altitude gating, applies everywhere)
+    vx = next_obs[2]
+    vy = next_obs[3]
+    velocity_penalty = -0.02 * (vx ** 2 + vy ** 2)
+
+    # --- orientation penalty (unchanged rationale, small tweak)
+    orientation_penalty = -0.05 * abs(next_obs[4]) - 0.03 * (next_obs[5] ** 2)
+
+    # --- contact state reward (not incremental → no exploit by lifting/placing repeatedly)
+    # each leg contact gives a small constant positive reward
+    contact_state = 0.3 * (float(next_obs[6]) + float(next_obs[7]))
+
+    # --- combine
+    total_reward = proximity_pressure + progress + velocity_penalty + orientation_penalty + contact_state
+
+    components = {
+        "proximity_pressure": proximity_pressure,
+        "progress": progress,
+        "velocity_penalty": velocity_penalty,
+        "orientation_penalty": orientation_penalty,
+        "contact_state": contact_state
+    }
+
+    return float(total_reward), components
+```
+
+---
+
+以上是本轮数据。现在开始调查，做出一个语义方向上的修改。
+
+### 输出要求
+
+**1. 诊断报告**（在代码之前）：
+- `evidence`：支持判断的关键数据和历史记录
+- `behavior_diagnosis`：策略当前的学到的行为模式是什么，是不健康的吗？结合 score、episode_length、terminated/truncated 判断。
+- `signal_completeness`：必要职责是否完备？缺什么信号？
+- `selected_level`：L1 / L2 / L3 及选择理由
+- `selected_intervention`：目标组件及具体修改内容
+- `falsifiable_hypothesis`：为什么该修预计改善策略？
+- `expected_next_round`：下一轮策略学习到的行为模式预计是什么？
+
+**2. 完整 Python 代码**（```python ... ``` 代码块）。

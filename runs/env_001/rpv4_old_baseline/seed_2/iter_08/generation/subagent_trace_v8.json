@@ -1,0 +1,12 @@
+{
+  "turns_used": 1,
+  "signal": {
+    "training_progress": "Early episodes (845): avg_len=325, avg_score=2064.3, gen_reward=4.290/step, orig_reward=-79.894/step, crash_rate=50%. Mid (845): avg_len=427, avg_score=2237.5, gen_reward=4.230/step, orig_reward=-69.536/step, crash_rate=28%. Late (845): avg_len=516, avg_score=1802.9, gen_reward=4.472/step, orig_reward=-55.974/step, crash_rate=29%. Agent learned to survive longer (length increased) and crash less (from 50% to ~29%). Generated reward per step modestly increased, original env reward per step became less negative. However, avg_score dropped in late phase despite longer episodes and higher per-step gen_reward, suggesting possible reward exploitation or logging inconsistency.",
+    "component_health": "state_goodness dominates (per_step_mean=6.47, nonzero_rate=100%). contact_reward active 42.1% of steps (mean=0.86 when active). descent_bonus active 69.5% but tiny (mean=0.006 when active). time_penalty always -0.02. original_env_reward always active at -0.14 per step.",
+    "reward_alignment": "Significant reward–reality gap: shaped reward per step (6.81) far exceeds original env reward (-0.14). Agent exploits by surviving to max step in eval (all 20 episodes truncated at length 1000, mean original reward -23.83). During training, original reward improved but remained negative, indicating alignment is poor.",
+    "anomalies": "Monitor avg_score values do not equal gen_reward/step * avg_len (e.g., late 516*4.472=2307 ≠1802.9), suggesting ambiguous metric definition. Crash rate plateaued at 28-29% while length rose; training crashes persist despite deterministic policy achieving 0 crashes in evaluation.",
+    "confidence": "medium"
+  },
+  "tool_trace": [],
+  "signal_produced": true
+}

@@ -1,0 +1,33 @@
+extends: env001_paper_v4.yaml
+
+experiment:
+  run_root: runs/env_001
+
+llm:
+  max_tokens_env: 8000
+  max_tokens_reward: 8192
+
+initial_generation:
+  # V3 A/B showed that the historical Expert Context distorted initial scales.
+  # Reflection still retains the paper-v4 optional knowledge tool.
+  use_expert_context: false
+
+iteration:
+  # Short path-safe identifier; this is the rebuilt ISCSIC2026 main experiment.
+  # Filesystem-safe short id for the clean r2_main experiment (Windows path limit).
+  experiment_prefix: r2c
+  total_rounds: 10
+  reset_memory_at_start: true
+  # The paper reports trainings-to-threshold; no post-threshold probes are run.
+  stop_immediately_when_solved: true
+
+multi_seed:
+  enabled: true
+  start_seed: 0
+  num_seeds: 5
+
+training:
+  total_timesteps: 1000000
+  eval_episodes: 20
+  eval_seed_offset: 10000
+  seed: 0

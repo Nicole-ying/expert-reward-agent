@@ -1,0 +1,63 @@
+{
+  "turns_used": 6,
+  "signal": {
+    "key_findings": "mean_eval_reward=-4.76, only 1/20 terminated, ep_len=999.45 (max). Generated reward 5.77/step is completely decoupled from true task score. Policy learned to exploit proximity_stability (88.6% signed share, 4364.72 ep sum) while ignoring progress_gated (7.3%, 361.38).",
+    "component_anomalies": "proximity_stability dominates at 88.6% signed share vs progress_gated at 7.3%. fuel_penalty is -4.1% but 100% active. The proximity component has w=10.0 with gate_min_stab=0.2 floor, ensuring a persistent nonzero signal even in poor states, while progress_gated uses w=8.0 with gate_min=0.1.",
+    "training_dynamics": "No component_dynamics snapshots available. Final-policy state shows the agent converged to a local optimum: maximize proximity_stability by staying near origin with low velocity/angle, achieving ~5.77/step generated reward while making zero task progress (original_env_reward=-0.012/step).",
+    "signal_quality": "proximity_stability has structural advantages: higher weight (10 vs 8), higher gate floor (0.2 vs 0.1), and contact_mult (+50% when legs touch). These combine to make it the path of least resistance — the policy found a stationary, low-energy posture that scores well on proximity_stability without needing to actually reach the target.",
+    "confidence": "high"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 609
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 876
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 2695
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "eval_score=-4.76, 1/20 terminated (5%), mean episode length=999.45 (19/20 truncated). Generated reward mean=+5.77/step vs original env reward=-0.01/step. The policy achieves high generated reward while failing the actual task — a clear reward hacking signal.",
+        "component_anomalies": "proximity_stability dominates: episode_sum_mean=4364.72, 88.6% signed share, 88.6% magnitude share. progress_gated is minor at 7.3% (361.38). fuel_penalty=-199.89 (4.1% magnitude, 100% active). The 10:8 weight ratio (proximity:progress) plus proximity's uncapped structure lets it dwarf the progress signal.",
+        "training_dynamics": "No checkpoint dynamics available. Static evidence: the policy converges to a degenerate \"hover-near-origin\" strategy — prox_factor rewards proximity without requiring termination, and the stab gates ensure the high reward is achievable by maintaining stability rather than landing. 999-step truncations confirm no landing incentive.",
+        "signal_quality": "Dead signal: progress_gated is gated behind the same stability conditions as proximity_stability but at lower weight — the lander can satisfy gates without making progress. proximity_stability lacks any termination bonus or distance-improvement requirement, making hovering a local optimum. th_dist=0.5 creates a wide reward basin around origin.",
+        "confidence": "high"
+      },
+      "validation_errors": [
+        "signal too long (1246 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "mean_eval_reward=-4.76, only 1/20 terminated, ep_len=999.45 (max). Generated reward 5.77/step is completely decoupled from true task score. Policy learned to exploit proximity_stability (88.6% signed share, 4364.72 ep sum) while ignoring progress_gated (7.3%, 361.38).",
+        "component_anomalies": "proximity_stability dominates at 88.6% signed share vs progress_gated at 7.3%. fuel_penalty is -4.1% but 100% active. The proximity component has w=10.0 with gate_min_stab=0.2 floor, ensuring a persistent nonzero signal even in poor states, while progress_gated uses w=8.0 with gate_min=0.1.",
+        "training_dynamics": "No component_dynamics snapshots available. Final-policy state shows the agent converged to a local optimum: maximize proximity_stability by staying near origin with low velocity/angle, achieving ~5.77/step generated reward while making zero task progress (original_env_reward=-0.012/step).",
+        "signal_quality": "proximity_stability has structural advantages: higher weight (10 vs 8), higher gate floor (0.2 vs 0.1), and contact_mult (+50% when legs touch). These combine to make it the path of least resistance — the policy found a stationary, low-energy posture that scores well on proximity_stability without needing to actually reach the target.",
+        "confidence": "high"
+      },
+      "signal_valid": true
+    }
+  ],
+  "signal_produced": true
+}

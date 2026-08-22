@@ -1,0 +1,67 @@
+{
+  "turns_used": 6,
+  "signal": {
+    "key_findings": "Automatic fallback after 5 turns without submit. Raw data: [inspect_component_dynamics]: (no monitor snapshots — training may not have completed)\n[inspect_training_feedback]: # Training Feedback\n\n## Final-policy outcome\nscore=-240.556906, len=244.400000, term",
+    "component_anomalies": "Subagent exhausted turns without explicit submission.",
+    "training_dynamics": "No temporal analysis available.",
+    "signal_quality": "No signal quality assessment available.",
+    "confidence": "low"
+  },
+  "tool_trace": [
+    {
+      "turn": 1,
+      "tool": "inspect_training_summary",
+      "args": {},
+      "result_len": 675
+    },
+    {
+      "turn": 1,
+      "tool": "inspect_previous_reward",
+      "args": {},
+      "result_len": 2519
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_component_dynamics",
+      "args": {},
+      "result_len": 56
+    },
+    {
+      "turn": 2,
+      "tool": "inspect_training_feedback",
+      "args": {},
+      "result_len": 929
+    },
+    {
+      "turn": 3,
+      "tool": "submit_research_signal",
+      "args": {},
+      "validation_errors": [
+        "missing required field: key_findings",
+        "missing required field: component_anomalies",
+        "missing required field: training_dynamics",
+        "missing required field: signal_quality",
+        "confidence must be low/medium/high"
+      ]
+    },
+    {
+      "turn": 4,
+      "tool": "submit_research_signal",
+      "args": {
+        "key_findings": "Eval score=-240.6, ep_len=244.4, 18/20 terminated. Original env reward dominates at -1.09/step (100% active). Generated reward=+0.27/step (forward 88.6 - upright 22.2 - zvel 0.7 over 244 steps), but this is dwarfed 4:1 by the env penalty. Forward fires only 52.5% of steps despite health gate active 88.1% — agent is healthy but not moving forward half the time.",
+        "component_anomalies": "z_velocity_penalty is dead: 3.6% active, episodic sum=-0.73, near-zero contribution. The |vz|>1.5 threshold is essentially never crossed. Upright_penalty fires only 12.0% of steps (ep sum=-22.2), so it's not the main problem — the original env reward (-1.09/step, 100% active) is the dominant negative. Health gate active 88.1% but forward_gated only 52.5%: gating is not the bottleneck.",
+        "training_dynamics": "No temporal monitor snapshots available; dynamics cannot be assessed. Only final-policy snapshot available. The wide score range [-1133, -2.9] suggests some episodes are much worse than average — 6/20 show early termination (<150 steps, score<-50), indicating catastrophic failure modes coexist with near-breakeven runs.",
+        "signal_quality": "Dead gate: z_velocity_penalty's |vz|>1.5 threshold is unreachable under current policy. The forward reward's health_gate coupling is intact (88% active) but forward progress is absent in ~47% of steps — the signal is reachable but the policy hasn't learned to exploit it. The original env reward is a massive uncontrolled confound at -1.09/step, drowning the generated signal.",
+        "confidence": "high"
+      },
+      "validation_errors": [
+        "signal too long (1449 chars); target ~600 max"
+      ]
+    },
+    {
+      "turn": 5,
+      "fallback_signal": true
+    }
+  ],
+  "signal_produced": true
+}

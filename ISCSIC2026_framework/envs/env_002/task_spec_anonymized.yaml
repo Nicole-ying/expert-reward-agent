@@ -1,0 +1,47 @@
+env_id: Env_002
+env_name: null
+environment_name_policy:
+  hide_true_name: true
+  do_not_mention_known_benchmark_name: true
+  do_not_mention_gym_or_gymnasium_id: true
+
+task_description: |
+  This anonymous environment is a 2D locomotion task.
+  A two-legged body must walk forward across uneven terrain as far and as fast as possible
+  while minimizing energy consumption. The agent must coordinate hip and knee joints on
+  both legs to produce a stable bipedal gait. Falling over terminates the episode.
+
+action_space:
+  type: Box
+  shape: [4]
+  continuous: true
+  bounds: "[-1.0, 1.0] per joint"
+  actions:
+    0: {name: hip_torque_leg1, meaning: torque applied to hip joint of leg 1}
+    1: {name: knee_torque_leg1, meaning: torque applied to knee joint of leg 1}
+    2: {name: hip_torque_leg2, meaning: torque applied to hip joint of leg 2}
+    3: {name: knee_torque_leg2, meaning: torque applied to knee joint of leg 2}
+
+observation_space:
+  type: Box
+  shape: [24]
+  fields:
+    - {index: 0, name: hull_angle, meaning: angle of the main body relative to upright}
+    - {index: 1, name: hull_angular_velocity, meaning: angular velocity of the main body}
+    - {index: 2, name: horizontal_velocity, meaning: forward/backward linear velocity}
+    - {index: 3, name: vertical_velocity, meaning: up/down linear velocity}
+    - {index: 4, name: hip1_angle, meaning: hip joint angle of leg 1}
+    - {index: 5, name: hip1_speed, meaning: hip joint angular speed of leg 1}
+    - {index: 6, name: knee1_angle, meaning: knee joint angle of leg 1}
+    - {index: 7, name: knee1_speed, meaning: knee joint angular speed of leg 1}
+    - {index: 8, name: leg1_contact, meaning: ground contact flag for leg 1 (1.0=contact, 0.0=no contact)}
+    - {index: 9, name: hip2_angle, meaning: hip joint angle of leg 2}
+    - {index: 10, name: hip2_speed, meaning: hip joint angular speed of leg 2}
+    - {index: 11, name: knee2_angle, meaning: knee joint angle of leg 2}
+    - {index: 12, name: knee2_speed, meaning: knee joint angular speed of leg 2}
+    - {index: 13, name: leg2_contact, meaning: ground contact flag for leg 2 (1.0=contact, 0.0=no contact)}
+    - {index: 14..23, name: lidar_0..9, meaning: 10 LIDAR rangefinder distance measurements along the terrain ahead}
+
+termination_conditions:
+  - body_fallen_over
+  - reached_end_of_terrain

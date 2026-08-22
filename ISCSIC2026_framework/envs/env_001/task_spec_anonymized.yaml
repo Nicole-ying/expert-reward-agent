@@ -1,0 +1,40 @@
+env_id: Env_001
+env_name: null
+environment_name_policy:
+  hide_true_name: true
+  do_not_mention_known_benchmark_name: true
+  do_not_mention_gym_or_gymnasium_id: true
+
+task_description: |
+  This anonymous environment is a 2D vehicle-like trajectory optimization task.
+  A body starts near the top center of the viewport with an initial random force.
+  The goal is to reach and settle at a central target pad as fast as possible,
+  while using as little engine thrust as possible. The agent should learn to approach
+  the target, reduce velocity, keep a stable orientation, and make safe contact.
+
+action_space:
+  type: Discrete
+  n: 4
+  actions:
+    0: {name: no_engine, meaning: do nothing}
+    1: {name: left_orientation_engine, meaning: fire one orientation engine}
+    2: {name: main_engine, meaning: fire main engine}
+    3: {name: right_orientation_engine, meaning: fire the opposite orientation engine}
+
+observation_space:
+  type: Box
+  shape: [8]
+  fields:
+    - {index: 0, name: x_position, meaning: horizontal coordinate relative to target pad}
+    - {index: 1, name: y_position, meaning: vertical coordinate relative to pad height}
+    - {index: 2, name: x_velocity, meaning: horizontal linear velocity}
+    - {index: 3, name: y_velocity, meaning: vertical linear velocity}
+    - {index: 4, name: body_angle, meaning: orientation angle}
+    - {index: 5, name: angular_velocity, meaning: angular velocity}
+    - {index: 6, name: left_support_contact, meaning: left contact flag}
+    - {index: 7, name: right_support_contact, meaning: right contact flag}
+
+termination_conditions:
+  - crash_or_body_contact
+  - horizontal_position_outside_viewport
+  - body_not_awake_or_settled

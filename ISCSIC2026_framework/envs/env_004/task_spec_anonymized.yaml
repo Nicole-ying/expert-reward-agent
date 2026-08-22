@@ -1,0 +1,61 @@
+env_id: Env_004
+env_name: null
+environment_name_policy:
+  hide_true_name: true
+  do_not_mention_known_benchmark_name: true
+  do_not_mention_gym_or_gymnasium_id: true
+
+task_description: |
+  This anonymous environment is a continuous-control locomotion task.
+  A planar one-legged articulated body must repeatedly hop in the forward direction
+  while remaining upright and using joint torques efficiently. Falling or entering
+  an invalid body state terminates the episode. The policy should make sustained
+  forward progress rather than merely remaining upright.
+
+action_space:
+  type: Box
+  shape: [3]
+  continuous: true
+  bounds: "[-1.0, 1.0] per joint"
+  actions:
+    0: {name: upper_joint_torque, meaning: torque applied to the upper leg hinge}
+    1: {name: lower_joint_torque, meaning: torque applied to the lower leg hinge}
+    2: {name: foot_joint_torque, meaning: torque applied to the foot hinge}
+
+observation_space:
+  type: Box
+  shape: [11]
+  fields:
+    - {index: 0, name: torso_height, meaning: vertical position of the main body}
+    - {index: 1, name: torso_angle, meaning: orientation angle of the main body}
+    - {index: 2, name: upper_joint_angle, meaning: angle of the upper leg joint}
+    - {index: 3, name: lower_joint_angle, meaning: angle of the lower leg joint}
+    - {index: 4, name: foot_joint_angle, meaning: angle of the foot joint}
+    - {index: 5, name: forward_velocity, meaning: horizontal velocity of the main body}
+    - {index: 6, name: vertical_velocity, meaning: vertical velocity of the main body}
+    - {index: 7, name: torso_angular_velocity, meaning: angular velocity of the main body}
+    - {index: 8, name: upper_joint_speed, meaning: angular velocity of the upper leg joint}
+    - {index: 9, name: lower_joint_speed, meaning: angular velocity of the lower leg joint}
+    - {index: 10, name: foot_joint_speed, meaning: angular velocity of the foot joint}
+
+termination_conditions:
+  - body_height_outside_healthy_range
+  - torso_angle_outside_healthy_range
+  - state_value_outside_finite_healthy_range
+
+interface_constraints:
+  official_reward_masked: true
+  allowed_info_fields: []
+  forbidden_info_fields:
+    - reward_forward
+    - reward_ctrl
+    - reward_survive
+    - x_position
+    - y_position
+    - z_distance_from_origin
+  notes:
+    - The forward world position is excluded from the observation.
+    - forward_velocity is directly observable and may be used for reward design.
+    - The reward function is stateless and cannot accumulate velocity across an episode.
+    - Do not reconstruct or use official reward terms from info.
+

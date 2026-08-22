@@ -13,12 +13,12 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 ENV_ID = "Ant-v4"
-TOTAL_TIMESTEPS = 1_000_000
+TOTAL_TIMESTEPS = 3_000_000
 FINAL_EVAL_EPS = 100
 EVAL_SEED_BASE = 20000
 NUM_SEEDS = 3
 DEVICE = "cpu"
-PREFIX = "baseline_ant_sb3_ppo_v1"
+PREFIX = "baseline_ant_sb3_ppo_3M"
 
 OUTPUT_DIR = Path(f"runs/env_005/{PREFIX}")
 
@@ -76,6 +76,7 @@ def main():
             policy_kwargs=dict(net_arch=dict(pi=[64, 64], vf=[64, 64]),
                                activation_fn=torch.nn.Tanh, ortho_init=True),
             device=DEVICE, seed=seed, verbose=1,
+            tensorboard_log=str(OUTPUT_DIR / f"seed_{seed}" / "tensorboard"),
         )
 
         t0 = time.time()

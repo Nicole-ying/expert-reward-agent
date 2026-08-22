@@ -1,0 +1,426 @@
+{
+  "call_count": 30,
+  "invocation_count": 2,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "name": "read_memory",
+          "arguments": {},
+          "result_preview": "# Reward Memory\n\n| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|\n| 1 | forward_velocity_reward + upright_stability_penalty + vertical_oscillation_penalty | -17.27 | -17.27 | 0.00 | 375.45 | forward_velocity_reward=0.297 upright_stability_penalty=-0.032 vertical_oscillation_penalty=0.000 | new_best |\n| 2 | forward_velocity_reward + upright_stability_penalty + vertical_oscillation_penalty | 262.56 | 262.56 | 0.00 | 1342.30 | forward_vel"
+        },
+        {
+          "name": "read_environment_card",
+          "arguments": {},
+          "result_preview": "# 匿名环境理解卡片\n\n## 1. 任务目标\n\n这是一个匿名 2D 双足步行任务。智能体需要控制两条腿的髋关节和膝关节，在起伏地形上尽量向前行走，走得越远、越快越好，同时尽可能降低能量消耗。核心目标是稳定前进并避免摔倒；能量消耗、关节动作平滑、躯干姿态稳定属于次目标，不应与“前进主目标”混淆。\n\n---\n\n## 2. 任务类型选择\n\nselected_route_id: locomotion_continuous_control\n\nconfidence: high\n\nreason: 核心目标是持续前进穿越地形，没有固定到达点，没有抓取/操控物体，也不是纯存活/平衡任务。任务要求通过连续关节力矩产生双足步态，能量消耗只是附属优化目标，不属于多目标权重相当的主目标结构。\n\n---\n\n## 3. 观察空间 observation_space\n\n- type: Box\n- shape: [24]\n- dtype: float（spec 未明确精度，通常为 float32）\n- obs[0]: hull_angle — 主躯干相对直立方向的角度；reward_usable: true\n- obs"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "(iteration 4 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史轨迹：`iter_1 score=-17.27`（无门控，向前摔倒，`forward_velocity_reward=222.6`）；`iter_2 score=262.56`（best，门控宽 0.5，软惩罚）；`iter_3 score=255.93`（门控收紧 0.5→0.4，惩罚加强 -2.0→-4.0 / -0.15→-0.4）。\n- iter_3 的收紧是负向修改：`forward_velocity_reward` 从 `814.5 → 780.1`，外部分数从 `262.56 → 255.93`，说明更窄的直立门控直接压低了前进速度。\n- iter_3 最终策略 `upright_stability_penalty` active_rate 仅 `1.6%`，即"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 5
+          },
+          "result_preview": "(iteration 5 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史轨迹：`iter_1 score=-17.27`（无门控，向前摔倒，`forward_velocity_reward=222.6`）→ `iter_2 score=262.56`（门控 0.5）→ `iter_3 score=255.93`（门控收紧 0.4，惩罚加强）→ `iter_4 score=287.49`（门控放宽 0.6）。\n- **本轮改善 >30 分的归因明确**：对比 `read_reward_code(3)` 与 `read_reward_code(4)`，iter_4 唯一实质修改是把直立门控宽度 `0.4 → 0.6`。证据链：\n  - `forward_velocity_reward` ep_sum：`780.13 → 818.92`（+5.0%），"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 6
+          },
+          "result_preview": "(iteration 6 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史分数轨迹：`iter_1=-17.27`（无门控，向前摔倒）→ `iter_2=262.56`（加门控 0.5）→ `iter_3=255.93`（门控收紧 0.4，惩罚加强，负向）→ `iter_4=287.49`（门控放宽 0.6，+31.6）→ `iter_5=291.96`（门控放宽 0.7，+4.5）。\n- 对比 `read_checkpoint_trend(4)` 与 `read_checkpoint_trend(5)`：门控 0.6→0.7 的改善不只是最终分数，更在于训练过程显著变稳：\n  - iter_4：cp10%=-103.5、cp50%=-107.8、cp70%=-95.7、cp90%=38.7，训练极不稳定，最后才跳升到 289.5。\n  - ite"
+        },
+        {
+          "name": "read_reward_code",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # 主学习信号：稳定前进。\n    # 水平速度只有在躯干保持直立时才被全额奖励，防止\"向前摔倒\"被误奖为前进。\n    vx = float(next_obs[2])\n    speed_reward = 1.0 - 2.718281828 ** (-max(vx, 0.0) * 1.5)\n\n    # 直立门控：本轮放宽宽度（0.4 -> 0.6），允许中等前倾换取更快的步态，\n    # 同时仍强烈抑制接近摔倒的大角度倾斜。\n    hull_angle = float(next_obs[0])\n    upright_gate = 2.718281828 ** (-(hull_angle / 0.6) ** 2)\n\n    forward_velocity_reward = 1.5 * speed_reward * upright_gate\n\n    # 稳定性约束：保留上一轮加强后的力度（角度"
+        },
+        {
+          "name": "read_reward_code",
+          "arguments": {
+            "iteration": 5
+          },
+          "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # 主学习信号：稳定前进。\n    # 水平速度只有在躯干保持直立时才被全额奖励，防止\"向前摔倒\"被误奖为前进。\n    vx = float(next_obs[2])\n    speed_reward = 1.0 - 2.718281828 ** (-max(vx, 0.0) * 1.5)\n\n    # 直立门控：上一轮 0.4 -> 0.6 已带来显著改善（score 256 -> 287）。\n    # 本轮继续沿同一方向微调（0.6 -> 0.7），允许略微更大的自然前倾换取更快步态，\n    # 同时仍保留强力的兜底惩罚，防止回到\"向前摔倒刷前进奖励\"。\n    hull_angle = float(next_obs[0])\n    upright_gate = 2.718281828 ** (-(hull_angle / 0.7) ** 2)\n\n    forward_velocity_re"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 2
+          },
+          "result_preview": "=== Iteration 2 training feedback ===\nscore: 262.56\nlen: 1342.3\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=814.465, active=99.3%, magnitude_share=100.0%, signed_share=100.0%\n  upright_stability_penalty: ep_sum=-0.264, active=4.5%, magnitude_share=0.0%, signed_share=-0.0%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 3
+          },
+          "result_preview": "=== Iteration 3 training feedback ===\nscore: 255.93\nlen: 1179.8\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=780.133, active=99.2%, magnitude_share=99.0%, signed_share=99.0%\n  upright_stability_penalty: ep_sum=-8.052, active=1.6%, magnitude_share=1.0%, signed_share=-1.0%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "=== Iteration 4 training feedback ===\nscore: 287.49\nlen: 1207.5\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=818.919, active=99.7%, magnitude_share=100.0%, signed_share=100.0%\n  upright_stability_penalty: ep_sum=-0.068, active=4.1%, magnitude_share=0.0%, signed_share=-0.0%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 5
+          },
+          "result_preview": "=== Iteration 5 training feedback ===\nscore: 291.96\nlen: 1217.6\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=809.393, active=99.2%, magnitude_share=99.8%, signed_share=99.8%\n  upright_stability_penalty: ep_sum=-1.430, active=26.5%, magnitude_share=0.2%, signed_share=-0.2%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 6
+          },
+          "result_preview": "=== Iteration 6 training feedback ===\nscore: 216.50\nlen: 1132.2\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=738.219, active=98.3%, magnitude_share=99.3%, signed_share=99.3%\n  upright_stability_penalty: ep_sum=-4.970, active=2.8%, magnitude_share=0.7%, signed_share=-0.7%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+        },
+        {
+          "name": "read_checkpoint_trend",
+          "arguments": {
+            "iteration": 5
+          },
+          "result_preview": "=== Checkpoint trend for iteration 5 ===\n\nscore:  cp10%=-48.8  cp20%=-58.8  cp30%=-28.8  cp40%=91.9  cp50%=-51.9  cp60%=263.2  cp70%=289.6  cp80%=291.8  cp90%=292.6  cp100%=293.3\n\nforward_velocity_reward (ep_sum):  cp10%=1.644  cp20%=9.967  cp30%=79.210  cp40%=462.256  cp50%=235.636  cp60%=836.483  cp70%=831.331  cp80%=818.125  cp90%=815.955  cp100%=812.097\nupright_stability_penalty (ep_sum):  cp10%=-31.628  cp20%=-0.200  cp30%=-8.032  cp40%=-7.441  cp50%=-36.647  cp60%=-5.037  cp70%=-2.329  cp8"
+        },
+        {
+          "name": "read_checkpoint_trend",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "=== Checkpoint trend for iteration 4 ===\n\nscore:  cp10%=-103.5  cp20%=-101.6  cp30%=-48.7  cp40%=-91.0  cp50%=-107.8  cp60%=1.8  cp70%=-95.7  cp80%=-70.7  cp90%=38.7  cp100%=289.5\n\nforward_velocity_reward (ep_sum):  cp10%=1.171  cp20%=3.364  cp30%=9.388  cp40%=31.451  cp50%=1.620  cp60%=339.727  cp70%=73.094  cp80%=113.751  cp90%=333.370  cp100%=821.628\nupright_stability_penalty (ep_sum):  cp10%=-630.993  cp20%=-127.285  cp30%=-3.693  cp40%=-3.984  cp50%=-64.648  cp60%=-3.756  cp70%=-4.581  cp80"
+        },
+        {
+          "name": "read_checkpoint_trend",
+          "arguments": {
+            "iteration": 6
+          },
+          "result_preview": "=== Checkpoint trend for iteration 6 ===\n\nscore:  cp10%=-29.0  cp20%=-38.8  cp30%=96.7  cp40%=143.3  cp50%=-84.9  cp60%=-87.7  cp70%=-49.8  cp80%=-59.0  cp90%=159.6  cp100%=252.8\n\nforward_velocity_reward (ep_sum):  cp10%=14.059  cp20%=7.572  cp30%=422.593  cp40%=566.790  cp50%=93.442  cp60%=51.180  cp70%=189.842  cp80%=139.208  cp90%=612.232  cp100%=797.422\nupright_stability_penalty (ep_sum):  cp10%=-10.195  cp20%=-0.002  cp30%=-10.288  cp40%=-6.512  cp50%=-8.165  cp60%=-5.244  cp70%=-9.784  cp8"
+        },
+        {
+          "name": "get_component_history",
+          "arguments": {
+            "component_name": "forward_velocity_reward"
+          },
+          "result_preview": "=== History of component 'forward_velocity_reward' ===\n\n  iter_01: ep_sum_mean=222.615, active_rate=94.3%, signed_share=97.2%, magnitude_share=97.2%\n  iter_02: ep_sum_mean=814.465, active_rate=99.3%, signed_share=100.0%, magnitude_share=100.0%\n  iter_03: ep_sum_mean=780.133, active_rate=99.2%, signed_share=99.0%, magnitude_share=99.0%\n  iter_04: ep_sum_mean=818.919, active_rate=99.7%, signed_share=100.0%, magnitude_share=100.0%\n  iter_05: ep_sum_mean=809.393, active_rate=99.2%, signed_share=99.8"
+        },
+        {
+          "name": "get_component_history",
+          "arguments": {
+            "component_name": "upright_stability_penalty"
+          },
+          "result_preview": "=== History of component 'upright_stability_penalty' ===\n\n  iter_01: ep_sum_mean=-6.525, active_rate=67.3%, signed_share=-2.8%, magnitude_share=2.8%\n  iter_02: ep_sum_mean=-0.264, active_rate=4.5%, signed_share=-0.0%, magnitude_share=0.0%\n  iter_03: ep_sum_mean=-8.052, active_rate=1.6%, signed_share=-1.0%, magnitude_share=1.0%\n  iter_04: ep_sum_mean=-0.068, active_rate=4.1%, signed_share=-0.0%, magnitude_share=0.0%\n  iter_05: ep_sum_mean=-1.430, active_rate=26.5%, signed_share=-0.2%, magnitude_s"
+        },
+        {
+          "name": "get_component_history",
+          "arguments": {
+            "component_name": "vertical_oscillation_penalty"
+          },
+          "result_preview": "=== History of component 'vertical_oscillation_penalty' ===\n\n  iter_01: ep_sum_mean=0.000, active_rate=0.0%, signed_share=0.0%, magnitude_share=0.0%\n  iter_02: ep_sum_mean=0.000, active_rate=0.0%, signed_share=0.0%, magnitude_share=0.0%\n  iter_03: ep_sum_mean=0.000, active_rate=0.0%, signed_share=0.0%, magnitude_share=0.0%\n  iter_04: ep_sum_mean=0.000, active_rate=0.0%, signed_share=0.0%, magnitude_share=0.0%\n  iter_05: ep_sum_mean=0.000, active_rate=0.0%, signed_share=0.0%, magnitude_share=0.0%"
+        }
+      ]
+    },
+    {
+      "validation_retry": false,
+      "duplicate_retry": true,
+      "status": "completed",
+      "calls": [
+        {
+          "name": "read_memory",
+          "arguments": {},
+          "result_preview": "# Reward Memory\n\n| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|\n| 1 | forward_velocity_reward + upright_stability_penalty + vertical_oscillation_penalty | -17.27 | -17.27 | 0.00 | 375.45 | forward_velocity_reward=0.297 upright_stability_penalty=-0.032 vertical_oscillation_penalty=0.000 | new_best |\n| 2 | forward_velocity_reward + upright_stability_penalty + vertical_oscillation_penalty | 262.56 | 262.56 | 0.00 | 1342.30 | forward_vel"
+        },
+        {
+          "name": "read_environment_card",
+          "arguments": {},
+          "result_preview": "# 匿名环境理解卡片\n\n## 1. 任务目标\n\n这是一个匿名 2D 双足步行任务。智能体需要控制两条腿的髋关节和膝关节，在起伏地形上尽量向前行走，走得越远、越快越好，同时尽可能降低能量消耗。核心目标是稳定前进并避免摔倒；能量消耗、关节动作平滑、躯干姿态稳定属于次目标，不应与“前进主目标”混淆。\n\n---\n\n## 2. 任务类型选择\n\nselected_route_id: locomotion_continuous_control\n\nconfidence: high\n\nreason: 核心目标是持续前进穿越地形，没有固定到达点，没有抓取/操控物体，也不是纯存活/平衡任务。任务要求通过连续关节力矩产生双足步态，能量消耗只是附属优化目标，不属于多目标权重相当的主目标结构。\n\n---\n\n## 3. 观察空间 observation_space\n\n- type: Box\n- shape: [24]\n- dtype: float（spec 未明确精度，通常为 float32）\n- obs[0]: hull_angle — 主躯干相对直立方向的角度；reward_usable: true\n- obs"
+        },
+        {
+          "name": "read_reward_code",
+          "arguments": {
+            "iteration": 5
+          },
+          "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # 主学习信号：稳定前进。\n    # 水平速度只有在躯干保持直立时才被全额奖励，防止\"向前摔倒\"被误奖为前进。\n    vx = float(next_obs[2])\n    speed_reward = 1.0 - 2.718281828 ** (-max(vx, 0.0) * 1.5)\n\n    # 直立门控：上一轮 0.4 -> 0.6 已带来显著改善（score 256 -> 287）。\n    # 本轮继续沿同一方向微调（0.6 -> 0.7），允许略微更大的自然前倾换取更快步态，\n    # 同时仍保留强力的兜底惩罚，防止回到\"向前摔倒刷前进奖励\"。\n    hull_angle = float(next_obs[0])\n    upright_gate = 2.718281828 ** (-(hull_angle / 0.7) ** 2)\n\n    forward_velocity_re"
+        },
+        {
+          "name": "read_reward_code",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # 主学习信号：稳定前进。\n    # 水平速度只有在躯干保持直立时才被全额奖励，防止\"向前摔倒\"被误奖为前进。\n    vx = float(next_obs[2])\n    speed_reward = 1.0 - 2.718281828 ** (-max(vx, 0.0) * 1.5)\n\n    # 直立门控：本轮放宽宽度（0.4 -> 0.6），允许中等前倾换取更快的步态，\n    # 同时仍强烈抑制接近摔倒的大角度倾斜。\n    hull_angle = float(next_obs[0])\n    upright_gate = 2.718281828 ** (-(hull_angle / 0.6) ** 2)\n\n    forward_velocity_reward = 1.5 * speed_reward * upright_gate\n\n    # 稳定性约束：保留上一轮加强后的力度（角度"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 6
+          },
+          "result_preview": "(iteration 6 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史分数轨迹：`iter_1=-17.27`（无门控，向前摔倒）→ `iter_2=262.56`（加门控 0.5）→ `iter_3=255.93`（门控收紧 0.4，惩罚加强，负向）→ `iter_4=287.49`（门控放宽 0.6，+31.6）→ `iter_5=291.96`（门控放宽 0.7，+4.5）。\n- 对比 `read_checkpoint_trend(4)` 与 `read_checkpoint_trend(5)`：门控 0.6→0.7 的改善不只是最终分数，更在于训练过程显著变稳：\n  - iter_4：cp10%=-103.5、cp50%=-107.8、cp70%=-95.7、cp90%=38.7，训练极不稳定，最后才跳升到 289.5。\n  - ite"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 5
+          },
+          "result_preview": "(iteration 5 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史轨迹：`iter_1 score=-17.27`（无门控，向前摔倒，`forward_velocity_reward=222.6`）→ `iter_2 score=262.56`（门控 0.5）→ `iter_3 score=255.93`（门控收紧 0.4，惩罚加强）→ `iter_4 score=287.49`（门控放宽 0.6）。\n- **本轮改善 >30 分的归因明确**：对比 `read_reward_code(3)` 与 `read_reward_code(4)`，iter_4 唯一实质修改是把直立门控宽度 `0.4 → 0.6`。证据链：\n  - `forward_velocity_reward` ep_sum：`780.13 → 818.92`（+5.0%），"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 5
+          },
+          "result_preview": "=== Iteration 5 training feedback ===\nscore: 291.96\nlen: 1217.6\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=809.393, active=99.2%, magnitude_share=99.8%, signed_share=99.8%\n  upright_stability_penalty: ep_sum=-1.430, active=26.5%, magnitude_share=0.2%, signed_share=-0.2%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+        },
+        {
+          "name": "read_training_feedback",
+          "arguments": {
+            "iteration": 6
+          },
+          "result_preview": "=== Iteration 6 training feedback ===\nscore: 216.50\nlen: 1132.2\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=738.219, active=98.3%, magnitude_share=99.3%, signed_share=99.3%\n  upright_stability_penalty: ep_sum=-4.970, active=2.8%, magnitude_share=0.7%, signed_share=-0.7%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+        },
+        {
+          "name": "get_component_history",
+          "arguments": {
+            "component_name": "forward_velocity_reward"
+          },
+          "result_preview": "=== History of component 'forward_velocity_reward' ===\n\n  iter_01: ep_sum_mean=222.615, active_rate=94.3%, signed_share=97.2%, magnitude_share=97.2%\n  iter_02: ep_sum_mean=814.465, active_rate=99.3%, signed_share=100.0%, magnitude_share=100.0%\n  iter_03: ep_sum_mean=780.133, active_rate=99.2%, signed_share=99.0%, magnitude_share=99.0%\n  iter_04: ep_sum_mean=818.919, active_rate=99.7%, signed_share=100.0%, magnitude_share=100.0%\n  iter_05: ep_sum_mean=809.393, active_rate=99.2%, signed_share=99.8"
+        },
+        {
+          "name": "read_checkpoint_trend",
+          "arguments": {
+            "iteration": 5
+          },
+          "result_preview": "=== Checkpoint trend for iteration 5 ===\n\nscore:  cp10%=-48.8  cp20%=-58.8  cp30%=-28.8  cp40%=91.9  cp50%=-51.9  cp60%=263.2  cp70%=289.6  cp80%=291.8  cp90%=292.6  cp100%=293.3\n\nforward_velocity_reward (ep_sum):  cp10%=1.644  cp20%=9.967  cp30%=79.210  cp40%=462.256  cp50%=235.636  cp60%=836.483  cp70%=831.331  cp80%=818.125  cp90%=815.955  cp100%=812.097\nupright_stability_penalty (ep_sum):  cp10%=-31.628  cp20%=-0.200  cp30%=-8.032  cp40%=-7.441  cp50%=-36.647  cp60%=-5.037  cp70%=-2.329  cp8"
+        },
+        {
+          "name": "read_checkpoint_trend",
+          "arguments": {
+            "iteration": 6
+          },
+          "result_preview": "=== Checkpoint trend for iteration 6 ===\n\nscore:  cp10%=-29.0  cp20%=-38.8  cp30%=96.7  cp40%=143.3  cp50%=-84.9  cp60%=-87.7  cp70%=-49.8  cp80%=-59.0  cp90%=159.6  cp100%=252.8\n\nforward_velocity_reward (ep_sum):  cp10%=14.059  cp20%=7.572  cp30%=422.593  cp40%=566.790  cp50%=93.442  cp60%=51.180  cp70%=189.842  cp80%=139.208  cp90%=612.232  cp100%=797.422\nupright_stability_penalty (ep_sum):  cp10%=-10.195  cp20%=-0.002  cp30%=-10.288  cp40%=-6.512  cp50%=-8.165  cp60%=-5.244  cp70%=-9.784  cp8"
+        },
+        {
+          "name": "read_past_reflection",
+          "arguments": {
+            "iteration": 4
+          },
+          "result_preview": "(iteration 4 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史轨迹：`iter_1 score=-17.27`（无门控，向前摔倒，`forward_velocity_reward=222.6`）；`iter_2 score=262.56`（best，门控宽 0.5，软惩罚）；`iter_3 score=255.93`（门控收紧 0.5→0.4，惩罚加强 -2.0→-4.0 / -0.15→-0.4）。\n- iter_3 的收紧是负向修改：`forward_velocity_reward` 从 `814.5 → 780.1`，外部分数从 `262.56 → 255.93`，说明更窄的直立门控直接压低了前进速度。\n- iter_3 最终策略 `upright_stability_penalty` active_rate 仅 `1.6%`，即"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "name": "read_memory",
+      "arguments": {},
+      "result_preview": "# Reward Memory\n\n| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|\n| 1 | forward_velocity_reward + upright_stability_penalty + vertical_oscillation_penalty | -17.27 | -17.27 | 0.00 | 375.45 | forward_velocity_reward=0.297 upright_stability_penalty=-0.032 vertical_oscillation_penalty=0.000 | new_best |\n| 2 | forward_velocity_reward + upright_stability_penalty + vertical_oscillation_penalty | 262.56 | 262.56 | 0.00 | 1342.30 | forward_vel"
+    },
+    {
+      "name": "read_environment_card",
+      "arguments": {},
+      "result_preview": "# 匿名环境理解卡片\n\n## 1. 任务目标\n\n这是一个匿名 2D 双足步行任务。智能体需要控制两条腿的髋关节和膝关节，在起伏地形上尽量向前行走，走得越远、越快越好，同时尽可能降低能量消耗。核心目标是稳定前进并避免摔倒；能量消耗、关节动作平滑、躯干姿态稳定属于次目标，不应与“前进主目标”混淆。\n\n---\n\n## 2. 任务类型选择\n\nselected_route_id: locomotion_continuous_control\n\nconfidence: high\n\nreason: 核心目标是持续前进穿越地形，没有固定到达点，没有抓取/操控物体，也不是纯存活/平衡任务。任务要求通过连续关节力矩产生双足步态，能量消耗只是附属优化目标，不属于多目标权重相当的主目标结构。\n\n---\n\n## 3. 观察空间 observation_space\n\n- type: Box\n- shape: [24]\n- dtype: float（spec 未明确精度，通常为 float32）\n- obs[0]: hull_angle — 主躯干相对直立方向的角度；reward_usable: true\n- obs"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "(iteration 4 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史轨迹：`iter_1 score=-17.27`（无门控，向前摔倒，`forward_velocity_reward=222.6`）；`iter_2 score=262.56`（best，门控宽 0.5，软惩罚）；`iter_3 score=255.93`（门控收紧 0.5→0.4，惩罚加强 -2.0→-4.0 / -0.15→-0.4）。\n- iter_3 的收紧是负向修改：`forward_velocity_reward` 从 `814.5 → 780.1`，外部分数从 `262.56 → 255.93`，说明更窄的直立门控直接压低了前进速度。\n- iter_3 最终策略 `upright_stability_penalty` active_rate 仅 `1.6%`，即"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 5
+      },
+      "result_preview": "(iteration 5 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史轨迹：`iter_1 score=-17.27`（无门控，向前摔倒，`forward_velocity_reward=222.6`）→ `iter_2 score=262.56`（门控 0.5）→ `iter_3 score=255.93`（门控收紧 0.4，惩罚加强）→ `iter_4 score=287.49`（门控放宽 0.6）。\n- **本轮改善 >30 分的归因明确**：对比 `read_reward_code(3)` 与 `read_reward_code(4)`，iter_4 唯一实质修改是把直立门控宽度 `0.4 → 0.6`。证据链：\n  - `forward_velocity_reward` ep_sum：`780.13 → 818.92`（+5.0%），"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 6
+      },
+      "result_preview": "(iteration 6 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史分数轨迹：`iter_1=-17.27`（无门控，向前摔倒）→ `iter_2=262.56`（加门控 0.5）→ `iter_3=255.93`（门控收紧 0.4，惩罚加强，负向）→ `iter_4=287.49`（门控放宽 0.6，+31.6）→ `iter_5=291.96`（门控放宽 0.7，+4.5）。\n- 对比 `read_checkpoint_trend(4)` 与 `read_checkpoint_trend(5)`：门控 0.6→0.7 的改善不只是最终分数，更在于训练过程显著变稳：\n  - iter_4：cp10%=-103.5、cp50%=-107.8、cp70%=-95.7、cp90%=38.7，训练极不稳定，最后才跳升到 289.5。\n  - ite"
+    },
+    {
+      "name": "read_reward_code",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # 主学习信号：稳定前进。\n    # 水平速度只有在躯干保持直立时才被全额奖励，防止\"向前摔倒\"被误奖为前进。\n    vx = float(next_obs[2])\n    speed_reward = 1.0 - 2.718281828 ** (-max(vx, 0.0) * 1.5)\n\n    # 直立门控：本轮放宽宽度（0.4 -> 0.6），允许中等前倾换取更快的步态，\n    # 同时仍强烈抑制接近摔倒的大角度倾斜。\n    hull_angle = float(next_obs[0])\n    upright_gate = 2.718281828 ** (-(hull_angle / 0.6) ** 2)\n\n    forward_velocity_reward = 1.5 * speed_reward * upright_gate\n\n    # 稳定性约束：保留上一轮加强后的力度（角度"
+    },
+    {
+      "name": "read_reward_code",
+      "arguments": {
+        "iteration": 5
+      },
+      "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # 主学习信号：稳定前进。\n    # 水平速度只有在躯干保持直立时才被全额奖励，防止\"向前摔倒\"被误奖为前进。\n    vx = float(next_obs[2])\n    speed_reward = 1.0 - 2.718281828 ** (-max(vx, 0.0) * 1.5)\n\n    # 直立门控：上一轮 0.4 -> 0.6 已带来显著改善（score 256 -> 287）。\n    # 本轮继续沿同一方向微调（0.6 -> 0.7），允许略微更大的自然前倾换取更快步态，\n    # 同时仍保留强力的兜底惩罚，防止回到\"向前摔倒刷前进奖励\"。\n    hull_angle = float(next_obs[0])\n    upright_gate = 2.718281828 ** (-(hull_angle / 0.7) ** 2)\n\n    forward_velocity_re"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 2
+      },
+      "result_preview": "=== Iteration 2 training feedback ===\nscore: 262.56\nlen: 1342.3\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=814.465, active=99.3%, magnitude_share=100.0%, signed_share=100.0%\n  upright_stability_penalty: ep_sum=-0.264, active=4.5%, magnitude_share=0.0%, signed_share=-0.0%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 3
+      },
+      "result_preview": "=== Iteration 3 training feedback ===\nscore: 255.93\nlen: 1179.8\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=780.133, active=99.2%, magnitude_share=99.0%, signed_share=99.0%\n  upright_stability_penalty: ep_sum=-8.052, active=1.6%, magnitude_share=1.0%, signed_share=-1.0%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "=== Iteration 4 training feedback ===\nscore: 287.49\nlen: 1207.5\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=818.919, active=99.7%, magnitude_share=100.0%, signed_share=100.0%\n  upright_stability_penalty: ep_sum=-0.068, active=4.1%, magnitude_share=0.0%, signed_share=-0.0%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 5
+      },
+      "result_preview": "=== Iteration 5 training feedback ===\nscore: 291.96\nlen: 1217.6\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=809.393, active=99.2%, magnitude_share=99.8%, signed_share=99.8%\n  upright_stability_penalty: ep_sum=-1.430, active=26.5%, magnitude_share=0.2%, signed_share=-0.2%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 6
+      },
+      "result_preview": "=== Iteration 6 training feedback ===\nscore: 216.50\nlen: 1132.2\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=738.219, active=98.3%, magnitude_share=99.3%, signed_share=99.3%\n  upright_stability_penalty: ep_sum=-4.970, active=2.8%, magnitude_share=0.7%, signed_share=-0.7%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+    },
+    {
+      "name": "read_checkpoint_trend",
+      "arguments": {
+        "iteration": 5
+      },
+      "result_preview": "=== Checkpoint trend for iteration 5 ===\n\nscore:  cp10%=-48.8  cp20%=-58.8  cp30%=-28.8  cp40%=91.9  cp50%=-51.9  cp60%=263.2  cp70%=289.6  cp80%=291.8  cp90%=292.6  cp100%=293.3\n\nforward_velocity_reward (ep_sum):  cp10%=1.644  cp20%=9.967  cp30%=79.210  cp40%=462.256  cp50%=235.636  cp60%=836.483  cp70%=831.331  cp80%=818.125  cp90%=815.955  cp100%=812.097\nupright_stability_penalty (ep_sum):  cp10%=-31.628  cp20%=-0.200  cp30%=-8.032  cp40%=-7.441  cp50%=-36.647  cp60%=-5.037  cp70%=-2.329  cp8"
+    },
+    {
+      "name": "read_checkpoint_trend",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "=== Checkpoint trend for iteration 4 ===\n\nscore:  cp10%=-103.5  cp20%=-101.6  cp30%=-48.7  cp40%=-91.0  cp50%=-107.8  cp60%=1.8  cp70%=-95.7  cp80%=-70.7  cp90%=38.7  cp100%=289.5\n\nforward_velocity_reward (ep_sum):  cp10%=1.171  cp20%=3.364  cp30%=9.388  cp40%=31.451  cp50%=1.620  cp60%=339.727  cp70%=73.094  cp80%=113.751  cp90%=333.370  cp100%=821.628\nupright_stability_penalty (ep_sum):  cp10%=-630.993  cp20%=-127.285  cp30%=-3.693  cp40%=-3.984  cp50%=-64.648  cp60%=-3.756  cp70%=-4.581  cp80"
+    },
+    {
+      "name": "read_checkpoint_trend",
+      "arguments": {
+        "iteration": 6
+      },
+      "result_preview": "=== Checkpoint trend for iteration 6 ===\n\nscore:  cp10%=-29.0  cp20%=-38.8  cp30%=96.7  cp40%=143.3  cp50%=-84.9  cp60%=-87.7  cp70%=-49.8  cp80%=-59.0  cp90%=159.6  cp100%=252.8\n\nforward_velocity_reward (ep_sum):  cp10%=14.059  cp20%=7.572  cp30%=422.593  cp40%=566.790  cp50%=93.442  cp60%=51.180  cp70%=189.842  cp80%=139.208  cp90%=612.232  cp100%=797.422\nupright_stability_penalty (ep_sum):  cp10%=-10.195  cp20%=-0.002  cp30%=-10.288  cp40%=-6.512  cp50%=-8.165  cp60%=-5.244  cp70%=-9.784  cp8"
+    },
+    {
+      "name": "get_component_history",
+      "arguments": {
+        "component_name": "forward_velocity_reward"
+      },
+      "result_preview": "=== History of component 'forward_velocity_reward' ===\n\n  iter_01: ep_sum_mean=222.615, active_rate=94.3%, signed_share=97.2%, magnitude_share=97.2%\n  iter_02: ep_sum_mean=814.465, active_rate=99.3%, signed_share=100.0%, magnitude_share=100.0%\n  iter_03: ep_sum_mean=780.133, active_rate=99.2%, signed_share=99.0%, magnitude_share=99.0%\n  iter_04: ep_sum_mean=818.919, active_rate=99.7%, signed_share=100.0%, magnitude_share=100.0%\n  iter_05: ep_sum_mean=809.393, active_rate=99.2%, signed_share=99.8"
+    },
+    {
+      "name": "get_component_history",
+      "arguments": {
+        "component_name": "upright_stability_penalty"
+      },
+      "result_preview": "=== History of component 'upright_stability_penalty' ===\n\n  iter_01: ep_sum_mean=-6.525, active_rate=67.3%, signed_share=-2.8%, magnitude_share=2.8%\n  iter_02: ep_sum_mean=-0.264, active_rate=4.5%, signed_share=-0.0%, magnitude_share=0.0%\n  iter_03: ep_sum_mean=-8.052, active_rate=1.6%, signed_share=-1.0%, magnitude_share=1.0%\n  iter_04: ep_sum_mean=-0.068, active_rate=4.1%, signed_share=-0.0%, magnitude_share=0.0%\n  iter_05: ep_sum_mean=-1.430, active_rate=26.5%, signed_share=-0.2%, magnitude_s"
+    },
+    {
+      "name": "get_component_history",
+      "arguments": {
+        "component_name": "vertical_oscillation_penalty"
+      },
+      "result_preview": "=== History of component 'vertical_oscillation_penalty' ===\n\n  iter_01: ep_sum_mean=0.000, active_rate=0.0%, signed_share=0.0%, magnitude_share=0.0%\n  iter_02: ep_sum_mean=0.000, active_rate=0.0%, signed_share=0.0%, magnitude_share=0.0%\n  iter_03: ep_sum_mean=0.000, active_rate=0.0%, signed_share=0.0%, magnitude_share=0.0%\n  iter_04: ep_sum_mean=0.000, active_rate=0.0%, signed_share=0.0%, magnitude_share=0.0%\n  iter_05: ep_sum_mean=0.000, active_rate=0.0%, signed_share=0.0%, magnitude_share=0.0%"
+    },
+    {
+      "name": "read_memory",
+      "arguments": {},
+      "result_preview": "# Reward Memory\n\n| iter | skeleton | score | best | delta | len | key_signal | action |\n|---:|---|---:|---:|---:|---:|---|---|\n| 1 | forward_velocity_reward + upright_stability_penalty + vertical_oscillation_penalty | -17.27 | -17.27 | 0.00 | 375.45 | forward_velocity_reward=0.297 upright_stability_penalty=-0.032 vertical_oscillation_penalty=0.000 | new_best |\n| 2 | forward_velocity_reward + upright_stability_penalty + vertical_oscillation_penalty | 262.56 | 262.56 | 0.00 | 1342.30 | forward_vel"
+    },
+    {
+      "name": "read_environment_card",
+      "arguments": {},
+      "result_preview": "# 匿名环境理解卡片\n\n## 1. 任务目标\n\n这是一个匿名 2D 双足步行任务。智能体需要控制两条腿的髋关节和膝关节，在起伏地形上尽量向前行走，走得越远、越快越好，同时尽可能降低能量消耗。核心目标是稳定前进并避免摔倒；能量消耗、关节动作平滑、躯干姿态稳定属于次目标，不应与“前进主目标”混淆。\n\n---\n\n## 2. 任务类型选择\n\nselected_route_id: locomotion_continuous_control\n\nconfidence: high\n\nreason: 核心目标是持续前进穿越地形，没有固定到达点，没有抓取/操控物体，也不是纯存活/平衡任务。任务要求通过连续关节力矩产生双足步态，能量消耗只是附属优化目标，不属于多目标权重相当的主目标结构。\n\n---\n\n## 3. 观察空间 observation_space\n\n- type: Box\n- shape: [24]\n- dtype: float（spec 未明确精度，通常为 float32）\n- obs[0]: hull_angle — 主躯干相对直立方向的角度；reward_usable: true\n- obs"
+    },
+    {
+      "name": "read_reward_code",
+      "arguments": {
+        "iteration": 5
+      },
+      "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # 主学习信号：稳定前进。\n    # 水平速度只有在躯干保持直立时才被全额奖励，防止\"向前摔倒\"被误奖为前进。\n    vx = float(next_obs[2])\n    speed_reward = 1.0 - 2.718281828 ** (-max(vx, 0.0) * 1.5)\n\n    # 直立门控：上一轮 0.4 -> 0.6 已带来显著改善（score 256 -> 287）。\n    # 本轮继续沿同一方向微调（0.6 -> 0.7），允许略微更大的自然前倾换取更快步态，\n    # 同时仍保留强力的兜底惩罚，防止回到\"向前摔倒刷前进奖励\"。\n    hull_angle = float(next_obs[0])\n    upright_gate = 2.718281828 ** (-(hull_angle / 0.7) ** 2)\n\n    forward_velocity_re"
+    },
+    {
+      "name": "read_reward_code",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):\n    # 主学习信号：稳定前进。\n    # 水平速度只有在躯干保持直立时才被全额奖励，防止\"向前摔倒\"被误奖为前进。\n    vx = float(next_obs[2])\n    speed_reward = 1.0 - 2.718281828 ** (-max(vx, 0.0) * 1.5)\n\n    # 直立门控：本轮放宽宽度（0.4 -> 0.6），允许中等前倾换取更快的步态，\n    # 同时仍强烈抑制接近摔倒的大角度倾斜。\n    hull_angle = float(next_obs[0])\n    upright_gate = 2.718281828 ** (-(hull_angle / 0.6) ** 2)\n\n    forward_velocity_reward = 1.5 * speed_reward * upright_gate\n\n    # 稳定性约束：保留上一轮加强后的力度（角度"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 6
+      },
+      "result_preview": "(iteration 6 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史分数轨迹：`iter_1=-17.27`（无门控，向前摔倒）→ `iter_2=262.56`（加门控 0.5）→ `iter_3=255.93`（门控收紧 0.4，惩罚加强，负向）→ `iter_4=287.49`（门控放宽 0.6，+31.6）→ `iter_5=291.96`（门控放宽 0.7，+4.5）。\n- 对比 `read_checkpoint_trend(4)` 与 `read_checkpoint_trend(5)`：门控 0.6→0.7 的改善不只是最终分数，更在于训练过程显著变稳：\n  - iter_4：cp10%=-103.5、cp50%=-107.8、cp70%=-95.7、cp90%=38.7，训练极不稳定，最后才跳升到 289.5。\n  - ite"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 5
+      },
+      "result_preview": "(iteration 5 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史轨迹：`iter_1 score=-17.27`（无门控，向前摔倒，`forward_velocity_reward=222.6`）→ `iter_2 score=262.56`（门控 0.5）→ `iter_3 score=255.93`（门控收紧 0.4，惩罚加强）→ `iter_4 score=287.49`（门控放宽 0.6）。\n- **本轮改善 >30 分的归因明确**：对比 `read_reward_code(3)` 与 `read_reward_code(4)`，iter_4 唯一实质修改是把直立门控宽度 `0.4 → 0.6`。证据链：\n  - `forward_velocity_reward` ep_sum：`780.13 → 818.92`（+5.0%），"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 5
+      },
+      "result_preview": "=== Iteration 5 training feedback ===\nscore: 291.96\nlen: 1217.6\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=809.393, active=99.2%, magnitude_share=99.8%, signed_share=99.8%\n  upright_stability_penalty: ep_sum=-1.430, active=26.5%, magnitude_share=0.2%, signed_share=-0.2%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+    },
+    {
+      "name": "read_training_feedback",
+      "arguments": {
+        "iteration": 6
+      },
+      "result_preview": "=== Iteration 6 training feedback ===\nscore: 216.50\nlen: 1132.2\nterminated: 20/20\n\nComponents:\n  forward_velocity_reward: ep_sum=738.219, active=98.3%, magnitude_share=99.3%, signed_share=99.3%\n  upright_stability_penalty: ep_sum=-4.970, active=2.8%, magnitude_share=0.7%, signed_share=-0.7%\n  vertical_oscillation_penalty: ep_sum=0.000, active=0.0%, magnitude_share=0.0%, signed_share=0.0%"
+    },
+    {
+      "name": "get_component_history",
+      "arguments": {
+        "component_name": "forward_velocity_reward"
+      },
+      "result_preview": "=== History of component 'forward_velocity_reward' ===\n\n  iter_01: ep_sum_mean=222.615, active_rate=94.3%, signed_share=97.2%, magnitude_share=97.2%\n  iter_02: ep_sum_mean=814.465, active_rate=99.3%, signed_share=100.0%, magnitude_share=100.0%\n  iter_03: ep_sum_mean=780.133, active_rate=99.2%, signed_share=99.0%, magnitude_share=99.0%\n  iter_04: ep_sum_mean=818.919, active_rate=99.7%, signed_share=100.0%, magnitude_share=100.0%\n  iter_05: ep_sum_mean=809.393, active_rate=99.2%, signed_share=99.8"
+    },
+    {
+      "name": "read_checkpoint_trend",
+      "arguments": {
+        "iteration": 5
+      },
+      "result_preview": "=== Checkpoint trend for iteration 5 ===\n\nscore:  cp10%=-48.8  cp20%=-58.8  cp30%=-28.8  cp40%=91.9  cp50%=-51.9  cp60%=263.2  cp70%=289.6  cp80%=291.8  cp90%=292.6  cp100%=293.3\n\nforward_velocity_reward (ep_sum):  cp10%=1.644  cp20%=9.967  cp30%=79.210  cp40%=462.256  cp50%=235.636  cp60%=836.483  cp70%=831.331  cp80%=818.125  cp90%=815.955  cp100%=812.097\nupright_stability_penalty (ep_sum):  cp10%=-31.628  cp20%=-0.200  cp30%=-8.032  cp40%=-7.441  cp50%=-36.647  cp60%=-5.037  cp70%=-2.329  cp8"
+    },
+    {
+      "name": "read_checkpoint_trend",
+      "arguments": {
+        "iteration": 6
+      },
+      "result_preview": "=== Checkpoint trend for iteration 6 ===\n\nscore:  cp10%=-29.0  cp20%=-38.8  cp30%=96.7  cp40%=143.3  cp50%=-84.9  cp60%=-87.7  cp70%=-49.8  cp80%=-59.0  cp90%=159.6  cp100%=252.8\n\nforward_velocity_reward (ep_sum):  cp10%=14.059  cp20%=7.572  cp30%=422.593  cp40%=566.790  cp50%=93.442  cp60%=51.180  cp70%=189.842  cp80%=139.208  cp90%=612.232  cp100%=797.422\nupright_stability_penalty (ep_sum):  cp10%=-10.195  cp20%=-0.002  cp30%=-10.288  cp40%=-6.512  cp50%=-8.165  cp60%=-5.244  cp70%=-9.784  cp8"
+    },
+    {
+      "name": "read_past_reflection",
+      "arguments": {
+        "iteration": 4
+      },
+      "result_preview": "(iteration 4 reflection: could not parse fields)\nFirst 400 chars:\n# Response Record\n\n## 1. 诊断报告\n\n### evidence（关键数据与历史）\n\n- 历史轨迹：`iter_1 score=-17.27`（无门控，向前摔倒，`forward_velocity_reward=222.6`）；`iter_2 score=262.56`（best，门控宽 0.5，软惩罚）；`iter_3 score=255.93`（门控收紧 0.5→0.4，惩罚加强 -2.0→-4.0 / -0.15→-0.4）。\n- iter_3 的收紧是负向修改：`forward_velocity_reward` 从 `814.5 → 780.1`，外部分数从 `262.56 → 255.93`，说明更窄的直立门控直接压低了前进速度。\n- iter_3 最终策略 `upright_stability_penalty` active_rate 仅 `1.6%`，即"
+    }
+  ]
+}

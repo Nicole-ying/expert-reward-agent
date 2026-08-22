@@ -1,0 +1,14 @@
+# Reward Memory
+
+| iter | skeleton | score | best | delta | len | key_signal | action |
+|---:|---|---:|---:|---:|---:|---|---|
+| 1 | contact_reward + orientation_penalty + progress_reward + vel_damping | -159.49 | -159.49 | 0.00 | 303.35 | contact_reward=0.000 orientation_penalty=-0.008 progress_reward=-0.002 vel_damping=-0.004 | new_best |
+| 2 | action_reward + contact_reward + landing_bonus + orientation_penalty + proximity_reward + vel_damping | -117.24 | -117.24 | 0.00 | 68.45 | action_reward=0.020 contact_reward=0.024 landing_bonus=0.038 orientation_penalty=-0.010 proximity_reward=-0.291 | new_best |
+| 3 | action_reward + contact_reward + landing_bonus + orientation_penalty + progress_reward + proximity_bonus | -166.29 | -117.24 | -49.05 | 1000.00 | action_reward=-0.030 contact_reward=0.757 landing_bonus=3.321 orientation_penalty=-0.012 progress_reward=0.004 | no_meaningful_improvement |
+| 4 | action_reward + contact_reward + landing_bonus + orientation_penalty + progress_reward + vel_damping | 120.84 | 120.84 | 0.00 | 291.90 | action_reward=-0.020 contact_reward=0.158 landing_bonus=5.449 orientation_penalty=-0.006 progress_reward=0.013 | new_best |
+| 5 | action_reward + contact_reward + landing_bonus + orientation_penalty + progress_reward + vel_damping | -180.10 | 120.84 | -300.94 | 479.05 | action_reward=-0.023 contact_reward=0.002 landing_bonus=0.003 orientation_penalty=-0.022 progress_reward=-0.031 | no_meaningful_improvement |
+| 6 | action_reward + contact_reward + landing_bonus + orientation_penalty + progress_reward + vel_damping | 39.15 | 120.84 | -81.69 | 655.55 | action_reward=-0.017 contact_reward=0.276 landing_bonus=2.529 orientation_penalty=-0.007 progress_reward=0.015 | no_meaningful_improvement |
+| 7 | action_reward + contact_reward + landing_bonus + orientation_penalty + progress_reward + vel_damping | 83.19 | 120.84 | -37.65 | 766.55 | action_reward=-0.018 contact_reward=0.353 landing_bonus=1.770 orientation_penalty=-0.005 progress_reward=0.012 | unsolved_high_achievement_continue_from_best |
+| 8 | action_reward + contact_reward + landing_bonus + orientation_penalty + progress_reward + vel_damping | -53.83 | 120.84 | -174.67 | 545.50 | action_reward=-0.017 contact_reward=0.049 landing_bonus=1.204 orientation_penalty=-0.007 progress_reward=0.018 | no_meaningful_improvement |
+| 9 | action_reward + contact_reward + orientation_penalty + progress_reward + proximity_reward + vel_damping | 185.79 | 185.79 | 0.00 | 680.10 | action_reward=-0.018 contact_reward=0.357 orientation_penalty=-0.005 progress_reward=0.004 proximity_reward=0.403 | new_best |
+| 10 | action_reward + contact_reward + descent_bonus + orientation_penalty + progress_reward + proximity_reward | 255.40 | 255.40 | 0.00 | 332.40 | action_reward=-0.018 contact_reward=0.351 descent_bonus=0.063 orientation_penalty=-0.007 progress_reward=0.025 | target_solved_new_best |

@@ -1,0 +1,22 @@
+extends: env001_paper_v4.yaml
+
+# ── rpv4_old_v3: DeepSeek V4 Pro + paper_v4 prompts + fixed checkpoint eval + decision autobiography ──
+subagent_investigator:
+  enabled: false
+
+llm:
+  # Inherit DeepSeek V4 Pro from env001_deepseek_rag.yaml (provider=deepseek)
+  # Override only prompt paths and token budgets
+  environment_analyzer: prompts/paper_v4/01_environment_analyzer_prompt.md
+  reward_generator: prompts/paper_v4/02_reward_generator_prompt.md
+  temperature_environment_analyzer: 0.0
+  temperature_reward_generator: 0.0
+  max_tokens_env: 8192
+  max_tokens_reward: 16384
+
+ablation:
+  reflection_prompt_path: prompts/paper_v4/reflection_agent_prompt.md
+
+iteration:
+  experiment_prefix: rpv4_old_v3
+  total_rounds: 10

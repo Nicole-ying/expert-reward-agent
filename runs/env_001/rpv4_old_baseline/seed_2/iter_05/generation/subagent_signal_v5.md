@@ -1,0 +1,11 @@
+# Subagent Research Signal
+
+**训练过程**: Early episodes: avg_len 217, crash_rate 67%, score 826, orig_reward -90.5/step. Mid: avg_len 252, crash 53%, score 972, orig_reward -88.3. Late: avg_len 303, crash 40%, score 1448, orig_reward -83.6. The agent learned to survive longer and reduce crashes, but original env reward remained strongly negative, and evaluation episodes all hit max 1000 steps without landing.
+
+**组件健康**: All components had nonzero contributions. landing_bonus (non-zero 18.4%) fired rarely but gave large rare reward (mean 200 when active). contact_reward (34.6% nonzero) moderately active. shaping_reward and time_penalty always active but very small magnitude. No dead components.
+
+**奖励对齐**: Large gap: generated_reward per step positive (+4 to +5) while original_env_reward per step negative (-90 to -83). Shaped reward did not reflect task success; agent likely exploited contact and shaping rewards without learning to land. No landing success in evaluation despite training progress.
+
+**异常检测**: Evaluation: 0/20 landings, all episodes truncated at max 1000 steps. Original_env_reward remains strongly negative despite decreasing crash rate and increasing survival. Generated_reward plateaued early (4.9→5.4). Apparent local optimum where agent survives but never performs sparse landing bonus.
+
+**置信度**: `high`

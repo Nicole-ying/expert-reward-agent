@@ -1,0 +1,228 @@
+# ⚠️ 上一版代码验证失败
+错误信息：Reward v4 failed validation: 缺少准确函数签名; 没有发现 components/reward_components/reward_terms 字典赋值; warnings: 建议返回 (float(total_reward), components)。当前 wrapper 兼容 float，但 tuple 返回更利于诊断。; 未发现明显的 total_reward/reward 变量名 (record: runs/env_001/rpv4_old_v4_notools/seed_0/iter_04/generation/validations/reward_v4.validation.json)
+这是代码格式修复，不要重新诊断、不要调用工具、不要改变原定修改方向。直接输出修复后的完整 Python 代码。
+
+# 被截断或无效的上一版草稿
+```json
+{
+  "function": "read_memory",
+  "arguments": {}
+}
+```
+```json
+{
+  "function": "read_environment_card",
+  "arguments": {}
+}
+```
+```json
+{
+  "function": "read_past_reflection",
+  "arguments": {
+    "N": 3
+  }
+}
+```
+```json
+{
+  "function": "read_training_feedback",
+  "arguments": {
+    "N": 3
+  }
+}
+```
+```json
+{
+  "function": "get_component_history",
+  "arguments": {
+    "name": "contact_reward"
+  }
+}
+```
+```json
+{
+  "function": "get_component_history",
+  "arguments": {
+    "name": "vel_damping"
+  }
+}
+```
+```json
+{
+  "function": "get_component_history",
+  "arguments": {
+    "name": "orientation_penalty"
+  }
+}
+```
+```json
+{
+  "function": "get_component_history",
+  "arguments": {
+    "name": "progress_reward"
+  }
+}
+```
+
+下面是环境描述：
+智能体控制一个2D飞行器（类似着陆器），初始位于视野上方并带有随机外力。核心目标是**快速、平稳地降落在中央目标着陆垫上并稳定下来**，同时尽可能**减少发动机推力使用**。智能体需要学习接近目标、降低速度、保持稳定姿态、并实现安全接触。注意：不应混淆为单纯的能量节省任务——到达目标垫是首要条件，速度和姿态的平滑性是实现安全着陆的手段，而推力节省是重要但次要的优化目标。
+
+目标得分：200
+
+### 第一原则：黑盒实验，不是代码重构
+
+你无法预知新奖励函数会引导出什么行为，只能训练完后看结果。
+**看到好趋势 → 先理解为什么好，再精准微调。**
+大规模重写等于丢弃已有实验证据，重新掷骰子。
+
+**硬约束：如果本轮得分比上一轮改善超过 30 分，你必须先回答：**
+上一轮的哪个修改促成了这个改善？证据是什么？
+**如果你回答不了，本轮只做 L1，不改数学形态。**
+
+逐组件分析，按以下顺序：
+
+(1) **如果 score 始终接近零或负**，当前奖励函数从根上错了——你必须重写整个 reward，换一个完全不同的主信号框架。
+
+(2) **如果某个组件的值在整个训练过程中几乎不变**（轨迹平坦，checkpoint 之间无差异），说明 RL 无法优化这个组件。考虑：(a) 调整它的系数或温度参数 (b) 改写成不同的数学形式 (c) 丢弃它。
+
+(3) **如果某个组件的量级远大于其他**（magnitude_share 极高），必须把它缩放到合理范围——否则 agent 只被这一个信号驱动。
+
+### 本轮数据
+
+# 上一轮训练反馈 (iter_3, score=-124.547041)
+# Training Feedback
+
+## Final-policy outcome
+score=-124.547041, len=592.800000, terminated=19/20, truncated=1/20, reward_errors=0
+score_range=[-217.230008, 124.711063]
+
+## Final-policy reward composition
+
+These statistics come from the same fixed evaluation episodes as `score`. Shares describe observed reward composition, not causal influence.
+
+| component | episode_sum_mean | signed_share | magnitude_share | active_rate |
+|---|---:|---:|---:|---:|
+| contact_reward | 253.754127 | 91.4% | 91.4% | 0.7% |
+| vel_damping | -22.307194 | -8.0% | 8.0% | 83.9% |
+| orientation_penalty | -1.129505 | -0.4% | 0.4% | 100.0% |
+| progress_reward | 0.201174 | 0.1% | 0.2% | 100.0% |
+
+## Evaluation distribution
+- fixed_eval_seeds: 10000..10019
+- early_terminal (<150 steps and score<-50): 0/20
+- training_reward_errors_max: 0
+- full_training_distribution_stats: component_stats.md / training_summary.json (not primary reflection evidence)
+
+
+# Checkpoint 评估（训练过程中各组件的变化趋势）
+
+每个 checkpoint 在训练到 N% 时用当前模型评估 20 集，记录每个组件的 ep_sum_mean。
+**趋势比单点数值更重要：**
+- 组件全程为 0 → 死组件，agent 在训练中忽略了它
+- 组件从 0 逐渐增长 → 正在引导学习
+- 组件骤升 → 可能被 exploit
+- 组件骤降 → agent 在学习抑制它
+
+## Overall score trend
+| cp10% | cp20% | cp30% | cp40% | cp50% | cp60% | cp70% | cp80% | cp90% | cp100% |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| -622.3 | -211.0 | -188.5 | -154.6 | -154.3 | -143.6 | -139.5 | -114.3 | -131.1 | -129.3 |
+
+## Per-component ep_sum_mean trend
+| component | cp10% | cp20% | cp30% | cp40% | cp50% | cp60% | cp70% | cp80% | cp90% | cp100% |
+|---|---||---||---||---||---||---||---||---||---||---|
+| contact_reward | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 89.820 | 5068.810 |
+| orientation_penalty | -4.263 | -1.635 | -2.028 | -0.934 | -0.630 | -1.102 | -1.221 | -1.231 | -0.959 | -1.160 |
+| progress_reward | -1.145 | -0.119 | -0.088 | 0.020 | 0.110 | 0.103 | 0.175 | 0.234 | 0.210 | 0.192 |
+| vel_damping | 0.000 | -0.032 | 0.000 | -1.133 | -9.476 | -5.960 | -14.304 | -18.358 | -22.894 | -22.870 |
+
+## Per-component active_rate trend
+| component | cp10% | cp20% | cp30% | cp40% | cp50% | cp60% | cp70% | cp80% | cp90% | cp100% |
+|---|---||---||---||---||---||---||---||---||---||---|
+| contact_reward | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.1% | 4.8% |
+| orientation_penalty | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
+| progress_reward | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
+| vel_damping | 0.0% | 2.0% | 0.0% | 23.3% | 67.6% | 67.1% | 76.7% | 82.5% | 84.9% | 84.6% |
+
+# 上一轮奖励函数代码
+```python
+def compute_reward(obs, action, next_obs, original_reward, info, training_progress=0.0):
+    """
+    v3: 重新设计 contact_reward，使其在任意腿触地时即可激活，
+    放大权重以提供明确的着陆正激励，引导 agent 完成最终下降。
+    progress/ orientation/ vel_damping 保持与 v2 相同。
+    """
+    # 提取信号
+    x_prev, y_prev = obs[0], obs[1]
+    x_curr, y_curr = next_obs[0], next_obs[1]
+    vx, vy = next_obs[2], next_obs[3]
+    angle = next_obs[4]
+    angvel = next_obs[5]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
+
+    # 1. Progress reward（保持 v2 权重 0.5）
+    dist_prev = (x_prev ** 2 + y_prev ** 2) ** 0.5
+    dist_curr = (x_curr ** 2 + y_curr ** 2) ** 0.5
+    progress = dist_prev - dist_curr
+    w_progress = 0.5
+    progress_reward = w_progress * progress
+
+    # 2. Orientation penalty（保持不变）
+    w_angle = 0.2
+    w_angvel = 0.05
+    orientation_penalty = -w_angle * (angle ** 2) - w_angvel * (angvel ** 2)
+
+    # 3. Soft contact reward（重写：左右脚之和，放大权重，放宽因子）
+    contact_sum = left_contact + right_contact          # 0, 1, 或 2
+    sigma_angle = 0.3                                   # 放宽角度容忍度
+    sigma_vel = 0.5                                     # 放宽速度容忍度
+    angle_factor = 2.718281828 ** (- (angle ** 2) / (sigma_angle ** 2))
+    vel_factor = 2.718281828 ** (- (vx ** 2 + vy ** 2) / (sigma_vel ** 2))
+    soft_contact = contact_sum * angle_factor * vel_factor
+    w_contact = 100.0                                    # 大幅提升权重，一次良好着陆约 200
+    contact_reward = w_contact * soft_contact
+
+    # 4. 接近地面速度惩罚（保持 v2，阈值仍为 1.0）
+    altitude = y_curr
+    alt_thresh = 1.0
+    gate_alt = max(0.0, 1.0 - altitude / alt_thresh)
+    w_vel_damp = 1.0
+    vel_damping = -w_vel_damp * gate_alt * (abs(vy) + 0.3 * abs(vx))
+
+    total_reward = progress_reward + orientation_penalty + contact_reward + vel_damping
+
+    components = {
+        "progress_reward": progress_reward,
+        "orientation_penalty": orientation_penalty,
+        "contact_reward": contact_reward,
+        "vel_damping": vel_damping
+    }
+    return float(total_reward), components
+```
+
+---
+
+以上是本轮数据。以下信息可通过工具自主查阅：
+- `read_memory()` — 全局记忆表，简单记录每一轮迭代iteration的socre，len长度，奖励函数组件组成
+- `read_training_feedback(N)` — 任意迭代的详细训练反馈，了解以前的iteration有过什么好的或者坏的行为，可以避免重蹈覆辙
+- `read_reward_code(N)` — 任意迭代的奖励函数代码，方便你深入查看比较好的奖励函数的具体设计
+- `read_past_reflection(N)` — 任意迭代的诊断和干预记录，可以查看由好到坏或者由坏到好的记录，吸收学习经验
+- `get_component_history(name)` — 组件在所有迭代中的演化，能看清楚某一组件的好的或者坏的演化过程
+- `read_environment_card()` — 环境的观察空间、动作空间、终止条件，用来不确定的时候理解每个输入的观测和动作空间的维度信息
+- `read_checkpoint_trend(N)` — 训练过程中各组件的趋势，可以看到从训练过程中看出组件是否发挥作用，这样就不仅只看最终反馈，更全面
+
+现在开始调查，做出一个语义方向上的修改。
+
+### 输出要求
+
+**1. 诊断报告**（在代码之前）：
+- `evidence`：支持判断的关键数据和历史记录
+- `behavior_diagnosis`：策略当前的学到的行为模式是什么，是不健康的吗？结合 score、episode_length、terminated/truncated 判断。
+- `signal_completeness`：必要职责是否完备？缺什么信号？
+- `selected_level`：L1 / L2 / L3 及选择理由
+- `selected_intervention`：目标组件及具体修改内容
+- `falsifiable_hypothesis`：为什么该修预计改善策略？
+- `expected_next_round`：下一轮策略学习到的行为模式预计是什么？
+
+**2. 完整 Python 代码**（```python ... ``` 代码块）。

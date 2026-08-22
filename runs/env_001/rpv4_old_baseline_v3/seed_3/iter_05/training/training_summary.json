@@ -1,0 +1,254 @@
+{
+  "runner_env_id": "LunarLander-v3",
+  "reward_path": "runs/env_001/rpv4_old_baseline_v3/seed_3/iter_05/generation/reward_v1.py",
+  "reward_source": "generated_function",
+  "run_name": "rpv4_old_baseline_v3/seed_3/iter_05/training",
+  "n_envs": 4,
+  "total_timesteps": 1000000,
+  "reward_clip": 20.0,
+  "error_fallback": "zero",
+  "ppo_args": {
+    "policy": "MlpPolicy",
+    "verbose": "1",
+    "device": "auto",
+    "seed": "3",
+    "n_steps": "1024",
+    "batch_size": "64",
+    "gae_lambda": "0.98",
+    "gamma": "0.999",
+    "n_epochs": "4",
+    "ent_coef": "0.01",
+    "tensorboard_log": "runs/env_001/tensorboard"
+  },
+  "model_path": "runs/env_001/rpv4_old_baseline_v3/seed_3/iter_05/training/model.zip",
+  "monitor_dir": "runs/env_001/rpv4_old_baseline_v3/seed_3/iter_05/training/monitor",
+  "tensorboard_log": "runs/env_001/tensorboard",
+  "normalization": {
+    "normalize_obs": false,
+    "normalize_reward": false,
+    "clip_obs": 10.0,
+    "clip_normalized_reward": 10.0,
+    "vecnormalize_path": null
+  },
+  "external_eval": {
+    "eval_episodes": 20,
+    "eval_seed_offset": 10000,
+    "eval_seeds": [
+      10000,
+      10001,
+      10002,
+      10003,
+      10004,
+      10005,
+      10006,
+      10007,
+      10008,
+      10009,
+      10010,
+      10011,
+      10012,
+      10013,
+      10014,
+      10015,
+      10016,
+      10017,
+      10018,
+      10019
+    ],
+    "episode_rewards": [
+      210.08053529696105,
+      224.3655204881345,
+      250.99134764832445,
+      235.33963551248274,
+      173.59318064566713,
+      203.49880939946587,
+      63.65493761211674,
+      230.9457176098009,
+      239.89932695670598,
+      203.9331946363177,
+      48.23124233630972,
+      35.53204997382674,
+      264.867973905143,
+      -1.659689974905362,
+      160.68629989771424,
+      239.82416901018016,
+      51.28404005498079,
+      236.65677994794228,
+      222.08105017580738,
+      134.18984244138602
+    ],
+    "episode_lengths": [
+      640,
+      361,
+      225,
+      282,
+      960,
+      591,
+      1000,
+      251,
+      222,
+      986,
+      163,
+      1000,
+      256,
+      162,
+      771,
+      244,
+      1000,
+      214,
+      556,
+      849
+    ],
+    "episode_terminated": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true
+    ],
+    "mean_eval_reward": 171.3997981787181,
+    "mean_episode_length": 536.65,
+    "min_eval_reward": -1.659689974905362,
+    "max_eval_reward": 264.867973905143,
+    "termination_breakdown": {
+      "terminated": 17,
+      "truncated": 3
+    },
+    "final_policy_component_evaluation": {
+      "progress_reward": {
+        "episode_sum_mean": 11.954031658915532,
+        "episode_abs_sum_mean": 13.216485378302902,
+        "signed_contribution_share": 0.006827527650904523,
+        "magnitude_share": 0.007548576241291682,
+        "active_rate": 0.9864902636727849
+      },
+      "touchdown_reward": {
+        "episode_sum_mean": 1737.5,
+        "episode_abs_sum_mean": 1737.5,
+        "signed_contribution_share": 0.9923705768839165,
+        "magnitude_share": 0.9923705768839165,
+        "active_rate": 0.06475356377527253
+      },
+      "velocity_penalty": {
+        "episode_sum_mean": -0.14155140047762857,
+        "episode_abs_sum_mean": 0.14155140047762857,
+        "signed_contribution_share": -8.084687479177586e-05,
+        "magnitude_share": 8.084687479177586e-05,
+        "active_rate": 0.031957514208515794
+      }
+    },
+    "final_policy_component_error_count": 0
+  },
+  "train_duration_sec": 982.8,
+  "component_summary": {
+    "steps_seen": 1003520,
+    "reward_error_count_max": 0,
+    "component_stats": {
+      "component.progress_reward": {
+        "count": 1003520,
+        "mean": 0.027093646213277905,
+        "abs_mean": 0.03594577398166156,
+        "nonzero_rate": 0.9999810666454082,
+        "mean_when_active": 0.02709415919660134,
+        "abs_mean_when_active": 0.03594645456863223,
+        "min": -0.32048126590323855,
+        "max": 0.371552706641711
+      },
+      "component.total_reward": {
+        "count": 1003520,
+        "mean": 1.0152943910126122,
+        "abs_mean": 1.0573010391756787,
+        "nonzero_rate": 0.9999810666454082,
+        "mean_when_active": 1.0153136143052937,
+        "abs_mean_when_active": 1.0573210578101837,
+        "min": -4.240980336184061,
+        "max": 20.0
+      },
+      "component.touchdown_reward": {
+        "count": 1003520,
+        "mean": 2.5217235331632653,
+        "abs_mean": 2.5217235331632653,
+        "nonzero_rate": 0.050434470663265306,
+        "mean_when_active": 50.0,
+        "abs_mean_when_active": 50.0,
+        "min": 0.0,
+        "max": 50.0
+      },
+      "component.velocity_penalty": {
+        "count": 1003520,
+        "mean": -0.02050481696928655,
+        "abs_mean": 0.02050481696928655,
+        "nonzero_rate": 0.08222556600765306,
+        "mean_when_active": -0.24937276767882732,
+        "abs_mean_when_active": 0.24937276767882732,
+        "min": -4.25802339643171,
+        "max": -0.0
+      },
+      "generated_reward": {
+        "count": 1003520,
+        "mean": 1.0152943910126122,
+        "abs_mean": 1.0573010391756787,
+        "nonzero_rate": 0.9999810666454082,
+        "mean_when_active": 1.0153136143052937,
+        "abs_mean_when_active": 1.0573210578101837,
+        "min": -4.240980336184061,
+        "max": 20.0
+      },
+      "original_env_reward": {
+        "count": 1003520,
+        "mean": -0.37796918229471604,
+        "abs_mean": 3.746903765589885,
+        "nonzero_rate": 1.0,
+        "mean_when_active": -0.37796918229471604,
+        "abs_mean_when_active": 3.746903765589885,
+        "min": -100.0,
+        "max": 138.3584110351897
+      }
+    },
+    "episode_component_sum_stats": {
+      "progress_reward": {
+        "count": 3173,
+        "mean": 8.554394579222292,
+        "abs_mean": 8.641939957066732,
+        "min": -11.674614642761355,
+        "max": 14.19971444596789
+      },
+      "total_reward": {
+        "count": 3173,
+        "mean": 319.7601294249349,
+        "abs_mean": 322.9015420009371,
+        "min": -73.00502075664086,
+        "max": 2147.470576308935
+      },
+      "touchdown_reward": {
+        "count": 3173,
+        "mean": 794.1537976678222,
+        "abs_mean": 794.1537976678222,
+        "min": 0.0,
+        "max": 5350.0
+      },
+      "velocity_penalty": {
+        "count": 3173,
+        "mean": -6.460910926959195,
+        "abs_mean": 6.460910926959195,
+        "min": -106.94643175179303,
+        "max": 0.0
+      }
+    }
+  }
+}

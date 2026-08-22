@@ -1,0 +1,31 @@
+{
+  "call_count": 1,
+  "invocation_count": 1,
+  "invocations": [
+    {
+      "validation_retry": false,
+      "duplicate_retry": false,
+      "status": "completed",
+      "calls": [
+        {
+          "round": 1,
+          "name": "search_reward_design_knowledge",
+          "arguments": {
+            "query": "agent plateaus at moderate forward speed despite strong gradient, cannot discover faster locomotion gait"
+          },
+          "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## fast_then_fail\n- 症状：前进相关组件较强，但外部得分不高、episode明显偏短，策略以高速或失稳动作换取短期前进。\n- 原理：状态速度奖励可能鼓励占据高速状态，却没有表达持续通过地形的要求。\n- 修复：先检查稳定职责是否缺失；按证据选择轻量姿态约束、局部门控，或把状态速度改为兼顾持续性的有界结构。不要仅因速度高就直接增加全局重罚。\n---\n## locomotion_energy_domination\n- 症状：能耗或动作惩罚绝对累计贡献过大，策略动作幅度很小且前进不足。\n- 原理：完成任务前过早优化控制成本会抑制步态探索。\n- 修复：Level 1降低单一动作代价；若仍失败，Level 2将代价门控到已具备前进能力的阶段。事件、状态值和逐步差分不能套用同一固定ratio阈值。"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "round": 1,
+      "name": "search_reward_design_knowledge",
+      "arguments": {
+        "query": "agent plateaus at moderate forward speed despite strong gradient, cannot discover faster locomotion gait"
+      },
+      "result": "NOTE: These are legacy symptom heuristics. Any numeric ratio, coefficient, or threshold is a candidate starting point, not a universal decision rule. Current final-policy evidence and transformation reasoning take priority.\n\n## fast_then_fail\n- 症状：前进相关组件较强，但外部得分不高、episode明显偏短，策略以高速或失稳动作换取短期前进。\n- 原理：状态速度奖励可能鼓励占据高速状态，却没有表达持续通过地形的要求。\n- 修复：先检查稳定职责是否缺失；按证据选择轻量姿态约束、局部门控，或把状态速度改为兼顾持续性的有界结构。不要仅因速度高就直接增加全局重罚。\n---\n## locomotion_energy_domination\n- 症状：能耗或动作惩罚绝对累计贡献过大，策略动作幅度很小且前进不足。\n- 原理：完成任务前过早优化控制成本会抑制步态探索。\n- 修复：Level 1降低单一动作代价；若仍失败，Level 2将代价门控到已具备前进能力的阶段。事件、状态值和逐步差分不能套用同一固定ratio阈值。"
+    }
+  ]
+}
